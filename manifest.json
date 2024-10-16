@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-friday-plugin",
+	"name": "Friday",
+	"version": "0.1.0",
+	"minAppVersion": "0.15.0",
+	"description": "Friday empowers users to focus on content creation by writing Markdown files, while we handle the distribution. From creating websites to content deployment, Friday serves as a creative output assistant, helping users turn their work into publishable sites with ease.",
+	"author": "MDFriday",
+	"authorUrl": "https://mdfriday.com",
+	"fundingUrl": "https://mdfriday.com/pricing",
+	"isDesktopOnly": true
+}

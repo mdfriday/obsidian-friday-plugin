@@ -1,0 +1,166 @@
+<script lang="ts">
+	import ProgressBar from './ProgressBar.svelte';
+	import { onMount } from 'svelte';
+
+	let downloadProgress = 0;
+	let isServiceAvailable = false;
+	let isDownloading = false;
+	let isRunning = false;
+	let downloadUrl = ''; // 设置为你的下载链接
+	const version = '0.1.0';
+	const binaryName = 'hugoverse'; // 根据你的实际情况更改
+	const userHome = ''; // 这里用来存储用户主目录
+
+	onMount(() => {
+		// 检查操作系统
+		const platform = navigator.platform.toLowerCase();
+		if (platform.includes('win')) {
+			downloadUrl = `https://example.com/hugoverse-windows-${version}.exe`; // Windows下载链接
+		} else if (platform.includes('mac')) {
+			downloadUrl = `https://example.com/hugoverse-macos-${version}.zip`; // macOS下载链接
+		} else if (platform.includes('linux')) {
+			downloadUrl = `https://example.com/hugoverse-linux-${version}.tar.gz`; // Linux下载链接
+		}
+
+		// 检查用户目录下是否存在该版本的二进制文件
+		checkBinaryFile();
+	});
+
+	const checkBinaryFile = async () => {
+		// 在这里检查用户目录下是否存在指定的二进制文件
+		const binaryExists = await checkIfBinaryExists(); // 实现此方法来检查二进制文件
+		isServiceAvailable = binaryExists;
+		if (binaryExists) {
+			isRunning = true; // 或者根据需要设置
+		} else {
+			isRunning = false;
+		}
+	};
+
+	const checkIfBinaryExists = async () => {
+		// 在此处实现检查用户目录下是否包含该二进制文件的逻辑
+		// 返回 true 或 false
+		return false; // 默认返回 false，模拟未找到
+	};
+
+	const startService = () => {
+		isRunning = true; // 启动服务
+	};
+
+	const downloadFile = async () => {
+		isDownloading = true;
+		downloadProgress = 0;
+
+		// 模拟下载过程
+		const interval = setInterval(() => {
+			if (downloadProgress < 100) {
+				downloadProgress += 20; // 逐步增加进度
+			} else {
+				clearInterval(interval);
+				isDownloading = false;
+				isServiceAvailable = true; // 下载完成后可用服务
+				isRunning = true; // 直接设置为运行状态
+			}
+		}, 500); // 每0.5秒更新进度
+	};
+</script>
+
+<div class="friday-plugin-service mt-20">
+	<div>
+		<div class="flex">
+			<p class="service-title">Service</p>
+			<div class="status-container">
+				{#if isServiceAvailable}
+					{#if isRunning}
+						<div id="status-running" class="status">
+							<span class="dot running"></span>
+							<p>running</p>
+						</div>
+					{:else}
+						<div id="status-stopped" class="status">
+							<span class="dot stopped"></span>
+							<p>stopped</p>
+						</div>
+					{/if}
+				{:else}
+					<!-- 如果没有找到二进制文件则不显示状态 -->
+				{/if}
+			</div>
+		</div>
+
+		<div class="version-info">version: {version}</div>
+
+		{#if isDownloading}
+			<ProgressBar progress={downloadProgress} />
+		{:else}
+			{#if !isServiceAvailable}
+				<button on:click={downloadFile}>Download</button>
+			{:else if isRunning}
+				<button on:click={startService}>Start</button>
+			{:else}
+				<button on:click={startService} disabled={isRunning}>Start</button>
+			{/if}
+		{/if}
+
+		<div class="mt-20">
+			<button on:click={startService} disabled={!isServiceAvailable}>Start</button>
+			<button disabled={!isServiceAvailable}>Stop</button>
+		</div>
+	</div>
+</div>
+
+<style>
+	.friday-plugin-service {
+	}
+
+	.mt-20 {
+		margin-top: 20px;
+	}
+
+	.flex {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.service-title {
+		font-weight: bold;
+	}
+
+	.status-container {
+		display: flex;
+		gap: 10px;
+	}
+
+	.status {
+		display: flex;
+		align-items: center;
+		gap: 5px; /* 点和文字之间的间距 */
+	}
+
+	.dot {
+		height: 10px;
+		width: 10px;
+		border-radius: 50%; /* 圆形 */
+		display: inline-block;
+	}
+
+	/* 定义不同状态的点的颜色 */
+	.running {
+		background-color: rgb(124, 58, 237);
+	}
+
+	.stopped {
+		background-color: rgb(64, 64, 64);
+	}
+
+	p {
+		margin: 0; /* 移除默认的段落边距 */
+	}
+
+	.version-info {
+		font-size: 12px; /* 设置较小的字体 */
+		color: gray; /* 设置字体颜色为灰色 */
+		margin-top: 5px; /* 添加上边距以保持间距 */
+	}
+</style>
