@@ -1,4 +1,8 @@
-<script>
+<script lang="ts">
+	import {FileInfo} from "../fileinfo";
+	// 接收 props
+	export let fileInfo: FileInfo;
+
 	let buildProgress = 0;
 	let buildSuccess = false;
 	let deploySuccess = false;
@@ -45,8 +49,14 @@
 	<div>We will build your site based on the following information.</div>
 	<div>
 		<ul>
-			<li>Note: note name</li>
-			<li>Theme: default</li>
+			<li>
+				<span class="label">Note:</span>
+				<span class="dynamic">{fileInfo.name}</span>
+			</li>
+			<li>
+				<span class="label">Theme:</span>
+				<span class="dynamic">{fileInfo.frontMatter?.theme}</span>
+			</li>
 		</ul>
 	</div>
 
@@ -101,5 +111,11 @@
 
 	a:hover {
 		text-decoration: underline;
+	}
+
+	/* 为动态部分添加样式 */
+	.dynamic {
+		font-style: italic;
+		margin-left: 10px; /* 可选: 添加一些间距 */
 	}
 </style>

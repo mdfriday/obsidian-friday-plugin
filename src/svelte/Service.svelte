@@ -1,14 +1,27 @@
 <script lang="ts">
+	import {App, FileSystemAdapter, Plugin, requestUrl, RequestUrlResponse} from "obsidian";
+	import { createEventDispatcher } from "svelte";
 	import ProgressBar from './ProgressBar.svelte';
-	import { onMount } from 'svelte';
-	import { exec } from 'child_process'; // 用于在本地执行命令
-	import { platform } from 'os'; // 用于获取操作系统信息
+	import {onMount} from 'svelte';
+	import {exec} from 'child_process'; // 用于在本地执行命令
+	import { promisify } from 'util';
+	import { extname, basename } from 'path';
+	import * as os from 'os';
 
-	let platformType = ""; // 操作系统
-	const version = '0.1.0'; // 版本号
-	let downloadUrl = '';
+	const execAsync = promisify(exec);
+
+	// 接收 props
+	export let platform: string;
+	export let app: App;
+	export let plugin: Plugin;
+
+	let absPluginDir: string;
+	let currentVersion = '0.4.1'; // 版本号
+	let latestVersion = "0.4.1";
+
+	let binaryPath = '';
+	let binaryName = "hugoverse"
 	let downloadProgress = 0;
-	let executableFileName = ""
 	let executableFilePath = '';
 
 	let isExecutableFileExist = false;
@@ -16,138 +29,212 @@
 	let isDownloading = false;
 	let isRunning = false;
 
-	onMount(async () => {
-		// 获取平台类型
-		platformType = platform();
+	const dispatch = createEventDispatcher();
 
-		// 初始化下载URL和文件名
-		if (platformType.includes('win')) {
-			downloadUrl = `https://example.com/hugoverse-windows-${version}.exe`;
-			executableFileName = `hugoverse-${version}.exe`;
-		} else if (platformType.includes('mac')) {
-			downloadUrl = `https://example.com/hugoverse-macos-${version}.zip`;
-			executableFileName = "hugoverse";
-			executableFilePath = "~/.local/share/hugoverse";
-		} else if (platformType.includes('linux')) {
-			downloadUrl = `https://example.com/hugoverse-linux-${version}.tar.gz`;
-			executableFileName = "hugoverse";
-			executableFilePath = "~/.local/share/hugoverse";
+	onMount(async () => {
+		await getLatestVersion();
+
+		const adapter = app.vault.adapter;
+		let path: string
+		if (adapter instanceof FileSystemAdapter) {
+			path = adapter.getBasePath();
+			absPluginDir = `${path}/${plugin.manifest.dir}`
 		}
 
-		// 检查服务是否已启动
-		await checkServiceStatus();
+		switch (platform) {
+			case 'MacOS':
+				binaryName = "hugoverse"
+				break
+			default:
+				binaryName = "hugoverse.exe";
+				break;
+		}
 
-		// 如果服务没有启动，检查二进制文件是否存在
-		if (!isRunning) {
-			await checkBinaryFile();
+		binaryPath = `${plugin.manifest.dir}/${binaryName}`
+
+		console.log("binaryPath:", binaryPath)
+		await checkBinaryFile();
+		if (isExecutableFileExist) {
+			await checkServiceStatus();
+			if (isRunning) {
+				await getCurrentVersion();
+			}
 		}
 	});
+
+	const checkBinaryFile = async () => {
+		if (await app.vault.adapter.exists(binaryPath)) {
+			isExecutableFileExist = true;
+		}
+		console.log("not exist")
+	};
 
 	const checkServiceStatus = async () => {
 		try {
 			const response = await fetch('http://localhost:1314/api/health');
-			if (response.ok) {
-				isRunning = true;
-				isServiceAvailable = true;
-			} else {
-				isRunning = false;
-			}
+			isRunning = response.ok;
 		} catch (error) {
+			console.log("checkServiceStatus error:", error);
 			isRunning = false;
-			// 如果服务没有运行，检查二进制文件是否存在
-			await checkBinaryFile();
 		}
 	};
 
-	const checkBinaryFile = async () => {
+	const getLatestVersion = async () => {
 		try {
-			if (platformType.includes('win')) {
-				// Windows上的逻辑
-				isExecutableFileExist = await checkIfBinaryExists();
-			} else if (platformType.includes('mac') || platformType.includes('linux')) {
-				// macOS和Linux上的逻辑
-				const dirExist = await checkDirectoryExists(executableFilePath);
-				if (!dirExist) {
-					await createDirectory(executableFilePath);
-				}
-				isExecutableFileExist = await checkIfBinaryExists();
-			}
-			if (isExecutableFileExist) {
-				isServiceAvailable = true;
-			}
+			const response = await fetch('https://mdfriday.com/api/version');
+			const data = await response.json();
+			latestVersion = data.vresion;
 		} catch (error) {
-			console.error('检查二进制文件出错:', error);
+			console.log("getLatestVersion error:", error);
 		}
-	};
+	}
 
-	const checkDirectoryExists = async (path: string): Promise<boolean> => {
-		// 执行命令检查目录是否存在
-		return new Promise((resolve) => {
-			exec(`[ -d "${path}" ] && echo "exists"`, (error, stdout, stderr) => {
-				if (stdout.includes("exists")) {
-					resolve(true);
-				} else {
-					resolve(false);
-				}
-			});
-		});
-	};
-
-	const createDirectory = async (path: string) => {
-		// 执行命令创建目录
-		return new Promise((resolve, reject) => {
-			exec(`mkdir -p "${path}"`, (error, stdout, stderr) => {
-				if (error) {
-					reject(error);
-				} else {
-					resolve(true);
-				}
-			});
-		});
-	};
-
-	const checkIfBinaryExists = async (): Promise<boolean> => {
-		// 检查二进制文件是否存在
-		return new Promise((resolve) => {
-			exec(`[ -f "${executableFilePath}/${executableFileName}" ] && echo "exists"`, (error, stdout, stderr) => {
-				if (stdout.includes("exists")) {
-					resolve(true);
-				} else {
-					resolve(false);
-				}
-			});
-		});
-	};
+	const getCurrentVersion = async () => {
+		try {
+			const response = await fetch('http://localhost:1314/api/version');
+			const data = await response.json();
+			currentVersion = data.vresion;
+		} catch (error) {
+			console.log("getCurrentVersion error:", error);
+		}
+	}
 
 	const downloadFile = async () => {
 		isDownloading = true;
 		downloadProgress = 0;
 
-		console.log("downloading...", downloadUrl);
+		let arch = os.arch();
+		if (arch === 'x64') {
+			arch = "amd64";
+		}
+		const binaryPkg = `dp-v${latestVersion}-${os.platform()}-${arch}.tar.gz`;
+		const downloadUrl = `https://github.com/dddplayer/dp/releases/download/v${latestVersion}/${binaryPkg}`;
+		console.log("Downloading from:", downloadUrl);
 
-		// 模拟下载过程
-		const interval = setInterval(() => {
-			if (downloadProgress < 100) {
-				downloadProgress += 20;
-			} else {
-				clearInterval(interval);
-				isDownloading = false;
-				isServiceAvailable = true;
+		// 每个块的大小（以字节为单位）
+		const chunkSize = 1024 * 1024; // 1MB
+		let receivedLength = 0; // 已接收的字节数
+
+		try {
+			// 首先获取文件的总大小
+			const headResponse: RequestUrlResponse = await requestUrl({
+				url: downloadUrl,
+				method: 'HEAD'
+			});
+
+			if (headResponse.status !== 200) {
+				throw new Error(`Failed to get file info: ${headResponse.text}`);
 			}
-		}, 500);
+
+			const contentLength = parseInt(headResponse.headers['content-length'], 10) || 0;
+			const fileContent = new Uint8Array(contentLength); // 创建一个用于存放完整文件的数组
+
+			// 分块下载文件
+			for (let start = 0; start < contentLength; start += chunkSize) {
+				const end = Math.min(start + chunkSize - 1, contentLength - 1); // 计算每个块的结束字节
+
+				// 发起分块请求
+				const chunkResponse: RequestUrlResponse = await requestUrl({
+					url: downloadUrl,
+					headers: {
+						'Range': `bytes=${start}-${end}`
+					}
+				});
+
+				// 检查响应状态
+				if (chunkResponse.status !== 206 && chunkResponse.status !== 200) {
+					throw new Error(`Failed to download chunk: ${chunkResponse.text}`);
+				}
+
+				const chunkArray = new Uint8Array(chunkResponse.arrayBuffer); // 将 ArrayBuffer 转为 Uint8Array
+				fileContent.set(chunkArray, start); // 将下载的块存放到 fileContent 中
+				receivedLength += chunkArray.length; // 更新已接收字节数
+
+				// 更新下载进度
+				downloadProgress = Math.floor((receivedLength / contentLength) * 100);
+				console.log(`Downloaded ${downloadProgress}%`);
+			}
+
+			// 将文件写入到 Obsidian 插件目录中
+			const filePath = `${plugin.manifest.dir}/${binaryPkg}`;
+			await this.app.vault.adapter.writeBinary(filePath, fileContent); // 写入完整文件
+
+			console.log(`File downloaded to: ${filePath}`);
+			isDownloading = false;
+
+			await extractFile(`${absPluginDir}/${binaryPkg}`, `${absPluginDir}`);
+		} catch (error) {
+			console.error('Download error:', error);
+			isDownloading = false;
+		}
 	};
+
+	async function extractFile(filePath:string, outputDir:string) {
+		const fullExtension = getFullExtension(filePath).toLowerCase();
+
+		let command:string;
+
+		switch (fullExtension) {
+			case '.zip':
+				command = `unzip "${filePath}" -d "${outputDir}"`;
+				break;
+			case '.tar':
+				command = `tar -xf "${filePath}" -C "${outputDir}"`;
+				break;
+			case '.tar.gz':
+			case '.tgz':
+				command = `tar -xzf "${filePath}" -C "${outputDir}"`;
+				break;
+			case '.gz':
+				command = `gunzip "${filePath}"`;
+				break;
+			case '.bz2':
+				command = `bunzip2 "${filePath}"`;
+				break;
+			// 添加其他文件类型的处理方式
+			default:
+				throw new Error(`Unsupported file type: ${fullExtension}`);
+		}
+
+		try {
+			console.log("Extracting file with command:", command);
+
+			const { stdout, stderr } = await execAsync(command);
+			console.log(`Extracted to: ${outputDir}`);
+			if (stdout) {
+				isExecutableFileExist = true;
+				console.log(`stdout: ${stdout}`);
+			}
+			if (stderr) {
+				console.log(`stderr: ${stderr}`);
+			}
+		} catch (error) {
+			console.error('Error extracting file:', error.message);
+		}
+	}
+
+	// Helper function to get the full extension
+		function getFullExtension(filePath: string): string {
+		const baseName = basename(filePath);
+		const match = baseName.match(/\.[^.]+(\.[^.]+)?$/); // Matches `.tar.gz`, `.zip`, etc.
+		return match ? match[0] : extname(filePath);
+	}
 
 	const startService = () => {
 		isRunning = true;
+		dispatch('serviceStatus', { isRunning }); // Emit the event
+
 	};
 
 	const stopService = () => {
 		isRunning = false;
+		dispatch('serviceStatus', { isRunning });
 	};
 
 </script>
 
 <div class="friday-plugin-service mt-20">
+
 	<div class="card">
 		<div class="flex">
 			<p class="service-title">Service</p>
@@ -170,14 +257,14 @@
 			</div>
 		</div>
 
-		<div class="version-info">version: {version}</div>
+		<div class="version-info">version: {currentVersion}</div>
 
 		<div class="spacer"></div>
 
 		{#if isDownloading}
-			<ProgressBar progress={downloadProgress} />
+			<ProgressBar progress={downloadProgress}/>
 		{:else}
-			{#if !isServiceAvailable}
+			{#if !isExecutableFileExist}
 				<button on:click={downloadFile}>Download</button>
 			{:else if isRunning}
 				<button on:click={stopService}>Stop</button>

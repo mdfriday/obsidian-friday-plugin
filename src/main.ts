@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, TFile, TFolder, PluginSettingTab, Setting } from 'obsidian';
+import { App, Notice, Plugin, TFile, TFolder, PluginSettingTab, Setting } from 'obsidian';
 import { getDefaultFrontMatter } from './frontmatter';
 import ServerView, { FRIDAY_SERVER_VIEW_TYPE } from './server';
 
@@ -72,22 +72,6 @@ export default class FridayPlugin extends Plugin {
 
 	async status(text: string) {
 		this.statusBar.setText(text)
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
 	}
 }
 

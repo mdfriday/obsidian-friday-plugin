@@ -1,19 +1,66 @@
 <script lang="ts">
+	import {App, Plugin} from "obsidian";
 	import Info from "./Info.svelte"
 	import Service from "./Service.svelte"
 	import BuildDeploy from "./BuildDeploy.svelte"
+	import {FileInfo} from "../fileinfo";
+	import {onMount} from "svelte";
+	import {Notice} from "obsidian";
+
+	// 接收 props
+	export let fileInfo: FileInfo;
+	export let platform: string;
+	export let app: App;
+	export let plugin: Plugin;
+
+	let isOSSupport = false;
+	let isServiceRunning = false;
+
+	function handleServiceStatus(event:CustomEvent<{ isRunning: boolean }>) {
+		isServiceRunning = event.detail.isRunning;
+	}
+
+	onMount(async () => {
+		switch (platform) {
+			case 'MacOS':
+				isOSSupport = true;
+				break;
+			default:
+				isOSSupport = false;
+				break;
+		}
+
+		console.log("current platform:", platform)
+
+		if (!isOSSupport) {
+			new Notice('Your operating system is not supported.');
+			return;
+		}
+	});
 </script>
 
 
 <div class="friday-plugin-main">
-	<section id="friday-plugin-main">
+	{#if !isOSSupport}
 		<div>
-			<Info/>
-			<Service/>
-			<hr class="centered-line">
-			<BuildDeploy/>
+			<p>
+				We're sorry, but it looks like your operating system isn't supported just yet.
+				Rest assured, our team is working hard to bring support for your system as soon as possible.
+				Thank you for your patience and understanding!
+			</p>
 		</div>
-	</section>
+	{:else}
+		<section id="friday-plugin-main">
+			<div>
+				<Info/>
+				<Service {platform} {app} {plugin} on:serviceStatus={handleServiceStatus}/>
+				<hr class="centered-line">
+				{#if isServiceRunning}
+					<BuildDeploy {fileInfo} />
+				{/if}
+			</div>
+		</section>
+	{/if}
 </div>
 
 <style>
@@ -27,12 +74,12 @@
 	}
 
 	.centered-line {
-		width: 80%;            /* 分隔线宽度占父容器的 80% */
-		margin: 20px auto;        /* 水平居中对齐 */
-		border: none;          /* 去掉默认的边框样式 */
-		border-top: 1px solid rgb(64 64 64);  /* 顶部边框作为分隔线 */
-		height: 1px;           /* 分隔线高度 */
-		background-color: transparent;    /* 确保背景透明 */
+		width: 80%; /* 分隔线宽度占父容器的 80% */
+		margin: 20px auto; /* 水平居中对齐 */
+		border: none; /* 去掉默认的边框样式 */
+		border-top: 1px solid rgb(64 64 64); /* 顶部边框作为分隔线 */
+		height: 1px; /* 分隔线高度 */
+		background-color: transparent; /* 确保背景透明 */
 	}
 
 </style>
