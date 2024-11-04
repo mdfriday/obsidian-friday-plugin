@@ -1,6 +1,8 @@
-import { App, Notice, Plugin, TFile, TFolder, PluginSettingTab, Setting } from 'obsidian';
+import {App, Notice, Plugin, TFile, TFolder, PluginSettingTab, Setting, FileSystemAdapter} from 'obsidian';
 import { getDefaultFrontMatter } from './frontmatter';
 import ServerView, { FRIDAY_SERVER_VIEW_TYPE } from './server';
+import {User} from "./user";
+import {Hugoverse} from "./hugoverse";
 
 interface MyPluginSettings {
 	mySetting: string;
@@ -11,12 +13,21 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 }
 
 export const FRIDAY_ICON = 'dice-5';
+export const API_URL_DEV = 'http://127.0.0.1:1314';
+export const API_URL_PRO = 'https://sunwei.xyz/mdfriday';
 
 export default class FridayPlugin extends Plugin {
 	settings: MyPluginSettings;
 	statusBar: HTMLElement
 
+	pluginDir: string
+	apiUrl: string
+	user: User
+	hugoverse: Hugoverse
+
 	async onload() {
+		this.pluginDir = `${this.manifest.dir}`;
+		await this.initFriday()
 		await this.loadSettings();
 
 		this.addRibbonIcon(FRIDAY_ICON, 'Create new Friday note', (evt: MouseEvent) => this.newNote());
@@ -28,6 +39,17 @@ export default class FridayPlugin extends Plugin {
 		this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
 		if (this.app.workspace.layoutReady) this.initLeaf()
 		else this.app.workspace.onLayoutReady(() => this.initLeaf())
+	}
+
+	async initFriday(): Promise<void> {
+		console.log("Init Friday...")
+
+		this.apiUrl = process.env.NODE_ENV === 'production' ? API_URL_PRO : API_URL_DEV;
+
+		this.user = new User(this.pluginDir, this.apiUrl, this.app);
+		await this.user.initializeUser()
+
+		this.hugoverse = new Hugoverse(this.apiUrl, this.user, this.app);
 	}
 
 	initLeaf(): void {
@@ -72,6 +94,12 @@ export default class FridayPlugin extends Plugin {
 
 	async status(text: string) {
 		this.statusBar.setText(text)
+	}
+
+	async loadUser() {
+		const response = await fetch('https://api.github.com/users/mdfriday');
+		const data = await response.json();
+		return data
 	}
 }
 

@@ -1,115 +1,69 @@
 <script lang="ts">
-	import {App, FileSystemAdapter, Plugin, requestUrl, RequestUrlResponse} from "obsidian";
-	import { createEventDispatcher } from "svelte";
+	import {App, requestUrl, RequestUrlResponse, Platform, Notice} from "obsidian";
 	import ProgressBar from './ProgressBar.svelte';
 	import {onMount} from 'svelte';
-	import {exec} from 'child_process'; // 用于在本地执行命令
-	import { promisify } from 'util';
-	import { extname, basename } from 'path';
-	import * as os from 'os';
-
-	const execAsync = promisify(exec);
+	import FridayPlugin from "../main";
+	import {FileInfo} from "../fileinfo";
+	import JSZip from "jszip";
+	import * as path from "path";
 
 	// 接收 props
-	export let platform: string;
+	export let fileInfo: FileInfo;
 	export let app: App;
-	export let plugin: Plugin;
+	export let plugin: FridayPlugin;
 
-	let absPluginDir: string;
-	let currentVersion = '0.4.1'; // 版本号
-	let latestVersion = "0.4.1";
+	let themeDownloadFilename: string
+	let themeDownloadUrl: string
+	let themePath: string
+	let themeProjPath: string
 
-	let binaryPath = '';
-	let binaryName = "hugoverse"
 	let downloadProgress = 0;
-	let executableFilePath = '';
-
-	let isExecutableFileExist = false;
-	let isServiceAvailable = false; // 服务是否可用
 	let isDownloading = false;
-	let isRunning = false;
-
-	const dispatch = createEventDispatcher();
+	let displayDownload = true;
+	let themeZipFileExists = false;
 
 	onMount(async () => {
-		await getLatestVersion();
-
-		const adapter = app.vault.adapter;
-		let path: string
-		if (adapter instanceof FileSystemAdapter) {
-			path = adapter.getBasePath();
-			absPluginDir = `${path}/${plugin.manifest.dir}`
-		}
-
-		switch (platform) {
-			case 'MacOS':
-				binaryName = "hugoverse"
-				break
-			default:
-				binaryName = "hugoverse.exe";
-				break;
-		}
-
-		binaryPath = `${plugin.manifest.dir}/${binaryName}`
-
-		console.log("binaryPath:", binaryPath)
-		await checkBinaryFile();
-		if (isExecutableFileExist) {
-			await checkServiceStatus();
-			if (isRunning) {
-				await getCurrentVersion();
-			}
+		if (Platform.isDesktop) {
+			await refreshDownloadStatus()
 		}
 	});
 
-	const checkBinaryFile = async () => {
-		if (await app.vault.adapter.exists(binaryPath)) {
-			isExecutableFileExist = true;
-		}
-		console.log("not exist")
-	};
+	const refreshDownloadStatus = async () => {
+		if (fileInfo.hasFridayPluginEnabled()) {
+			if (!fileInfo.hasThemeConfigured()) {
+				new Notice("Please configure your theme first.", 5000);
+				return
+			}
+			themeDownloadFilename = fileInfo.getThemeDownloadFilename();
+			themeDownloadUrl = plugin.hugoverse.generateDownloadUrl(themeDownloadFilename);
 
-	const checkServiceStatus = async () => {
-		try {
-			const response = await fetch('http://localhost:1314/api/health');
-			isRunning = response.ok;
-		} catch (error) {
-			console.log("checkServiceStatus error:", error);
-			isRunning = false;
-		}
-	};
+			themePath = `${plugin.manifest.dir}/${themeDownloadFilename}`;
+			themeProjPath = plugin.hugoverse.projectDirPath(fileInfo.path)
 
-	const getLatestVersion = async () => {
-		try {
-			const response = await fetch('https://mdfriday.com/api/version');
-			const data = await response.json();
-			latestVersion = data.vresion;
-		} catch (error) {
-			console.log("getLatestVersion error:", error);
-		}
-	}
+			if (await app.vault.adapter.exists(themePath)) {
+				themeZipFileExists = true;
+			}
 
-	const getCurrentVersion = async () => {
-		try {
-			const response = await fetch('http://localhost:1314/api/version');
-			const data = await response.json();
-			currentVersion = data.vresion;
-		} catch (error) {
-			console.log("getCurrentVersion error:", error);
+			if (await app.vault.adapter.exists(themeProjPath)) {
+				displayDownload = false;
+			}
 		}
 	}
 
 	const downloadFile = async () => {
+		await refreshDownloadStatus()
+
+		if (themeZipFileExists) {
+			downloadProgress = 100;
+			await extractFile(themePath, themeProjPath);
+			displayDownload = false;
+			return
+		}
+
 		isDownloading = true;
 		downloadProgress = 0;
 
-		let arch = os.arch();
-		if (arch === 'x64') {
-			arch = "amd64";
-		}
-		const binaryPkg = `dp-v${latestVersion}-${os.platform()}-${arch}.tar.gz`;
-		const downloadUrl = `https://github.com/dddplayer/dp/releases/download/v${latestVersion}/${binaryPkg}`;
-		console.log("Downloading from:", downloadUrl);
+		console.log("Downloading from:", themeDownloadUrl);
 
 		// 每个块的大小（以字节为单位）
 		const chunkSize = 1024 * 1024; // 1MB
@@ -118,7 +72,7 @@
 		try {
 			// 首先获取文件的总大小
 			const headResponse: RequestUrlResponse = await requestUrl({
-				url: downloadUrl,
+				url: themeDownloadUrl,
 				method: 'HEAD'
 			});
 
@@ -135,7 +89,7 @@
 
 				// 发起分块请求
 				const chunkResponse: RequestUrlResponse = await requestUrl({
-					url: downloadUrl,
+					url: themeDownloadUrl,
 					headers: {
 						'Range': `bytes=${start}-${end}`
 					}
@@ -156,172 +110,103 @@
 			}
 
 			// 将文件写入到 Obsidian 插件目录中
-			const filePath = `${plugin.manifest.dir}/${binaryPkg}`;
-			await this.app.vault.adapter.writeBinary(filePath, fileContent); // 写入完整文件
+			await this.app.vault.adapter.writeBinary(themePath, fileContent); // 写入完整文件
 
-			console.log(`File downloaded to: ${filePath}`);
+			console.log(`File downloaded to: ${themePath}`);
 			isDownloading = false;
 
-			await extractFile(`${absPluginDir}/${binaryPkg}`, `${absPluginDir}`);
+			await extractFile(themePath, themeProjPath);
+			displayDownload = false;
 		} catch (error) {
 			console.error('Download error:', error);
 			isDownloading = false;
 		}
 	};
 
-	async function extractFile(filePath:string, outputDir:string) {
-		const fullExtension = getFullExtension(filePath).toLowerCase();
-
-		let command:string;
-
-		switch (fullExtension) {
-			case '.zip':
-				command = `unzip "${filePath}" -d "${outputDir}"`;
-				break;
-			case '.tar':
-				command = `tar -xf "${filePath}" -C "${outputDir}"`;
-				break;
-			case '.tar.gz':
-			case '.tgz':
-				command = `tar -xzf "${filePath}" -C "${outputDir}"`;
-				break;
-			case '.gz':
-				command = `gunzip "${filePath}"`;
-				break;
-			case '.bz2':
-				command = `bunzip2 "${filePath}"`;
-				break;
-			// 添加其他文件类型的处理方式
-			default:
-				throw new Error(`Unsupported file type: ${fullExtension}`);
-		}
-
+	async function extractFile(sourceFilepath: string, outputDir: string): Promise<void> {
 		try {
-			console.log("Extracting file with command:", command);
+			// Read the ZIP file as binary
+			const zipData = await app.vault.adapter.readBinary(sourceFilepath);
+			const zip = await JSZip.loadAsync(zipData); // Load the ZIP file
 
-			const { stdout, stderr } = await execAsync(command);
-			console.log(`Extracted to: ${outputDir}`);
-			if (stdout) {
-				isExecutableFileExist = true;
-				console.log(`stdout: ${stdout}`);
-			}
-			if (stderr) {
-				console.log(`stderr: ${stderr}`);
+			// Iterate through the files in the ZIP archive
+			for (const fileName in zip.files) {
+				const file = zip.files[fileName];
+
+				if (!file.dir) { // Only extract files, not directories
+					const content = await file.async("uint8array"); // Read file content as Uint8Array
+					const outputFilePath = `${outputDir}/${fileName}`;
+
+					const shouldFilter = outputFilePath.includes("__MACOSX") ||
+						outputFilePath.split(path.sep).some(segment => segment.startsWith('.'));
+
+					if (shouldFilter) {
+						continue
+					}
+
+					await ensureDirectoriesExist(outputFilePath);
+
+					// Write the extracted file to the specified output directory
+					await app.vault.adapter.writeBinary(outputFilePath, content);
+					console.log(`Extracted file: ${outputFilePath}`);
+				}
 			}
 		} catch (error) {
-			console.error('Error extracting file:', error.message);
+			console.error("Error extracting ZIP file:", error);
 		}
 	}
 
-	// Helper function to get the full extension
-		function getFullExtension(filePath: string): string {
-		const baseName = basename(filePath);
-		const match = baseName.match(/\.[^.]+(\.[^.]+)?$/); // Matches `.tar.gz`, `.zip`, etc.
-		return match ? match[0] : extname(filePath);
+	async function ensureDirectoriesExist(filePath: string): Promise<void> {
+		const adapter = app.vault.adapter;
+		const parts = filePath.split('/'); // 将路径拆分为各个部分
+
+		// 通过切片去掉最后一个部分（文件名），只保留目录部分
+		const directoryPath = parts.slice(0, parts.length - 1).join('/');
+
+		// 检查并创建目录
+		if (directoryPath) {
+			let currentPath = '';
+
+			// 遍历每个目录部分，逐层构建路径
+			for (const part of directoryPath.split('/')) {
+				if (part) { // 确保不处理空部分
+					currentPath = path.join(currentPath, part); // 构建当前路径
+
+					if (!await adapter.stat(currentPath)) {
+						// 如果目录不存在，则创建它
+						await adapter.mkdir(currentPath);
+					}
+				}
+			}
+		}
 	}
 
-	const startService = () => {
-		isRunning = true;
-		dispatch('serviceStatus', { isRunning }); // Emit the event
-
-	};
-
-	const stopService = () => {
-		isRunning = false;
-		dispatch('serviceStatus', { isRunning });
-	};
 
 </script>
 
-<div class="friday-plugin-service mt-20">
+<div class="mt-20">
+	{#if Platform.isDesktop}
+		{#if themeDownloadFilename !== '' && fileInfo.hasFridayPluginEnabled()}
+			{#if displayDownload}
+			<div class="card">
+				<div class="version-info">Content structure example provided for theme: {fileInfo.getThemeName()}</div>
 
-	<div class="card">
-		<div class="flex">
-			<p class="service-title">Service</p>
-			<div class="status-container">
-				{#if isServiceAvailable}
-					{#if isRunning}
-						<div id="status-running" class="status">
-							<span class="dot running"></span>
-							<p>running</p>
-						</div>
-					{:else}
-						<div id="status-stopped" class="status">
-							<span class="dot stopped"></span>
-							<p>stopped</p>
-						</div>
-					{/if}
+				<div class="spacer"></div>
+
+				{#if isDownloading}
+					<ProgressBar progress={downloadProgress}/>
 				{:else}
-					<!-- 如果没有找到二进制文件则不显示状态 -->
+					<button on:click={downloadFile}>Download Example</button>
 				{/if}
 			</div>
-		</div>
-
-		<div class="version-info">version: {currentVersion}</div>
-
-		<div class="spacer"></div>
-
-		{#if isDownloading}
-			<ProgressBar progress={downloadProgress}/>
-		{:else}
-			{#if !isExecutableFileExist}
-				<button on:click={downloadFile}>Download</button>
-			{:else if isRunning}
-				<button on:click={stopService}>Stop</button>
-			{:else}
-				<button on:click={startService}>Start</button>
 			{/if}
 		{/if}
-	</div>
+	{/if}
 </div>
 
 <style>
-	.friday-plugin-service {
-	}
-
 	.mt-20 {
 		margin-top: 20px;
-	}
-
-	.flex {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.service-title {
-		font-weight: bold;
-	}
-
-	.status-container {
-		display: flex;
-		gap: 10px;
-	}
-
-	.status {
-		display: flex;
-		align-items: center;
-		gap: 5px; /* 点和文字之间的间距 */
-	}
-
-	.dot {
-		height: 10px;
-		width: 10px;
-		border-radius: 50%; /* 圆形 */
-		display: inline-block;
-	}
-
-	/* 定义不同状态的点的颜色 */
-	.running {
-		background-color: rgb(124, 58, 237);
-	}
-
-	.stopped {
-		background-color: rgb(64, 64, 64);
-	}
-
-	p {
-		margin: 0; /* 移除默认的段落边距 */
 	}
 
 	.version-info {

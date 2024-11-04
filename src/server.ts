@@ -1,4 +1,4 @@
-import {ItemView, WorkspaceLeaf, Platform} from 'obsidian';
+import {ItemView, WorkspaceLeaf} from 'obsidian';
 import FridayPlugin, {FRIDAY_ICON} from "./main";
 import Server from './svelte/Server.svelte';
 import {FileInfo} from "./fileinfo";
@@ -51,7 +51,6 @@ export default class ServerView extends ItemView {
 			target: (this as any).contentEl,
 			props: {
 				fileInfo: this.fileInfo,
-				platform: this.getOSInfo(),
 				app: this.app,
 				plugin: this.plugin,
 			},
@@ -68,15 +67,6 @@ export default class ServerView extends ItemView {
 				this._app.$set({ fileInfo: this.fileInfo });
 			}
 		});
-	}
-
-	// 获取客户端操作系统信息
-	private getOSInfo(): string {
-		if (Platform.isMacOS) return "MacOS";
-		if (Platform.isWin) return "Windows";
-		if (Platform.isLinux) return "Linux";
-		if (Platform.isMobile) return "Mobile";
-		return "Unknown";
 	}
 
 	getDisplayText(): string {

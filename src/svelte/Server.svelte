@@ -1,39 +1,25 @@
 <script lang="ts">
-	import {App, Plugin} from "obsidian";
+	import {App, Platform} from "obsidian";
 	import Info from "./Info.svelte"
 	import Service from "./Service.svelte"
 	import BuildDeploy from "./BuildDeploy.svelte"
 	import {FileInfo} from "../fileinfo";
 	import {onMount} from "svelte";
 	import {Notice} from "obsidian";
+	import FridayPlugin from "../main";
 
 	// 接收 props
 	export let fileInfo: FileInfo;
-	export let platform: string;
 	export let app: App;
-	export let plugin: Plugin;
+	export let plugin: FridayPlugin;
 
-	let isOSSupport = false;
-	let isServiceRunning = false;
-
-	function handleServiceStatus(event:CustomEvent<{ isRunning: boolean }>) {
-		isServiceRunning = event.detail.isRunning;
-	}
+	let isClientSupported = false;
 
 	onMount(async () => {
-		switch (platform) {
-			case 'MacOS':
-				isOSSupport = true;
-				break;
-			default:
-				isOSSupport = false;
-				break;
-		}
+		isClientSupported = Platform.isDesktop;
 
-		console.log("current platform:", platform)
-
-		if (!isOSSupport) {
-			new Notice('Your operating system is not supported.');
+		if (!isClientSupported) {
+			new Notice('Only desktop is supported at this time.', 5000);
 			return;
 		}
 	});
@@ -41,11 +27,12 @@
 
 
 <div class="friday-plugin-main">
-	{#if !isOSSupport}
+	{#if !isClientSupported}
 		<div>
 			<p>
-				We're sorry, but it looks like your operating system isn't supported just yet.
-				Rest assured, our team is working hard to bring support for your system as soon as possible.
+				We're sorry, only desktop is supported at this time.
+				<br/>
+				Mobile and Tablet is coming soon.
 				Thank you for your patience and understanding!
 			</p>
 		</div>
@@ -53,9 +40,9 @@
 		<section id="friday-plugin-main">
 			<div>
 				<Info/>
-				<Service {platform} {app} {plugin} on:serviceStatus={handleServiceStatus}/>
+				<Service {fileInfo} {app} {plugin}/>
 				<hr class="centered-line">
-				{#if isServiceRunning}
+				{#if fileInfo.hasFridayPluginEnabled() && fileInfo.hasThemeConfigured()}
 					<BuildDeploy {fileInfo} />
 				{/if}
 			</div>

@@ -1,4 +1,5 @@
 import type {App} from "obsidian";
+import {FM_DEFAULT_THEME, FM_FRIDAY_PLUGIN, FM_THEME} from "./frontmatter";
 
 export class FileInfo {
 	name: string;
@@ -25,6 +26,28 @@ export class FileInfo {
 			callback(this); // 通知外部异步操作已完成
 		} else {
 			callback(this); // 没有文件的情况，直接回调
+		}
+	}
+
+	hasFridayPluginEnabled(): boolean {
+		return this.frontMatter?.[FM_FRIDAY_PLUGIN] === 'enabled';
+	}
+
+	hasThemeConfigured(): boolean {
+		return this.frontMatter?.[FM_THEME] !== undefined;
+	}
+
+	getThemeName(): string {
+		return this.frontMatter?.[FM_THEME] ?? ''
+	}
+
+	getThemeDownloadFilename(): string {
+		const theme = this.frontMatter?.[FM_THEME] ?? FM_DEFAULT_THEME;
+		switch (theme) {
+			case 'github.com/mdfriday/theme-manual-of-me':
+				return 'theme-manual-of-me.zip';
+			default:
+				return '';
 		}
 	}
 }
