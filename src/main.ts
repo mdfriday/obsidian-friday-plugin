@@ -3,6 +3,7 @@ import { getDefaultFrontMatter } from './frontmatter';
 import ServerView, { FRIDAY_SERVER_VIEW_TYPE } from './server';
 import {User} from "./user";
 import {Hugoverse} from "./hugoverse";
+import {FileInfo} from "./fileinfo";
 
 interface MyPluginSettings {
 	mySetting: string;
@@ -19,6 +20,8 @@ export const API_URL_PRO = 'https://sunwei.xyz/mdfriday';
 export default class FridayPlugin extends Plugin {
 	settings: MyPluginSettings;
 	statusBar: HTMLElement
+
+	fileInfo: FileInfo;
 
 	pluginDir: string
 	apiUrl: string
@@ -44,12 +47,12 @@ export default class FridayPlugin extends Plugin {
 	async initFriday(): Promise<void> {
 		console.log("Init Friday...")
 
+		this.fileInfo = new FileInfo()
 		this.apiUrl = process.env.NODE_ENV === 'production' ? API_URL_PRO : API_URL_DEV;
-
-		this.user = new User(this.pluginDir, this.apiUrl, this.app);
+		this.user = new User(this);
 		await this.user.initializeUser()
 
-		this.hugoverse = new Hugoverse(this.apiUrl, this.user, this.app);
+		this.hugoverse = new Hugoverse(this);
 	}
 
 	initLeaf(): void {

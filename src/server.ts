@@ -8,33 +8,31 @@ export const FRIDAY_SERVER_VIEW_TYPE = 'Friday';
 export default class ServerView extends ItemView {
 	plugin: FridayPlugin;
 	private _app: Server;
-	private fileInfo: FileInfo;
 
 	constructor(leaf: WorkspaceLeaf, plugin: FridayPlugin) {
 		super(leaf);
 		this.plugin = plugin;
-		this.fileInfo = new FileInfo(); // 初始化 fileInfo
 
 		// 监听用户选择文件的变化
 		this.registerEvent(
-			this.app.workspace.on('active-leaf-change', () => {
-				this.updateFileInfo();
+			this.app.workspace.on('active-leaf-change', async () => {
+				await this.updateFileInfo();
 			})
 		);
 
 		// 监听 frontmatter 的变化
 		this.registerEvent(
-			this.app.metadataCache.on('changed', (file) => {
+			this.app.metadataCache.on('changed', async (file) => {
 				if (file === this.app.workspace.getActiveFile()) {
-					this.updateFileInfo();
+					await this.updateFileInfo();
 				}
 			})
 		);
 
 		// 监听文件名变化（可以通过 resolved 事件监听文件的重命名）
 		this.registerEvent(
-			this.app.metadataCache.on('resolved', () => {
-				this.updateFileInfo();
+			this.app.metadataCache.on('resolved', async () => {
+				await this.updateFileInfo();
 			})
 		);
 	}
@@ -46,11 +44,11 @@ export default class ServerView extends ItemView {
 
 	// 打开时初始化 Svelte 实例并传入 props
 	async onOpen(): Promise<void> {
-		this.updateFileInfo(); // 初始化时获取 fileInfo
+		await this.updateFileInfo(); // 初始化时获取 fileInfo
 		this._app = new Server({
 			target: (this as any).contentEl,
 			props: {
-				fileInfo: this.fileInfo,
+				fileInfo: this.plugin.fileInfo,
 				app: this.app,
 				plugin: this.plugin,
 			},
@@ -58,13 +56,13 @@ export default class ServerView extends ItemView {
 	}
 
 	// 更新 fileInfo 并通知 Svelte 组件
-	private updateFileInfo() {
+	private async updateFileInfo() {
 		const fileInfo = new FileInfo();
-		fileInfo.updateFileInfo(this.app, (updatedFileInfo) => {
-			this.fileInfo = updatedFileInfo; // 更新 fileInfo
+		await fileInfo.updateFileInfo(this.app, (updatedFileInfo) => {
+			this.plugin.fileInfo = updatedFileInfo; // 更新 fileInfo
 			if (this._app) {
 				// 重新设置 Svelte 组件的 props
-				this._app.$set({ fileInfo: this.fileInfo });
+				this._app.$set({ fileInfo: this.plugin.fileInfo });
 			}
 		});
 	}

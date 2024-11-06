@@ -6,6 +6,7 @@
 	import {FileInfo} from "../fileinfo";
 	import JSZip from "jszip";
 	import * as path from "path";
+	import {FM_CONTENT} from "../frontmatter";
 
 	// 接收 props
 	export let fileInfo: FileInfo;
@@ -16,6 +17,7 @@
 	let themeDownloadUrl: string
 	let themePath: string
 	let themeProjPath: string
+	let themeContentPath: string
 
 	let downloadProgress = 0;
 	let isDownloading = false;
@@ -23,6 +25,8 @@
 	let themeZipFileExists = false;
 
 	onMount(async () => {
+		// TODO, when theme updated, we need to refresh download status
+
 		if (Platform.isDesktop) {
 			await refreshDownloadStatus()
 		}
@@ -39,6 +43,7 @@
 
 			themePath = `${plugin.manifest.dir}/${themeDownloadFilename}`;
 			themeProjPath = plugin.hugoverse.projectDirPath(fileInfo.path)
+			themeContentPath = `${themeProjPath}/${fileInfo.getThemeContentPath()}`;
 
 			if (await app.vault.adapter.exists(themePath)) {
 				themeZipFileExists = true;
@@ -56,6 +61,7 @@
 		if (themeZipFileExists) {
 			downloadProgress = 100;
 			await extractFile(themePath, themeProjPath);
+			await fileInfo.updateFrontMatter(FM_CONTENT, themeContentPath);
 			displayDownload = false;
 			return
 		}
@@ -116,6 +122,7 @@
 			isDownloading = false;
 
 			await extractFile(themePath, themeProjPath);
+			await fileInfo.updateFrontMatter(FM_CONTENT, themeContentPath);
 			displayDownload = false;
 		} catch (error) {
 			console.error('Download error:', error);

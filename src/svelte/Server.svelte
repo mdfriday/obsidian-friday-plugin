@@ -42,8 +42,8 @@
 				<Info/>
 				<Service {fileInfo} {app} {plugin}/>
 				<hr class="centered-line">
-				{#if fileInfo.hasFridayPluginEnabled() && fileInfo.hasThemeConfigured()}
-					<BuildDeploy {fileInfo} />
+				{#if fileInfo.hasFridayPluginEnabled() && fileInfo.hasThemeConfigured() && fileInfo.hasContentConfigured()}
+					<BuildDeploy {plugin} />
 				{/if}
 			</div>
 		</section>

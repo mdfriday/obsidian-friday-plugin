@@ -20,6 +20,7 @@
 	"author": "sunwei",
 	"license": "Apache-2.0",
 	"devDependencies": {
+		"@types/js-yaml": "^4.0.9",
 		"@types/node": "^16.11.6",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
 		"@typescript-eslint/parser": "5.29.0",
@@ -42,6 +43,7 @@
 	"dependencies": {
 		"@tsconfig/svelte": "^1.0.10",
 		"esbuild-svelte": "^0.7.1",
+		"js-yaml": "^4.1.0",
 		"jszip": "^3.10.1",
 		"svelte": "^3.49.0",
 		"svelte-preprocess": "^4.10.7"

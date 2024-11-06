@@ -1,30 +1,42 @@
 <script lang="ts">
-	import {FileInfo} from "../fileinfo";
+	import FridayPlugin from "../main";
 	// 接收 props
-	export let fileInfo: FileInfo;
+	export let plugin: FridayPlugin;
 
+	let isBuilding = false;
 	let buildProgress = 0;
 	let buildSuccess = false;
 	let deploySuccess = false;
-	let statusText = "Idle";
+	let statusText = "";
 	let deployLink = '';
+	let previewLink = '';
 
 	// 模拟构建过程
-	const startBuild = () => {
+	const startPreview = async () => {
 		buildProgress = 0;
 		buildSuccess = false;
 		deploySuccess = false;
-		statusText = "Building...";
 
-		const buildInterval = setInterval(() => {
-			if (buildProgress < 100) {
-				buildProgress += 20;
+		isBuilding = true;
+		statusText = "Building started...";
+
+		const previewUrl = await plugin.hugoverse.preview((progress: number) => {
+			if (progress === 0) {
+				buildSuccess = false;
+				statusText = "Building for preview failed...";
+
+			} else if (progress < 100) {
+				buildProgress = progress;
+				statusText = "Building for preview...";
 			} else {
-				clearInterval(buildInterval);
+				buildProgress = progress;
 				buildSuccess = true;
 				statusText = "Build successful!";
 			}
-		}, 500); // 每0.5秒更新一次
+		})
+		if (previewUrl !== "") {
+			previewLink = previewUrl;
+		}
 	};
 
 	// 模拟部署过程
@@ -51,34 +63,38 @@
 		<ul>
 			<li>
 				<span class="label">Note:</span>
-				<span class="dynamic">{fileInfo.name}</span>
+				<span class="dynamic">{plugin.fileInfo.name}</span>
 			</li>
 			<li>
 				<span class="label">Theme:</span>
-				<span class="dynamic">{fileInfo.frontMatter?.theme}</span>
+				<span class="dynamic">{plugin.fileInfo.frontMatter?.theme}</span>
 			</li>
 		</ul>
 	</div>
 
-	<button on:click={startBuild} disabled={buildProgress > 0 && buildProgress < 100}>
+	<button on:click={startPreview} disabled={buildProgress > 0 && buildProgress < 100}>
 		Preview
 	</button>
 </div>
 
-<div class="card is-selected">
-	<p>{statusText}</p>
-</div>
+{#if isBuilding}
+	<div class="card is-selected">
+		<p>{statusText}</p>
+	</div>
+{/if}
+
+<!-- 部署完成后显示链接 -->
+{#if buildSuccess}
+	<div class="card is-selected">
+		<p>You can visit your preview site here:</p>
+		<a href={previewLink} target="_blank">{previewLink}</a>
+	</div>
+{/if}
 
 <div class="build-container">
 	{#if buildSuccess}
 		<div class="card">
-			<div>We will build your site based on the following information.</div>
-			<div>
-				<ul>
-					<li>Note: note name</li>
-					<li>Theme: default</li>
-				</ul>
-			</div>
+			<div>Now you can deploy your site.</div>
 
 			<button on:click={startDeploy}>Deploy</button>
 		</div>
@@ -107,6 +123,9 @@
 	a {
 		color: #007bff;
 		text-decoration: none;
+		word-wrap: break-word; /* 允许单词换行 */
+		overflow-wrap: break-word; /* 确保长单词在行内换行 */
+		word-break: break-all; /* 打破长单词在链接的地方换行 */
 	}
 
 	a:hover {

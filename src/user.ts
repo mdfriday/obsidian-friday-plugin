@@ -1,4 +1,4 @@
-import {API_URL_DEV} from "./main";
+import type FridayPlugin from "./main";
 import {App, requestUrl, RequestUrlResponse, Notice } from "obsidian";
 
 const USER_FILE = 'friday-user.json';
@@ -12,16 +12,20 @@ export class User {
 	pluginDir: string
 
 	app: App
+	plugin: FridayPlugin
 
-	constructor(pluginDir = '', apiUrl = API_URL_DEV, app: App) {
-		this.pluginDir = pluginDir;
-		this.apiUrl = apiUrl;
+	constructor(plugin: FridayPlugin) {
+		this.plugin = plugin;
+
+		this.app = this.plugin.app;
+		this.pluginDir = this.plugin.pluginDir;
+		this.apiUrl = this.plugin.apiUrl;
 
 		this.name = '';
 		this.password = '';
 		this.token = '';
 
-		this.app = app;
+
 	}
 
 	// 初始化用户信息
@@ -46,11 +50,9 @@ export class User {
 
 			// 检查 statResult 的类型，确保是文件或文件夹
 			// 这里可以根据实际需要进一步检查
-			if (statResult.type === 'file') {
-				return true; // 文件或文件夹存在
-			}
+			return statResult.type === 'file';
 
-			return false; // 如果是其他类型，则认为文件不存在
+			 // 如果是其他类型，则认为文件不存在
 		} catch (error) {
 			console.error(`File does not exist at path: ${path}`, error.message);
 			return false; // 文件不存在
@@ -60,6 +62,10 @@ export class User {
 
 	configFile() :string {
 		return `${this.pluginDir}/${USER_FILE}`
+	}
+
+	getName(): string {
+		return this.name;
 	}
 
 	async loadUser() {
@@ -114,7 +120,7 @@ export class User {
 
 	async registerUser() {
 		// 动态生成用户名和密码
-		this.name = `user_${Math.floor(Math.random() * 1000000)}`;
+		this.name = `user_${Math.floor(Math.random() * 1000000)}@mdfriday.com`;
 		this.password = Math.random().toString(36).substring(2, 10);
 
 		try {
