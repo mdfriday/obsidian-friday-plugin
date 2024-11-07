@@ -1,21 +1,25 @@
 <script lang="ts">
 	import FridayPlugin from "../main";
+	import ProgressBar from "./ProgressBar.svelte";
+	import {Notice} from "obsidian";
 	// 接收 props
 	export let plugin: FridayPlugin;
 
 	let isBuilding = false;
 	let buildProgress = 0;
 	let buildSuccess = false;
-	let deploySuccess = false;
 	let statusText = "";
-	let deployLink = '';
 	let previewLink = '';
+
+	let isDeploying = false;
+	let deployStatusText = "";
+	let deploySuccess = false;
+	let deployLink = '';
 
 	// 模拟构建过程
 	const startPreview = async () => {
 		buildProgress = 0;
 		buildSuccess = false;
-		deploySuccess = false;
 
 		isBuilding = true;
 		statusText = "Building started...";
@@ -24,6 +28,8 @@
 			if (progress === 0) {
 				buildSuccess = false;
 				statusText = "Building for preview failed...";
+				isBuilding = false;
+				new Notice("Building for preview failed!", 5000);
 
 			} else if (progress < 100) {
 				buildProgress = progress;
@@ -37,21 +43,21 @@
 		if (previewUrl !== "") {
 			previewLink = previewUrl;
 		}
+		isBuilding = false;
 	};
 
-	// 模拟部署过程
-	const startDeploy = () => {
-		statusText = "Deploying...";
-		const deployInterval = setInterval(() => {
-			if (buildProgress < 100) {
-				buildProgress += 25;
-			} else {
-				clearInterval(deployInterval);
-				deploySuccess = true;
-				statusText = "Deploy successful!";
-				deployLink = 'https://example.com'; // 模拟部署后的链接
-			}
-		}, 500); // 每0.5秒更新一次
+	const startDeploy = async () => {
+		deploySuccess = false;
+
+		isDeploying = true;
+		deployStatusText = "Deploying...";
+
+		const deployUrl = await plugin.hugoverse.deploy()
+		if (deployUrl !== "") {
+			deployLink = deployUrl;
+			deploySuccess = true;
+		}
+		isDeploying = false;
 	};
 </script>
 
@@ -71,10 +77,14 @@
 			</li>
 		</ul>
 	</div>
+	{#if isBuilding}
+		<ProgressBar progress={buildProgress}/>
+	{:else}
+		<button on:click={startPreview} disabled={buildProgress > 0 && buildProgress < 100}>
+			Preview
+		</button>
+	{/if}
 
-	<button on:click={startPreview} disabled={buildProgress > 0 && buildProgress < 100}>
-		Preview
-	</button>
 </div>
 
 {#if isBuilding}
@@ -86,7 +96,7 @@
 <!-- 部署完成后显示链接 -->
 {#if buildSuccess}
 	<div class="card is-selected">
-		<p>You can visit your preview site here:</p>
+		<p>You can preview your site by clicking the link below:</p>
 		<a href={previewLink} target="_blank">{previewLink}</a>
 	</div>
 {/if}
@@ -94,10 +104,13 @@
 <div class="build-container">
 	{#if buildSuccess}
 		<div class="card">
-			<div>Now you can deploy your site.</div>
-
 			<button on:click={startDeploy}>Deploy</button>
 		</div>
+		{#if isDeploying}
+			<div class="card is-selected">
+				<p>{deployStatusText}</p>
+			</div>
+		{/if}
 
 	{/if}
 </div>
@@ -105,7 +118,7 @@
 <!-- 部署完成后显示链接 -->
 {#if deploySuccess}
 	<div class="card is-selected">
-		<p>Deploy successful! You can visit your site here:</p>
+		<p>Congratulations! Your site has been deployed. Click the link below to view it:</p>
 		<a href={deployLink} target="_blank">{deployLink}</a>
 	</div>
 {/if}

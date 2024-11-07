@@ -38,6 +38,12 @@ export class Hugoverse {
 		return projDirPath;
 	}
 
+	async deploy(): Promise<string> {
+		const siteId = this.plugin.fileInfo.getSiteId();
+
+		return await this.deploySite(siteId)
+	}
+
 	async preview(callback: (progress: number) => void): Promise<string> {
 		try {
 			callback(1); // 初始进度设置为 1%
@@ -86,7 +92,7 @@ export class Hugoverse {
 
 							// 处理完每个文件后，更新进度
 							processedFiles++;
-							const progress = 15 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
+							const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
 							callback(progress);
 						})();
 						filePromises.push(fileProcessing);
@@ -120,13 +126,12 @@ export class Hugoverse {
 	}
 
 
-
-	async previewSite(siteId: string): Promise<string> {
+	async sendSiteRequest(action: string, siteId: string): Promise<string> {
 		try {
 			// 定义请求的URL
-			const url = `${this.apiUrl}/api/preview?type=Site&id=${siteId}`;
+			const url = `${this.apiUrl}/api/${action}?type=Site&id=${siteId}`;
 
-			console.log("Preview URL: ", url);
+			console.log(`${action} URL: `, url);
 
 			// 创建 FormData 实例并添加 siteId 字段
 			let body = new FormData();
@@ -149,22 +154,31 @@ export class Hugoverse {
 
 			// 检查响应状态
 			if (response.status !== 200) {
-				throw new Error(`Failed to preview site: ${response.text}`);
+				throw new Error(`Failed to ${action} site: ${response.text}`);
 			}
 
 			// 解析返回的 JSON 数据，提取 ID
 			const responseData = JSON.parse(response.text);
-			const previewUrl = responseData.data[0];
-			console.log("Site preview generated successfully. Preview URL:", previewUrl);
+			const actionUrl = responseData.data[0];
+			console.log(`Site ${action} generated successfully. URL:`, actionUrl);
 
-			return previewUrl;
+			return actionUrl;
 		} catch (error) {
-			console.error("Error generating site preview:", error);
-			new Notice("Failed to generate site preview.", 5000);
+			console.error(`Error generating site ${action}:`, error);
+			new Notice(`Failed to ${action} site.`, 5000);
 
 			return "";
 		}
 	}
+
+	async previewSite(siteId: string): Promise<string> {
+		return this.sendSiteRequest("preview", siteId);
+	}
+
+	async deploySite(siteId: string): Promise<string> {
+		return this.sendSiteRequest("deploy", siteId);
+	}
+
 
 	async createSite(): Promise<string> {
 		try {

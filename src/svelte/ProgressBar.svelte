@@ -22,7 +22,6 @@
 	.progress-bar {
 		height: 10px;
 		background-color: rgb(124 58 237);
-		border-radius: 8px 0 0 8px; /* 进度条左边圆角 */
 		transition: width 0.4s ease; /* 平滑过渡动画，表示进度 */
 		position: absolute;         /* 设置为绝对定位 */
 		top: 0;                     /* 确保从容器顶部开始 */
