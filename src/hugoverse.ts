@@ -5,6 +5,10 @@ import {WebPreviewModal} from "./preview";
 import * as path from "path";
 import {FM_SITE_ID} from "./frontmatter";
 
+interface ManifestConfig {
+	validation: { rules: { field: string; required: boolean; message: string }[] };
+}
+
 export class Hugoverse {
 	basePath: string;
 	apiUrl: string;
@@ -12,6 +16,8 @@ export class Hugoverse {
 
 	app: App
 	plugin: FridayPlugin
+
+	manifestConfig: ManifestConfig | null = null;
 
 	constructor(plugin: FridayPlugin) {
 		this.plugin = plugin;
@@ -38,13 +44,67 @@ export class Hugoverse {
 		return projDirPath;
 	}
 
+	async loadManifestConfig() {
+		try {
+			const manifestPath = `${this.projectDirPath(this.plugin.fileInfo.path)}/${this.plugin.fileInfo.getThemeBaseName()}/manifest.json`;
+			if (await this.plugin.app.vault.adapter.exists(manifestPath)) {
+				const data = await this.app.vault.adapter.read(manifestPath);
+				this.manifestConfig = JSON.parse(data);
+				console.log('Manifest configuration loaded successfully.');
+			}
+		} catch (error) {
+			console.error('Failed to load manifest.json', error);
+		}
+	}
+
+	async validateActiveFileFrontmatter() {
+		await this.loadManifestConfig();
+
+		if (!this.manifestConfig) {
+			new Notice('Manifest configuration not loaded.');
+			return "";
+		}
+
+		const frontmatter = this.plugin.fileInfo.frontMatter;
+		if (!frontmatter) {
+			new Notice('No frontmatter found in the active file.', 5000);
+			return "No frontmatter found in the active file.";
+		}
+
+		const errors: string[] = [];
+		for (const rule of this.manifestConfig.validation.rules) {
+			if (rule.required && !frontmatter[rule.field]) {
+				errors.push(rule.message);
+			}
+		}
+
+		// Show all validation errors at once
+		if (errors.length > 0) {
+			new Notice(`Frontmatter validation failed:\n${errors.join('\n')}`, 8000);
+			return errors.join('\n');
+		} else {
+			return "";
+		}
+	}
+
 	async deploy(): Promise<string> {
+		const errors = await this.validateActiveFileFrontmatter();
+		if (errors) {
+			return errors;
+		}
+
 		const siteId = this.plugin.fileInfo.getSiteId();
 
 		return await this.deploySite(siteId)
 	}
 
 	async preview(callback: (progress: number) => void): Promise<string> {
+		const errors = await this.validateActiveFileFrontmatter();
+		if (errors) {
+			callback(0);
+			return errors;
+		}
+
 		try {
 			callback(1); // 初始进度设置为 1%
 
@@ -124,7 +184,6 @@ export class Hugoverse {
 			return "";
 		}
 	}
-
 
 	async sendSiteRequest(action: string, siteId: string): Promise<string> {
 		try {

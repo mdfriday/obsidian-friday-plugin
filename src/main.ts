@@ -84,7 +84,7 @@ export default class FridayPlugin extends Plugin {
 		try {
 			const fNote: TFile = await (this.app.fileManager as any).createNewMarkdownFile(
 				targetFolder,
-				'Untitled Friday Note'
+				'Untitled Friday Site'
 			);
 
 			await this.app.vault.modify(fNote, getDefaultFrontMatter());

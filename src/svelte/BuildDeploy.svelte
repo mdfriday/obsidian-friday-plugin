@@ -2,7 +2,9 @@
 	import FridayPlugin from "../main";
 	import ProgressBar from "./ProgressBar.svelte";
 	import {Notice} from "obsidian";
+	import type {FileInfo} from "../fileinfo";
 	// 接收 props
+	export let fileInfo: FileInfo;
 	export let plugin: FridayPlugin;
 
 	let isBuilding = false;
@@ -69,11 +71,11 @@
 		<ul>
 			<li>
 				<span class="label">Note:</span>
-				<span class="dynamic">{plugin.fileInfo.name}</span>
+				<span class="dynamic">{fileInfo.name}</span>
 			</li>
 			<li>
 				<span class="label">Theme:</span>
-				<span class="dynamic">{plugin.fileInfo.frontMatter?.theme}</span>
+				<span class="dynamic">{fileInfo.frontMatter?.theme}</span>
 			</li>
 		</ul>
 	</div>

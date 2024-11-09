@@ -9,6 +9,9 @@ export class FileInfo {
 	frontMatter: Record<string, any> | null;
 	content: string;
 
+	isContentFolderExists: boolean;
+	isReadyForBuild: boolean
+
 	app: App
 
 	constructor() {
@@ -16,6 +19,7 @@ export class FileInfo {
 		this.path = '';
 		this.frontMatter = null;
 		this.content = '';
+		this.isReadyForBuild = false;
 	}
 
 	async updateFileInfo(app: App, callback: (fileInfo: FileInfo) => void) {
@@ -29,11 +33,19 @@ export class FileInfo {
 			const metadata = app.metadataCache.getFileCache(activeFile);
 			this.frontMatter = metadata?.frontmatter ?? null;
 
+			if (await app.vault.adapter.exists(this.getContentFolder())) {
+				this.isContentFolderExists = true
+			} else {
+				this.isContentFolderExists = false
+			}
+			this.isReadyForBuild = this.hasFridayPluginEnabled() && this.hasThemeConfigured() && this.hasContentConfigured()
+
 			// 获取文件内容
 			const fileContent = await app.vault.read(activeFile); // 读取文件内容
 			this.content = this.extractContentWithoutFrontmatter(fileContent, this.frontMatter); // 存储去掉 frontmatter 的内容
 
 			callback(this); // 通知外部异步操作已完成
+			console.log("fileInfo updated and callback");
 		} else {
 			callback(this); // 没有文件的情况，直接回调
 		}
@@ -86,7 +98,12 @@ export class FileInfo {
 	}
 
 	hasContentConfigured(): boolean {
-		return this.frontMatter?.[FM_CONTENT] !== FM_CONTENT_EMPTY;
+		const contentPath = this.getContentFolder();
+		if (contentPath !== FM_CONTENT_EMPTY && contentPath !== null && this.isContentFolderExists) {
+			console.log("has content configured: ", contentPath);
+			return true
+		}
+		return false
 	}
 
 	getContentFolder(): string {
@@ -99,6 +116,10 @@ export class FileInfo {
 
 	getThemeName(): string {
 		return this.frontMatter?.[FM_THEME] ?? ''
+	}
+
+	getThemeBaseName(): string {
+		return path.basename(this.getThemeName())
 	}
 
 	getParams(): string {
@@ -125,15 +146,8 @@ export class FileInfo {
 		return ''
 	}
 
-	// TODO: showing warning message for not supported themes
 	getThemeDownloadFilename(): string {
-		const theme = this.frontMatter?.[FM_THEME];
-		switch (theme) {
-			case 'github.com/mdfriday/theme-manual-of-me':
-				return 'theme-manual-of-me.zip';
-			default:
-				return '';
-		}
+		return `${this.getThemeBaseName()}.zip`;
 	}
 
 	getBaseName(): string {

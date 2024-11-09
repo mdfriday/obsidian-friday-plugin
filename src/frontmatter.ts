@@ -8,7 +8,7 @@ export const FM_DEFAULT_THEME = 'github.com/mdfriday/theme-manual-of-me';
 const basicFrontMatter = [
 	'---',
 	'', `${FM_FRIDAY_PLUGIN}: enabled`, '',
-	'', `${FM_SITE_ID}: 0`, '',
+	'', `${FM_SITE_ID}: '0'`, '',
 	'', `${FM_THEME}: ${FM_DEFAULT_THEME}`, '',
 	'', `${FM_CONTENT}: ${FM_CONTENT_EMPTY}`, '',
 	'---',
