@@ -25,8 +25,6 @@
 	let themeZipFileExists = false;
 
 	onMount(async () => {
-		// TODO, when theme updated, we need to refresh download status
-
 		if (Platform.isDesktop) {
 			await refreshDownloadStatus()
 		}
@@ -49,9 +47,7 @@
 				themeZipFileExists = true;
 			}
 
-			if (await app.vault.adapter.exists(themeProjPath)) {
-				displayDownload = false;
-			}
+			displayDownload = !(themeZipFileExists && await app.vault.adapter.exists(themeProjPath));
 		}
 	}
 
