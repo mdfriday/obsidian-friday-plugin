@@ -79,7 +79,6 @@ export class User {
 			this.token = data.token;
 		} catch (error) {
 			console.error("Failed to load user data:", error);
-			// 可以选择在此处处理文件未找到的情况
 		}
 	}
 

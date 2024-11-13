@@ -1,4 +1,4 @@
-import {ItemView, WorkspaceLeaf} from 'obsidian';
+import {ItemView, WorkspaceLeaf, TFile} from 'obsidian';
 import FridayPlugin, {FRIDAY_ICON} from "./main";
 import Server from './svelte/Server.svelte';
 import {FileInfo} from "./fileinfo";
@@ -46,7 +46,7 @@ export default class ServerView extends ItemView {
 	async onOpen(): Promise<void> {
 		await this.updateFileInfo(); // 初始化时获取 fileInfo
 		this._app = new Server({
-			target: (this as any).contentEl,
+			target: this.contentEl,
 			props: {
 				fileInfo: this.plugin.fileInfo,
 				app: this.app,
@@ -61,7 +61,6 @@ export default class ServerView extends ItemView {
 		await fileInfo.updateFileInfo(this.app, (updatedFileInfo) => {
 			this.plugin.fileInfo = updatedFileInfo; // 更新 fileInfo
 			if (this._app) {
-				// 重新设置 Svelte 组件的 props
 				this._app.$set({ fileInfo: this.plugin.fileInfo });
 			}
 		});

@@ -39,8 +39,6 @@ export class Hugoverse {
 	projectDirPath(filepath: string): string {
 		const projDirPath = path.join(path.dirname(filepath), "MDFriday");
 
-		console.log("MDFriday projectDirPath: ", projDirPath);
-
 		return projDirPath;
 	}
 
@@ -50,7 +48,6 @@ export class Hugoverse {
 			if (await this.plugin.app.vault.adapter.exists(manifestPath)) {
 				const data = await this.app.vault.adapter.read(manifestPath);
 				this.manifestConfig = JSON.parse(data);
-				console.log('Manifest configuration loaded successfully.');
 			}
 		} catch (error) {
 			console.error('Failed to load manifest.json', error);
@@ -190,8 +187,6 @@ export class Hugoverse {
 			// 定义请求的URL
 			const url = `${this.apiUrl}/api/${action}?type=Site&id=${siteId}`;
 
-			console.log(`${action} URL: `, url);
-
 			// 创建 FormData 实例并添加 siteId 字段
 			let body = new FormData();
 			body.append("site", `${siteId}`);
@@ -218,10 +213,7 @@ export class Hugoverse {
 
 			// 解析返回的 JSON 数据，提取 ID
 			const responseData = JSON.parse(response.text);
-			const actionUrl = responseData.data[0];
-			console.log(`Site ${action} generated successfully. URL:`, actionUrl);
-
-			return actionUrl;
+			return responseData.data[0];
 		} catch (error) {
 			console.error(`Error generating site ${action}:`, error);
 			new Notice(`Failed to ${action} site.`, 5000);
@@ -252,7 +244,6 @@ export class Hugoverse {
 			body.append("Params", this.plugin.fileInfo.getParams());
 			body.append("working_dir", "");
 
-			console.log("create site url: ", createSiteUrl);
 			// 将 FormData 转换为 ArrayBuffer
 			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
 			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
@@ -275,8 +266,6 @@ export class Hugoverse {
 			// 解析返回的 JSON 数据，提取 ID
 			const responseData = JSON.parse(response.text);
 			const siteId = responseData.data[0].id; // 假设`data`数组的第一个元素包含所需的`id`
-
-			console.log("Site created successfully. Site ID:", siteId);
 
 			return siteId;
 		} catch (error) {
@@ -302,7 +291,6 @@ export class Hugoverse {
 			body.append("post", `/api/content?type=Post&id=${postId}`);
 			body.append("path", path);
 
-			console.log("create site url: ", url);
 			// 将 FormData 转换为 ArrayBuffer
 			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
 			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
@@ -324,10 +312,8 @@ export class Hugoverse {
 
 			// 解析返回的 JSON 数据，提取 ID
 			const responseData = JSON.parse(response.text);
-			const sitePostId = responseData.data[0].id; // 假设`data`数组的第一个元素包含所需的`id`
-			console.log("Site post created successfully. SitePost Id: ", sitePostId);
-
-			return sitePostId;
+			 // 假设`data`数组的第一个元素包含所需的`id`
+			return responseData.data[0].id;
 		} catch (error) {
 			console.error("Error creating site post:", error);
 			new Notice("Failed to create site post.", 5000);
@@ -412,7 +398,6 @@ export class Hugoverse {
 			imageResults.forEach((result, index) => {
 				if (result) {
 					body.append(`assets.${index}`, result.blob, result.imagePath);
-					console.log("image index:", index, result.imagePath, "Size:", result.blob.size);
 				}
 			});
 
@@ -432,17 +417,13 @@ export class Hugoverse {
 
 			// 检查响应状态
 			if (response.status !== 200) {
-				console.log("create post response: ", response.text, file.name);
 				throw new Error(`Post creation failed: ${response.text}`);
 			}
 
 			// 解析返回的 JSON 数据，提取 ID
 			const responseData = JSON.parse(response.text);
-			const postId = responseData.data[0].id; // 假设`data`数组的第一个元素包含所需的`id`
-
-			console.log("Post created successfully. Post ID:", postId, file.name);
-
-			return postId;
+			 // 假设`data`数组的第一个元素包含所需的`id`
+			return responseData.data[0].id;
 		} catch (error) {
 			console.error("Failed to create post:", error.toString());
 			new Notice("Failed to create post.", 5000);

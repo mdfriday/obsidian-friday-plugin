@@ -54,18 +54,19 @@
 	const downloadFile = async () => {
 		await refreshDownloadStatus()
 
+		if (!displayDownload){
+			return
+		}
+
 		if (themeZipFileExists) {
 			downloadProgress = 100;
 			await extractFile(themePath, themeProjPath);
 			await fileInfo.updateFrontMatter(FM_CONTENT, themeContentPath);
-			displayDownload = false;
 			return
 		}
 
 		isDownloading = true;
 		downloadProgress = 0;
-
-		console.log("Downloading from:", themeDownloadUrl);
 
 		// 每个块的大小（以字节为单位）
 		const chunkSize = 1024 * 1024; // 1MB
@@ -108,20 +109,16 @@
 
 				// 更新下载进度
 				downloadProgress = Math.floor((receivedLength / contentLength) * 100);
-				console.log(`Downloaded ${downloadProgress}%`);
 			}
 
 			// 将文件写入到 Obsidian 插件目录中
 			await this.app.vault.adapter.writeBinary(themePath, fileContent); // 写入完整文件
 
-			console.log(`File downloaded to: ${themePath}`);
 			isDownloading = false;
 
 			await extractFile(themePath, themeProjPath);
 			await fileInfo.updateFrontMatter(FM_CONTENT, themeContentPath);
-			displayDownload = false;
 		} catch (error) {
-			console.error('Download error:', error);
 			isDownloading = false;
 		}
 	};
@@ -151,7 +148,6 @@
 
 					// Write the extracted file to the specified output directory
 					await app.vault.adapter.writeBinary(outputFilePath, content);
-					console.log(`Extracted file: ${outputFilePath}`);
 				}
 			}
 		} catch (error) {
@@ -190,7 +186,6 @@
 <div class="mt-20">
 	{#if Platform.isDesktop}
 		{#if themeDownloadFilename !== '' && fileInfo.hasFridayPluginEnabled()}
-			{#if displayDownload}
 			<div class="card">
 				<div class="version-info">Content structure example provided for theme: {fileInfo.getThemeName()}</div>
 
@@ -202,7 +197,6 @@
 					<button on:click={downloadFile}>Download Example</button>
 				{/if}
 			</div>
-			{/if}
 		{/if}
 	{/if}
 </div>

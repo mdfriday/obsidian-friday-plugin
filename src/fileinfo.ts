@@ -45,7 +45,6 @@ export class FileInfo {
 			this.content = this.extractContentWithoutFrontmatter(fileContent, this.frontMatter); // 存储去掉 frontmatter 的内容
 
 			callback(this); // 通知外部异步操作已完成
-			console.log("fileInfo updated and callback");
 		} else {
 			callback(this); // 没有文件的情况，直接回调
 		}
@@ -100,7 +99,6 @@ export class FileInfo {
 	hasContentConfigured(): boolean {
 		const contentPath = this.getContentFolder();
 		if (contentPath !== FM_CONTENT_EMPTY && contentPath !== null && this.isContentFolderExists) {
-			console.log("has content configured: ", contentPath);
 			return true
 		}
 		return false

@@ -1,16 +1,16 @@
-import {App, Notice, Plugin, TFile, TFolder, PluginSettingTab, Setting, FileSystemAdapter} from 'obsidian';
-import { getDefaultFrontMatter } from './frontmatter';
-import ServerView, { FRIDAY_SERVER_VIEW_TYPE } from './server';
+import {App, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder} from 'obsidian';
+import {getDefaultFrontMatter} from './frontmatter';
+import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
 import {User} from "./user";
 import {Hugoverse} from "./hugoverse";
 import {FileInfo} from "./fileinfo";
 
-interface MyPluginSettings {
-	mySetting: string;
+interface FridaySettings {
+	netlifyToken: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: FridaySettings = {
+	netlifyToken: ''
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -18,7 +18,7 @@ export const API_URL_DEV = 'http://127.0.0.1:1314';
 export const API_URL_PRO = 'https://mdfriday.sunwei.xyz';
 
 export default class FridayPlugin extends Plugin {
-	settings: MyPluginSettings;
+	settings: FridaySettings;
 	statusBar: HTMLElement
 
 	fileInfo: FileInfo;
@@ -37,7 +37,7 @@ export default class FridayPlugin extends Plugin {
 
 		this.statusBar = this.addStatusBarItem();
 
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new FridaySettingTab(this.app, this));
 
 		this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
 		if (this.app.workspace.layoutReady) this.initLeaf()
@@ -45,8 +45,6 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	async initFriday(): Promise<void> {
-		console.log("Init Friday...")
-
 		this.fileInfo = new FileInfo()
 		this.apiUrl = process.env.NODE_ENV === 'production' ? API_URL_PRO : API_URL_DEV;
 		this.user = new User(this);
@@ -82,10 +80,7 @@ export default class FridayPlugin extends Plugin {
 			: this.app.fileManager.getNewFileParent(this.app.workspace.getActiveFile()?.path || '');
 
 		try {
-			const fNote: TFile = await (this.app.fileManager as any).createNewMarkdownFile(
-				targetFolder,
-				'Untitled Friday Site'
-			);
+			const fNote: TFile = await this.createUniqueMarkdownFile(targetFolder.path, 'Untitled Friday Site');
 
 			await this.app.vault.modify(fNote, getDefaultFrontMatter());
 			await this.app.workspace.getLeaf().openFile(fNote);
@@ -95,18 +90,37 @@ export default class FridayPlugin extends Plugin {
 		}
 	}
 
+	async createUniqueMarkdownFile(targetFolder: string, baseFileName: string): Promise<TFile> {
+		let fileIndex = 0;
+		let newFile: TFile | null = null;
+
+		while (!newFile) {
+			// 动态生成文件名：如 Untitled Friday Site, Untitled Friday Site 1, Untitled Friday Site 2
+			const fileName = fileIndex === 0 ? `${baseFileName}.md` : `${baseFileName} ${fileIndex}.md`;
+			const filePath = `${targetFolder}/${fileName}`;
+
+			try {
+				// 尝试创建文件
+				newFile = await this.app.vault.create(filePath, ''); // 创建空文件
+			} catch (error) {
+				// 如果文件已存在，则递增 fileIndex 并重试
+				if (error.message.includes("File already exists")) {
+					fileIndex++;
+				} else {
+					throw error; // 其他错误直接抛出
+				}
+			}
+		}
+
+		return newFile;
+	}
+
 	async status(text: string) {
 		this.statusBar.setText(text)
 	}
-
-	async loadUser() {
-		const response = await fetch('https://api.github.com/users/mdfriday');
-		const data = await response.json();
-		return data
-	}
 }
 
-class SampleSettingTab extends PluginSettingTab {
+class FridaySettingTab extends PluginSettingTab {
 	plugin: FridayPlugin;
 
 	constructor(app: App, plugin: FridayPlugin) {
@@ -120,13 +134,13 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('Netlify Token')
+			.setDesc('Deploy to your own account')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('Enter your netlify token')
+				.setValue(this.plugin.settings.netlifyToken)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.netlifyToken = value;
 					await this.plugin.saveSettings();
 				}));
 	}
