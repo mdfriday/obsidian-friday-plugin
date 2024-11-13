@@ -20,6 +20,9 @@ esbuild
 		},
 		entryPoints: ['src/main.ts'],
 		bundle: true,
+		define: {
+			'process.env.NODE_ENV': prod ? '"production"' : '"development"',  // 显式设置环境变量为生产模式
+		},
 		external: [
 			'obsidian',
 			'electron',

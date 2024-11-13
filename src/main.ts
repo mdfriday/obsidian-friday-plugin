@@ -46,7 +46,8 @@ export default class FridayPlugin extends Plugin {
 
 	async initFriday(): Promise<void> {
 		this.fileInfo = new FileInfo()
-		this.apiUrl = process.env.NODE_ENV === 'production' ? API_URL_PRO : API_URL_DEV;
+		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+
 		this.user = new User(this);
 		await this.user.initializeUser()
 
