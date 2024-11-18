@@ -40,8 +40,7 @@ export default class FridayPlugin extends Plugin {
 		this.addSettingTab(new FridaySettingTab(this.app, this));
 
 		this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
-		if (this.app.workspace.layoutReady) this.initLeaf()
-		else this.app.workspace.onLayoutReady(() => this.initLeaf())
+		this.app.workspace.onLayoutReady(() => this.initLeaf())
 	}
 
 	async initFriday(): Promise<void> {
@@ -63,9 +62,7 @@ export default class FridayPlugin extends Plugin {
 		}).then(r => {})
 	}
 
-	onunload() {
-		this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE)[0]?.detach()
-	}
+	onunload() {}
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -135,10 +132,10 @@ class FridaySettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Netlify Token')
+			.setName('Your netlify token')
 			.setDesc('Deploy to your own account')
 			.addText(text => text
-				.setPlaceholder('Enter your netlify token')
+				.setPlaceholder('Enter your Netlify token')
 				.setValue(this.plugin.settings.netlifyToken)
 				.onChange(async (value) => {
 					this.plugin.settings.netlifyToken = value;

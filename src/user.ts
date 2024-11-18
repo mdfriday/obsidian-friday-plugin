@@ -106,8 +106,7 @@ export class User {
 			}
 
 			// 解析返回的JSON数据，提取token
-			const responseData = JSON.parse(response.text);
-			this.token = responseData.data[0]; // 假设`data`数组的第一个元素就是token
+			this.token = response.json.data[0]; // 假设`data`数组的第一个元素就是token
 
 			return this.token;
 
@@ -140,8 +139,7 @@ export class User {
 			}
 
 			// 解析返回的JSON数据，提取token
-			const responseData = JSON.parse(response.text);
-			this.token = responseData.data[0]; // 假设`data`数组的第一个元素就是token
+			this.token = response.json.data[0]; // 假设`data`数组的第一个元素就是token
 
 			// 保存用户信息到文件
 			await this.saveUser();

@@ -64,28 +64,10 @@ export class FileInfo {
 			new Notice("No active file.");
 			return;
 		}
-		// 从缓存中获取文件的 frontmatter
-		const metadata = this.app.metadataCache.getFileCache(file);
-		const frontmatter = metadata?.frontmatter;
 
-		if (!frontmatter) {
-			new Notice("No frontmatter found.");
-			return;
-		}
-
-		// 更新 frontmatter 中的指定键值
-		frontmatter[key] = value; // 修改目标 key 的值
-
-		// 读取文件内容
-		const content = await this.app.vault.read(file);
-
-		// 使用正则表达式提取并替换原始 frontmatter
-		const frontmatterRegex = /^---\n([\s\S]*?)\n---\n/;
-		const updatedFrontmatter = yaml.dump(frontmatter);
-		const newContent = content.replace(frontmatterRegex, `---\n${updatedFrontmatter}---\n`);
-
-		// 将修改后的内容写回文件
-		await this.app.vault.modify(file, newContent);
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			frontmatter[key] = value;
+		});
 	}
 
 	hasFridayPluginEnabled(): boolean {

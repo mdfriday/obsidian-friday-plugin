@@ -12,12 +12,12 @@ export class WebPreviewModal extends Modal {
 		const {contentEl, modalEl} = this;
 
 		// Apply CSS class to modal
-		modalEl.classList.add('my-modal');
+		modalEl.classList.add('friday-preview-modal');
 
 		// Create and style the iframe with a CSS class
 		const iframe = document.createElement('iframe');
 		iframe.src = this.url;
-		iframe.classList.add('my-iframe');
+		iframe.classList.add('friday-preview-iframe');
 
 		// Insert the iframe into the modal content
 		contentEl.appendChild(iframe);

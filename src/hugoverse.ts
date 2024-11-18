@@ -212,8 +212,7 @@ export class Hugoverse {
 			}
 
 			// 解析返回的 JSON 数据，提取 ID
-			const responseData = JSON.parse(response.text);
-			return responseData.data[0];
+			return response.json.data[0];
 		} catch (error) {
 			console.error(`Error generating site ${action}:`, error);
 			new Notice(`Failed to ${action} site.`, 5000);
@@ -264,10 +263,8 @@ export class Hugoverse {
 			}
 
 			// 解析返回的 JSON 数据，提取 ID
-			const responseData = JSON.parse(response.text);
-			const siteId = responseData.data[0].id; // 假设`data`数组的第一个元素包含所需的`id`
-
-			return siteId;
+			 // 假设`data`数组的第一个元素包含所需的`id`
+			return response.json.data[0].id;
 		} catch (error) {
 			console.error("Failed to create site:", error.toString());
 			new Notice("Failed to create site.", 5000);
@@ -311,9 +308,8 @@ export class Hugoverse {
 			}
 
 			// 解析返回的 JSON 数据，提取 ID
-			const responseData = JSON.parse(response.text);
 			 // 假设`data`数组的第一个元素包含所需的`id`
-			return responseData.data[0].id;
+			return response.json.data[0].id;
 		} catch (error) {
 			console.error("Error creating site post:", error);
 			new Notice("Failed to create site post.", 5000);
@@ -421,9 +417,8 @@ export class Hugoverse {
 			}
 
 			// 解析返回的 JSON 数据，提取 ID
-			const responseData = JSON.parse(response.text);
-			 // 假设`data`数组的第一个元素包含所需的`id`
-			return responseData.data[0].id;
+			// 假设`data`数组的第一个元素包含所需的`id`
+			return response.json.data[0].id;
 		} catch (error) {
 			console.error("Failed to create post:", error.toString());
 			new Notice("Failed to create post.", 5000);
