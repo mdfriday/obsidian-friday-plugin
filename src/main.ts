@@ -6,15 +6,21 @@ import {Hugoverse} from "./hugoverse";
 import {FileInfo} from "./fileinfo";
 
 interface FridaySettings {
+	username: string;
+	password: string;
+	userToken: string;
 	netlifyToken: string;
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
+	username: '',
+	password: '',
+	userToken: '',
 	netlifyToken: ''
 }
 
 export const FRIDAY_ICON = 'dice-5';
-export const API_URL_DEV = 'http://127.0.0.1:1314';
+export const API_URL_DEV = 'https://mdfriday.sunwei.xyz';
 export const API_URL_PRO = 'https://mdfriday.sunwei.xyz';
 
 export default class FridayPlugin extends Plugin {
@@ -30,8 +36,8 @@ export default class FridayPlugin extends Plugin {
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
-		await this.initFriday()
 		await this.loadSettings();
+		await this.initFriday()
 
 		this.addRibbonIcon(FRIDAY_ICON, 'Create new Friday note', (evt: MouseEvent) => this.newNote());
 
@@ -48,8 +54,6 @@ export default class FridayPlugin extends Plugin {
 		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
 
 		this.user = new User(this);
-		await this.user.initializeUser()
-
 		this.hugoverse = new Hugoverse(this);
 	}
 
@@ -130,6 +134,80 @@ class FridaySettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 
 		containerEl.empty();
+
+		const { username, password, userToken } = this.plugin.settings;
+
+		if (userToken) {
+			// 用户已登录的界面
+			containerEl.createEl("h2", { text: "Welcome Back!" });
+			containerEl.createEl("p", { text: `Logged in as: ${username}` });
+
+			new Setting(containerEl)
+				.addButton((button) =>
+					button
+						.setButtonText("Logout")
+						.setCta()
+						.onClick(async () => {
+							await this.plugin.user.logout(); // 处理登出逻辑
+							this.display(); // 刷新界面
+						})
+				);
+		} else {
+			// 用户未登录的界面
+			containerEl.createEl("h2", { text: "Welcome!" });
+			containerEl.createEl("p", { text: "Please enter your credentials." });
+
+			// Email 输入框
+			new Setting(containerEl)
+				.setName("Username")
+				.setDesc("Enter your username")
+				.addText((text) =>
+					text
+						.setPlaceholder("username")
+						.setValue(username || "") // 填充现有用户名
+						.onChange(async (value) => {
+							this.plugin.settings.username = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			// Password 输入框
+			new Setting(containerEl)
+				.setName("Password")
+				.setDesc("Enter your password")
+				.addText((text) => {
+					text
+						.setPlaceholder("password")
+						.setValue(password || "") // 填充现有密码
+						.onChange(async (value) => {
+							this.plugin.settings.password = value;
+							await this.plugin.saveSettings();
+						})
+					text.inputEl.type = "password";
+				});
+
+			// Register 按钮
+			new Setting(containerEl)
+				.addButton((button) =>
+					button
+						.setButtonText("Register")
+						.setCta()
+						.onClick(async () => {
+							await this.plugin.user.register(); // 处理注册逻辑
+							this.display(); // 刷新界面
+						})
+				).addButton((button) =>
+					button
+						.setButtonText("Login")
+						.setCta()
+						.onClick(async () => {
+							await this.plugin.user.login(); // 处理登录逻辑
+							this.display(); // 刷新界面
+						})
+			);
+		}
+
+		containerEl.createEl("h2", { text: "Deployment" });
 
 		new Setting(containerEl)
 			.setName('Your netlify token')

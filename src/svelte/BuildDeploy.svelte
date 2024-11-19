@@ -29,6 +29,7 @@
 		const previewUrl = await plugin.hugoverse.preview((progress: number) => {
 			if (progress === 0) {
 				buildSuccess = false;
+				buildProgress = 0;
 				statusText = "Building for preview failed...";
 				isBuilding = false;
 				new Notice("Building for preview failed!", 5000);

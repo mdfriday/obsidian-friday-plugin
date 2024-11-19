@@ -168,6 +168,9 @@ export class Hugoverse {
 
 			// 生成站点预览
 			const preUrl = await this.previewSite(siteId);
+			if (preUrl == "") {
+				throw new Error("Failed to generate preview.");
+			}
 			callback(100); // 预览完成，进度达到100%
 
 			const modal = new WebPreviewModal(this.app, preUrl); // 创建一个 WebPreviewModal 实例
