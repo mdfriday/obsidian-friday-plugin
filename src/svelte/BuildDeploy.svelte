@@ -18,8 +18,11 @@
 	let deploySuccess = false;
 	let deployLink = '';
 
+	let previewFilename = '';
+
 	// 模拟构建过程
 	const startPreview = async () => {
+		previewFilename = fileInfo.name
 		buildProgress = 0;
 		buildSuccess = false;
 
@@ -97,7 +100,7 @@
 {/if}
 
 <!-- 部署完成后显示链接 -->
-{#if buildSuccess}
+{#if buildSuccess && previewFilename === fileInfo.name}
 	<div class="card is-selected">
 		<p>You can preview your site by clicking the link below:</p>
 		<a href={previewLink} target="_blank">{previewLink}</a>
@@ -105,7 +108,7 @@
 {/if}
 
 <div class="build-container">
-	{#if buildSuccess}
+	{#if buildSuccess && previewFilename === fileInfo.name}
 		<div class="card">
 			<button on:click={startDeploy}>Deploy</button>
 		</div>

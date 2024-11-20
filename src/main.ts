@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS: FridaySettings = {
 }
 
 export const FRIDAY_ICON = 'dice-5';
-export const API_URL_DEV = 'https://mdfriday.sunwei.xyz';
+export const API_URL_DEV = 'http://127.0.0.1:1314';
 export const API_URL_PRO = 'https://mdfriday.sunwei.xyz';
 
 export default class FridayPlugin extends Plugin {

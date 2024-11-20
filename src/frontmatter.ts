@@ -3,7 +3,7 @@ export const FM_SITE_ID = 'site';
 export const FM_CONTENT = 'content';
 export const FM_CONTENT_EMPTY = 'empty';
 export const FM_THEME = 'theme';
-export const FM_DEFAULT_THEME = 'github.com/mdfriday/theme-manual-of-me';
+export const FM_DEFAULT_THEME = 'github.com/mdfriday/theme-long-teng';
 
 const basicFrontMatter = [
 	'---',
