@@ -9,6 +9,8 @@ interface ManifestConfig {
 	validation: { rules: { field: string; required: boolean; message: string }[] };
 }
 
+const supportedImageExtensions = ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp"];
+
 export class Hugoverse {
 	basePath: string;
 	apiUrl: string;
@@ -124,7 +126,8 @@ export class Hugoverse {
 				// 先获取文件夹下的所有 Markdown 文件
 				await new Promise<void>((resolve) => {
 					Vault.recurseChildren(folder, (file) => {
-						if (file instanceof TFile && file.extension === "md") {
+						if (file instanceof TFile &&
+							(file.extension === "md" || supportedImageExtensions.includes(file.extension))) {
 							totalFiles++;
 						}
 					});
@@ -139,20 +142,35 @@ export class Hugoverse {
 				// 遍历文件夹中的所有 Markdown 文件并处理
 				const filePromises = [];
 				Vault.recurseChildren(folder, (file) => {
-					if (file instanceof TFile && file.extension === "md") {
-						const fileProcessing = (async () => {
-							const postId = await this.createPost(file);
-							if (postId === "") return;
+					if (file instanceof TFile) {
+						if (file.extension === "md") {
+							const fileProcessing = (async () => {
+								const postId = await this.createPost(file);
+								if (postId === "") return;
 
-							const sitePostId = await this.createSitePost(siteId, postId, file);
-							if (sitePostId === "") return;
+								const sitePostId = await this.createSitePost(siteId, postId, file);
+								if (sitePostId === "") return;
 
-							// 处理完每个文件后，更新进度
-							processedFiles++;
-							const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
-							callback(progress);
-						})();
-						filePromises.push(fileProcessing);
+								// 处理完每个文件后，更新进度
+								processedFiles++;
+								const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
+								callback(progress);
+							})();
+							filePromises.push(fileProcessing);
+						} else if (supportedImageExtensions.includes(file.extension)) {
+							const imageProcessing = (async () => {
+								const resourceId = await this.createResource(file);
+								if (resourceId === "") return;
+
+								const sitePostId = await this.createSiteResource(siteId, resourceId, file);
+								if (sitePostId === "") return;
+
+								processedFiles++;
+								const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
+								callback(progress);
+							})();
+							filePromises.push(imageProcessing);
+						}
 					}
 				});
 
@@ -266,7 +284,7 @@ export class Hugoverse {
 			}
 
 			// 解析返回的 JSON 数据，提取 ID
-			 // 假设`data`数组的第一个元素包含所需的`id`
+			// 假设`data`数组的第一个元素包含所需的`id`
 			return response.json.data[0].id;
 		} catch (error) {
 			console.error("Failed to create site:", error.toString());
@@ -275,20 +293,26 @@ export class Hugoverse {
 	}
 
 	async createSitePost(siteId: string, postId: string, file: TFile): Promise<string> {
-		try {
-			// 定义请求的URL
-			const url = `${this.apiUrl}/api/content?type=SitePost`;
+		return this.createSiteEntity("SitePost", siteId, postId, file);
+	}
 
-			// 获取并处理文件路径，形成 `path` 参数
+	async createSiteResource(siteId: string, resourceId: string, file: TFile): Promise<string> {
+		return this.createSiteEntity("SiteResource", siteId, resourceId, file);
+	}
+
+	async createSiteEntity(entityType: string, siteId: string, entityId: string, file: TFile): Promise<string> {
+		try {
+			const url = `${this.apiUrl}/api/content?type=${entityType}`;
+
+			// 获取并处理文件路径
 			const contentFolder = this.plugin.fileInfo.getContentFolder();
 			const filePath = file.path;
 			let relativePath = filePath.startsWith(contentFolder) ? filePath.slice(contentFolder.length) : filePath;
 			const path = `/content${relativePath}`;
 
-			// 创建 `FormData` 实例并添加字段
 			let body = new FormData();
 			body.append("site", `/api/content?type=Site&id=${siteId}`);
-			body.append("post", `/api/content?type=Post&id=${postId}`);
+			body.append(`${entityType === "SitePost" ? "post" : "resource"}`, `/api/content?type=${entityType === "SitePost" ? "Post" : "Resource"}&id=${entityId}`);
 			body.append("path", path);
 
 			// 将 FormData 转换为 ArrayBuffer
@@ -305,18 +329,15 @@ export class Hugoverse {
 				body: arrayBufferBody,
 			});
 
-			// 检查响应状态
 			if (response.status !== 200) {
-				throw new Error(`Failed to create site post: ${response.text}`);
+				throw new Error(`Failed to create ${entityType}: ${response.text}`);
 			}
 
-			// 解析返回的 JSON 数据，提取 ID
-			 // 假设`data`数组的第一个元素包含所需的`id`
 			return response.json.data[0].id;
 		} catch (error) {
-			console.error("Error creating site post:", error);
-			new Notice("Failed to create site post.", 5000);
-			return ""
+			console.error(`Error creating ${entityType}:`, error);
+			new Notice(`Failed to create ${entityType}.`, 5000);
+			return "";
 		}
 	}
 
@@ -334,71 +355,6 @@ export class Hugoverse {
 			body.append("author", this.plugin.user.getName());
 			body.append("params", "key: value");
 			body.append("content", fileContent);
-
-			// 图片匹配正则表达式
-			const imageRegex = /!\[.*?\]\((.+?)\)|{{<\s*image\s+src="(.+?)".*?>}}|{{<\s*bilibili\s+image="(.+?)".*?>}}/g;
-
-			// 获取文件的父目录路径
-			const fileDir = file.path.substring(0, file.path.lastIndexOf("/"));
-
-			// 找到所有图片路径并依次加载为 Blob
-			let match: any[];
-			const imagePromises: Promise<any>[] = [];
-
-			while ((match = imageRegex.exec(fileContent)) !== null) {
-				const imagePath = match[1] || match[2] || match[3];
-				const fullImagePath = `${fileDir}/${imagePath}`;
-
-				// 规范化路径，移除任何冗余的路径部分
-				const normalizedPath = fullImagePath.split('/').reduce((acc, part) => {
-					if (part === "..") acc.pop();
-					else if (part !== ".") acc.push(part);
-					return acc;
-				}, [] as string[]).join('/');
-
-				const imageFilePromise = this.app.vault.adapter.readBinary(normalizedPath).then(imageFile => {
-					if (imageFile && imageFile.byteLength > 0) {
-						// 动态获取文件扩展名并判断 MIME 类型
-						const fileExtension = imagePath.split('.').pop()?.toLowerCase();
-						let mimeType = "application/octet-stream"; // 默认 MIME 类型
-						if (fileExtension) {
-							switch (fileExtension) {
-								case "jpg":
-								case "jpeg":
-									mimeType = "image/jpeg";
-									break;
-								case "png":
-									mimeType = "image/png";
-									break;
-								case "gif":
-									mimeType = "image/gif";
-									break;
-								case "svg":
-									mimeType = "image/svg+xml";
-									break;
-							}
-						}
-
-						const blob = new Blob([imageFile], {type: mimeType});
-						return {imagePath, blob};
-					} else {
-						console.error(`Failed to read image: ${normalizedPath}`);
-						return null;
-					}
-				});
-
-				imagePromises.push(imageFilePromise);
-			}
-
-			// 等待所有图片文件加载完成，确保顺序一致
-			const imageResults = await Promise.all(imagePromises);
-
-			// 将加载的图片按顺序添加到 FormData
-			imageResults.forEach((result, index) => {
-				if (result) {
-					body.append(`assets.${index}`, result.blob, result.imagePath);
-				}
-			});
 
 			// 将 FormData 转换为 ArrayBuffer
 			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
@@ -425,6 +381,73 @@ export class Hugoverse {
 		} catch (error) {
 			console.error("Failed to create post:", error.toString());
 			new Notice("Failed to create post.", 5000);
+		}
+	}
+
+	async createResource(file: TFile): Promise<string> {
+		try {
+			const createResourceUrl = `${this.apiUrl}/api/content?type=Resource`;
+
+			// 读取 Resource 文件内容
+			const fileContent = await this.app.vault.readBinary(file);
+
+			// 创建 FormData 并添加基本字段
+			let body: FormData = new FormData();
+			body.append("type", "Resource");
+			body.append("name", file.name);
+
+			const fileExtension = file.extension;
+			let mimeType = "application/octet-stream"; // 默认 MIME 类型
+			if (fileExtension) {
+				switch (fileExtension) {
+					case "jpg":
+					case "jpeg":
+						mimeType = "image/jpeg";
+						break;
+					case "png":
+						mimeType = "image/png";
+						break;
+					case "bmp":
+						mimeType = "image/bmp";
+						break;
+					case "gif":
+						mimeType = "image/gif";
+						break;
+					case "svg":
+						mimeType = "image/svg+xml";
+						break;
+					case "webp":
+						mimeType = "image/webp";
+						break;
+				}
+			}
+
+			const blob = new Blob([fileContent], {type: mimeType});
+			body.append(`asset`, blob, file.name);
+
+			// 将 FormData 转换为 ArrayBuffer
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+
+			const response: RequestUrlResponse = await requestUrl({
+				url: createResourceUrl,
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${await this.user.getToken()}`,
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+				},
+				body: arrayBufferBody,
+			});
+
+			// 检查响应状态
+			if (response.status !== 200) {
+				throw new Error(`Resource creation failed: ${response.text}`);
+			}
+
+			return response.json.data[0].id;
+		} catch (error) {
+			console.error("Failed to create resource:", error.toString());
+			new Notice("Failed to create resource.", 5000);
 		}
 	}
 

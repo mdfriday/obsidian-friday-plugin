@@ -9,14 +9,12 @@ interface FridaySettings {
 	username: string;
 	password: string;
 	userToken: string;
-	netlifyToken: string;
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
 	username: '',
 	password: '',
 	userToken: '',
-	netlifyToken: ''
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -207,17 +205,5 @@ class FridaySettingTab extends PluginSettingTab {
 			);
 		}
 
-		containerEl.createEl("h2", { text: "Deployment" });
-
-		new Setting(containerEl)
-			.setName('Your netlify token')
-			.setDesc('Deploy to your own account')
-			.addText(text => text
-				.setPlaceholder('Enter your Netlify token')
-				.setValue(this.plugin.settings.netlifyToken)
-				.onChange(async (value) => {
-					this.plugin.settings.netlifyToken = value;
-					await this.plugin.saveSettings();
-				}));
 	}
 }
