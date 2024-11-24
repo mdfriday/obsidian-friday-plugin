@@ -21,7 +21,6 @@
 
 	let downloadProgress = 0;
 	let isDownloading = false;
-	let displayDownload = true;
 	let themeZipFileExists = false;
 
 	onMount(async () => {
@@ -47,14 +46,13 @@
 				themeZipFileExists = true;
 			}
 
-			displayDownload = !(themeZipFileExists && await app.vault.adapter.exists(themeProjPath));
 		}
 	}
 
 	const downloadFile = async () => {
 		await refreshDownloadStatus()
 
-		if (!displayDownload){
+		if (themeZipFileExists && await app.vault.adapter.exists(themeContentPath)){
 			return
 		}
 
