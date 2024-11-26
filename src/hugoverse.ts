@@ -142,36 +142,38 @@ export class Hugoverse {
 				// 遍历文件夹中的所有 Markdown 文件并处理
 				const filePromises = [];
 				Vault.recurseChildren(folder, (file) => {
-					if (file instanceof TFile) {
-						if (file.extension === "md") {
-							const fileProcessing = (async () => {
-								const postId = await this.createPost(file);
-								if (postId === "") return;
+``					(async (currentFile) => {
+						if (currentFile instanceof TFile) {
+							if (currentFile.extension === "md") {
+								const fileProcessing = (async () => {
+									const postId = await this.createPost(currentFile);
+									if (postId === "") return;
 
-								const sitePostId = await this.createSitePost(siteId, postId, file);
-								if (sitePostId === "") return;
+									const sitePostId = await this.createSitePost(siteId, postId, currentFile);
+									if (sitePostId === "") return;
 
-								// 处理完每个文件后，更新进度
-								processedFiles++;
-								const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
-								callback(progress);
-							})();
-							filePromises.push(fileProcessing);
-						} else if (supportedImageExtensions.includes(file.extension)) {
-							const imageProcessing = (async () => {
-								const resourceId = await this.createResource(file);
-								if (resourceId === "") return;
+									// 处理完每个文件后，更新进度
+									processedFiles++;
+									const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
+									callback(progress);
+								})();
+								filePromises.push(fileProcessing);
+							} else if (supportedImageExtensions.includes(currentFile.extension)) {
+								const imageProcessing = (async () => {
+									const resourceId = await this.createResource(currentFile);
+									if (resourceId === "") return;
 
-								const sitePostId = await this.createSiteResource(siteId, resourceId, file);
-								if (sitePostId === "") return;
+									const sitePostId = await this.createSiteResource(siteId, resourceId, currentFile);
+									if (sitePostId === "") return;
 
-								processedFiles++;
-								const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
-								callback(progress);
-							})();
-							filePromises.push(imageProcessing);
+									processedFiles++;
+									const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
+									callback(progress);
+								})();
+								filePromises.push(imageProcessing);
+							}
 						}
-					}
+					})(file);
 				});
 
 				// 等待所有文件的处理完成
