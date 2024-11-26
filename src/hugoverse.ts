@@ -142,7 +142,7 @@ export class Hugoverse {
 				// 遍历文件夹中的所有 Markdown 文件并处理
 				const filePromises = [];
 				Vault.recurseChildren(folder, (file) => {
-``					(async (currentFile) => {
+					(async (currentFile) => {
 						if (currentFile instanceof TFile) {
 							if (currentFile.extension === "md") {
 								const fileProcessing = (async () => {
