@@ -25,15 +25,19 @@ With 500+(we are working hard to adapt them) free themes and powerful shortcodes
 	- Go to Obsidian’s plugin store, search for **Friday** with author **MDFriday**, and download the plugin.
 	- Enable **Friday** from Obsidian’s settings.
 
-2. **Create a Friday Note**
+2. **Register Your Account**
+	- Open the **Friday** settings page in Obsidian.
+	- Register for an account by providing the required information. This is necessary to access additional features and deploy your site.
+
+3. **Create a Friday Note**
 	- With MDFriday enabled, create a new note and provide a name and description for your site.
 	- Your note will automatically be recognized as a potential website page.
 
-3. **Customize and Preview**
+4. **Customize and Preview**
 	- Select a theme from the available options and configure settings in the frontmatter to suit your needs.
 	- Click **Preview** to see how your site will look with the selected theme and configurations.
 
-4. **Deploy**
+5. **Deploy**
 	- When you’re ready to publish, you can deploy your site with a single click.
 	- Your site will be live within minutes, with options to further manage and update it.
 
