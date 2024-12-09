@@ -11,7 +11,7 @@ if you want to view the source, please visit the github repository of this plugi
 `
 
 const prod = process.argv[2] === 'production'
-const outputFile = prod ? 'main.js' : '/Users/sunwei/Documents/Obsidian Vault/.obsidian/plugins/obsidian-friday-plugin/main.js';
+const outputFile = prod ? 'main.js' : '/Users/sunwei/Documents/Obsidian/.obsidian/plugins/mdfriday/main.js';
 
 esbuild
 	.build({

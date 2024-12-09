@@ -193,7 +193,8 @@ export class Hugoverse {
 			}
 			callback(100); // 预览完成，进度达到100%
 
-			const modal = new WebPreviewModal(this.app, preUrl); // 创建一个 WebPreviewModal 实例
+			const newUrl = preUrl.replace("app.mdfriday.com", "netlify.app");
+			const modal = new WebPreviewModal(this.app, newUrl); // 创建一个 WebPreviewModal 实例
 			modal.open();
 
 			return preUrl;
@@ -213,6 +214,9 @@ export class Hugoverse {
 			// 创建 FormData 实例并添加 siteId 字段
 			let body = new FormData();
 			body.append("site", `${siteId}`);
+			body.append("domain", this.plugin.settings.rootDomain);
+			body.append("host_name", "Netlify");
+			body.append("host_token", this.plugin.settings.netlifyToken);
 
 			// 将 FormData 转换为 ArrayBuffer
 			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);

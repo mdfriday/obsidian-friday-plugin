@@ -17,3 +17,11 @@
 	border: none;
 	background-color: white;
 }
+
+.friday-preview-loading {
+	text-align: center;
+	margin-top: 20px;
+	font-size: 18px;
+	color: black;
+	height: 100%;
+}

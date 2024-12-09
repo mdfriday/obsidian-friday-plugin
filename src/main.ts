@@ -9,17 +9,24 @@ interface FridaySettings {
 	username: string;
 	password: string;
 	userToken: string;
+
+	rootDomain: string
+	netlifyToken: string
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
 	username: '',
 	password: '',
 	userToken: '',
+	rootDomain: '',
+	netlifyToken: ''
 }
 
 export const FRIDAY_ICON = 'dice-5';
 export const API_URL_DEV = 'http://127.0.0.1:1314';
 export const API_URL_PRO = 'https://mdfriday.sunwei.xyz';
+
+const FRIDAY_ROOT_FOLDER = 'MDFriday';
 
 export default class FridayPlugin extends Plugin {
 	settings: FridaySettings;
@@ -75,18 +82,22 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	async newNote(folder?: TFolder) {
-		const targetFolder = folder
-			? folder
-			: this.app.fileManager.getNewFileParent(this.app.workspace.getActiveFile()?.path || '');
+		await this.ensureRootFolderExists();
 
 		try {
-			const fNote: TFile = await this.createUniqueMarkdownFile(targetFolder.path, 'Untitled Friday Site');
+			const fNote: TFile = await this.createUniqueMarkdownFile(FRIDAY_ROOT_FOLDER, 'Untitled Friday Site');
 
 			await this.app.vault.modify(fNote, getDefaultFrontMatter());
 			await this.app.workspace.getLeaf().openFile(fNote);
 		} catch (e) {
 			new Notice('Failed to create new Friday note');
 			console.error('Error creating new Friday note :', e);
+		}
+	}
+
+	async ensureRootFolderExists() {
+		if (!(await this.app.vault.adapter.exists(FRIDAY_ROOT_FOLDER))) {
+			await this.app.vault.createFolder(FRIDAY_ROOT_FOLDER);
 		}
 	}
 
@@ -133,12 +144,12 @@ class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		const { username, password, userToken } = this.plugin.settings;
+		const {username, password, userToken} = this.plugin.settings;
 
 		if (userToken) {
 			// 用户已登录的界面
-			containerEl.createEl("h2", { text: "Welcome Back!" });
-			containerEl.createEl("p", { text: `Logged in as: ${username}` });
+			containerEl.createEl("h2", {text: "Welcome Back!"});
+			containerEl.createEl("p", {text: `Logged in as: ${username}`});
 
 			new Setting(containerEl)
 				.addButton((button) =>
@@ -152,8 +163,8 @@ class FridaySettingTab extends PluginSettingTab {
 				);
 		} else {
 			// 用户未登录的界面
-			containerEl.createEl("h2", { text: "Welcome!" });
-			containerEl.createEl("p", { text: "Please enter your credentials." });
+			containerEl.createEl("h2", {text: "Welcome!"});
+			containerEl.createEl("p", {text: "Please enter your credentials."});
 
 			// Email 输入框
 			new Setting(containerEl)
@@ -195,15 +206,42 @@ class FridaySettingTab extends PluginSettingTab {
 							this.display(); // 刷新界面
 						})
 				).addButton((button) =>
-					button
-						.setButtonText("Login")
-						.setCta()
-						.onClick(async () => {
-							await this.plugin.user.login(); // 处理登录逻辑
-							this.display(); // 刷新界面
-						})
+				button
+					.setButtonText("Login")
+					.setCta()
+					.onClick(async () => {
+						await this.plugin.user.login(); // 处理登录逻辑
+						this.display(); // 刷新界面
+					})
 			);
 		}
+
+		containerEl.createEl("h2", {text: "Deployment"});
+		new Setting(containerEl)
+			.setName("Root Domain")
+			.setDesc("Set your custom root domain (e.g., mdfriday.com). This will be used for generated links.")
+			.addText(text =>
+				text
+					.setPlaceholder("Enter your root domain")
+					.setValue(this.plugin.settings.rootDomain || "")
+					.onChange(async (value) => {
+						this.plugin.settings.rootDomain = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Netlify Token")
+			.setDesc("Set your Netlify personal access token here.")
+			.addText(text =>
+				text
+					.setPlaceholder("Enter your Netlify Token")
+					.setValue(this.plugin.settings.netlifyToken || "")
+					.onChange(async (value) => {
+						this.plugin.settings.netlifyToken = value;
+						await this.plugin.saveSettings();
+					})
+			);
 
 	}
 }
