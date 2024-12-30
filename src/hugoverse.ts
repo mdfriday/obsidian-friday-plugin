@@ -270,6 +270,10 @@ export class Hugoverse {
 			body.append("Params", this.plugin.fileInfo.getParams());
 			body.append("working_dir", "");
 
+			this.plugin.fileInfo.languages.forEach((lang, index) => {
+				body.append(`languages.${index}`, lang);
+			});
+
 			// 将 FormData 转换为 ArrayBuffer
 			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
 			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
@@ -314,7 +318,13 @@ export class Hugoverse {
 			const contentFolder = this.plugin.fileInfo.getContentFolder();
 			const filePath = file.path;
 			let relativePath = filePath.startsWith(contentFolder) ? filePath.slice(contentFolder.length) : filePath;
-			const path = `/content${relativePath}`;
+			let path = `/content${relativePath}`;
+			if (this.plugin.fileInfo.isMultiLang()) {
+				const cleanPath = relativePath.startsWith("/") ? relativePath.slice(1) : relativePath;
+				if (this.plugin.fileInfo.languages.some(lang => cleanPath.startsWith(`${lang}/`))) {
+					path = `/content.${cleanPath}`
+				}
+			}
 
 			let body = new FormData();
 			body.append("site", `/api/content?type=Site&id=${siteId}`);

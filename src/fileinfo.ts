@@ -1,13 +1,15 @@
-import {App, Notice} from "obsidian";
+import {App, Notice, TFolder} from "obsidian";
 import {FM_CONTENT, FM_CONTENT_EMPTY, FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_THEME} from "./frontmatter";
 import * as path from "path";
 import * as yaml from "js-yaml";
+import {IsLanguageSupported, IsRtlLanguage} from "./language";
 
 export class FileInfo {
 	name: string;
 	path: string;
 	frontMatter: Record<string, any> | null;
 	content: string;
+	languages: string[] = [];
 
 	isContentFolderExists: boolean;
 	isReadyForBuild: boolean
@@ -44,10 +46,32 @@ export class FileInfo {
 			const fileContent = await app.vault.read(activeFile); // 读取文件内容
 			this.content = this.extractContentWithoutFrontmatter(fileContent, this.frontMatter); // 存储去掉 frontmatter 的内容
 
+			this.languages = this.detectLanguageFolders();
+
 			callback(this); // 通知外部异步操作已完成
 		} else {
 			callback(this); // 没有文件的情况，直接回调
 		}
+	}
+
+	isMultiLang(): boolean {
+		return this.languages.length > 1
+	}
+
+	detectLanguageFolders(): string[] {
+		const folder = this.app.vault.getAbstractFileByPath(this.getContentFolder());
+
+		const detectedLanguages: string[] = [];
+		if (folder instanceof TFolder) {
+			folder.children.forEach((child) => {
+				if (child instanceof TFolder && IsLanguageSupported(child.name)) {
+					if (!IsRtlLanguage(child.name)) {
+						detectedLanguages.push(child.name);
+					}
+				}
+			});
+		}
+		return detectedLanguages;
 	}
 
 	extractContentWithoutFrontmatter(content, frontMatter) {
