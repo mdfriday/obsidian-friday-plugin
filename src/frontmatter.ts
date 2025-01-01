@@ -4,6 +4,7 @@ export const FM_CONTENT = 'content';
 export const FM_CONTENT_EMPTY = 'empty';
 export const FM_THEME = 'theme';
 export const FM_DEFAULT_THEME = 'github.com/mdfriday/theme-long-teng';
+export const FM_MENU = 'menu';
 
 const basicFrontMatter = [
 	'---',

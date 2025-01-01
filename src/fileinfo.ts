@@ -1,5 +1,5 @@
 import {App, Notice, TFolder} from "obsidian";
-import {FM_CONTENT, FM_CONTENT_EMPTY, FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_THEME} from "./frontmatter";
+import {FM_CONTENT, FM_CONTENT_EMPTY, FM_FRIDAY_PLUGIN, FM_MENU, FM_SITE_ID, FM_THEME} from "./frontmatter";
 import * as path from "path";
 import * as yaml from "js-yaml";
 import {IsLanguageSupported, IsRtlLanguage} from "./language";
@@ -10,6 +10,7 @@ export class FileInfo {
 	frontMatter: Record<string, any> | null;
 	content: string;
 	languages: string[] = [];
+	menus: string[] = [];
 
 	isContentFolderExists: boolean;
 	isReadyForBuild: boolean
@@ -47,6 +48,7 @@ export class FileInfo {
 			this.content = this.extractContentWithoutFrontmatter(fileContent, this.frontMatter); // 存储去掉 frontmatter 的内容
 
 			this.languages = this.detectLanguageFolders();
+			this.menus = this.getMenus();
 
 			callback(this); // 通知外部异步操作已完成
 		} else {
@@ -114,6 +116,10 @@ export class FileInfo {
 		return this.frontMatter?.[FM_CONTENT] ?? ''
 	}
 
+	getMenus(): string[] {
+		return this.frontMatter?.[FM_MENU] ?? []
+	}
+
 	getSiteId(): string {
 		return this.frontMatter?.[FM_SITE_ID] ?? '0';
 	}
@@ -127,7 +133,7 @@ export class FileInfo {
 	}
 
 	getParams(): string {
-		const excludeKeys = [FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_CONTENT, FM_THEME];
+		const excludeKeys = [FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_CONTENT, FM_THEME, FM_MENU];
 
 		const paramsArray = [];
 		for (const key in this.frontMatter) {

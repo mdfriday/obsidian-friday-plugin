@@ -39,9 +39,7 @@ export class Hugoverse {
 	}
 
 	projectDirPath(filepath: string): string {
-		const projDirPath = path.join(path.dirname(filepath), "MDFriday");
-
-		return projDirPath;
+		return path.dirname(filepath)
 	}
 
 	async loadManifestConfig() {
@@ -178,7 +176,7 @@ export class Hugoverse {
 
 				// 等待所有文件的处理完成
 				await Promise.all(filePromises);
-				await new Promise(resolve => setTimeout(resolve, 2000));  // 延迟 2 秒
+				await new Promise(resolve => setTimeout(resolve, 3000));  // 延迟 2 秒
 
 			} else {
 				console.warn(`Path "${this.plugin.fileInfo.getContentFolder()}" is not a folder.`);
@@ -273,6 +271,9 @@ export class Hugoverse {
 			this.plugin.fileInfo.languages.forEach((lang, index) => {
 				body.append(`languages.${index}`, lang);
 			});
+			this.plugin.fileInfo.menus.forEach((menu, index) => {
+				body.append(`menus.${index}`, menu);
+			})
 
 			// 将 FormData 转换为 ArrayBuffer
 			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
