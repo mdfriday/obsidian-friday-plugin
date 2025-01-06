@@ -107,7 +107,7 @@ export class Hugoverse {
 
 			// 创建站点，进度设置为 10%
 			const siteId = await this.createSite();
-			if (siteId === "") {
+			if (siteId === "" || siteId === undefined) {
 				return "";
 			}
 			callback(10); // 进度更新为10%
@@ -205,45 +205,45 @@ export class Hugoverse {
 	}
 
 	async sendSiteRequest(action: string, siteId: string): Promise<string> {
-		try {
-			// 定义请求的URL
-			const url = `${this.apiUrl}/api/${action}?type=Site&id=${siteId}`;
+		// 定义请求的URL
+		const url = `${this.apiUrl}/api/${action}?type=Site&id=${siteId}`;
 
-			// 创建 FormData 实例并添加 siteId 字段
-			let body = new FormData();
-			body.append("site", `${siteId}`);
-			body.append("domain", this.plugin.settings.rootDomain);
-			body.append("host_name", "Netlify");
-			body.append("host_token", this.plugin.settings.netlifyToken);
+		// 创建 FormData 实例并添加 siteId 字段
+		let body = new FormData();
+		body.append("site", `${siteId}`);
+		body.append("domain", this.plugin.settings.rootDomain);
+		body.append("host_name", "Netlify");
+		body.append("host_token", this.plugin.settings.netlifyToken);
 
-			// 将 FormData 转换为 ArrayBuffer
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+		// 将 FormData 转换为 ArrayBuffer
+		const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+		const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
 
-			// 发送请求
-			const response: RequestUrlResponse = await requestUrl({
-				url: url,
-				method: "POST",
-				headers: {
-					"Authorization": `Bearer ${await this.user.getToken()}`,
-					"Content-Type": `multipart/form-data; boundary=${boundary}`,
-				},
-				body: arrayBufferBody,
-			});
+		// 发送请求
+		const response: RequestUrlResponse = await requestUrl({
+			url: url,
+			method: "POST",
+			headers: {
+				"Authorization": `Bearer ${await this.user.getToken()}`,
+				"Content-Type": `multipart/form-data; boundary=${boundary}`,
+			},
+			body: arrayBufferBody,
+		});
 
-			// 检查响应状态
-			if (response.status !== 200) {
-				throw new Error(`Failed to ${action} site: ${response.text}`);
+		// 检查响应状态
+		if (response.status !== 200) {
+			let errMsg = `Failed to ${action} site.`;
+			if (response.status === 409) {
+				errMsg = "Domain is already taken. Please choose a different one by changing the note name.";
 			}
-
-			// 解析返回的 JSON 数据，提取 ID
-			return response.json.data[0];
-		} catch (error) {
-			console.error(`Error generating site ${action}:`, error);
-			new Notice(`Failed to ${action} site.`, 5000);
+			console.error(`Error generating site ${action}:`, response.text);
+			new Notice(errMsg, 5000);
 
 			return "";
 		}
+
+		// 解析返回的 JSON 数据，提取 ID
+		return response.json.data[0];
 	}
 
 	async previewSite(siteId: string): Promise<string> {
@@ -256,51 +256,49 @@ export class Hugoverse {
 
 
 	async createSite(): Promise<string> {
-		try {
-			const createSiteUrl = `${this.apiUrl}/api/content?type=Site`;
+		const createSiteUrl = `${this.apiUrl}/api/content?type=Site`;
 
-			let body: FormData = new FormData();
-			body.append("title", this.plugin.fileInfo.getBaseName());
-			body.append("description", this.plugin.fileInfo.getDescription());
-			body.append("base_url", "/");
-			body.append("theme", this.plugin.fileInfo.getThemeName());
-			body.append("owner", this.plugin.user.getName());
-			body.append("Params", this.plugin.fileInfo.getParams());
-			body.append("working_dir", "");
+		let body: FormData = new FormData();
+		body.append("title", this.plugin.fileInfo.getBaseName());
+		body.append("description", this.plugin.fileInfo.getDescription());
+		body.append("base_url", "/");
+		body.append("theme", this.plugin.fileInfo.getThemeName());
+		body.append("owner", this.plugin.user.getName());
+		body.append("Params", this.plugin.fileInfo.getParams());
+		body.append("working_dir", "");
 
-			this.plugin.fileInfo.languages.forEach((lang, index) => {
-				body.append(`languages.${index}`, lang);
-			});
-			this.plugin.fileInfo.menus.forEach((menu, index) => {
-				body.append(`menus.${index}`, menu);
-			})
+		this.plugin.fileInfo.languages.forEach((lang, index) => {
+			body.append(`languages.${index}`, lang);
+		});
+		this.plugin.fileInfo.menus.forEach((menu, index) => {
+			body.append(`menus.${index}`, menu);
+		})
 
-			// 将 FormData 转换为 ArrayBuffer
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+		// 将 FormData 转换为 ArrayBuffer
+		const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+		const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
 
-			const response: RequestUrlResponse = await requestUrl({
-				url: createSiteUrl,
-				method: "POST",
-				headers: {
-					"Authorization": `Bearer ${await this.user.getToken()}`,
-					"Content-Type": `multipart/form-data; boundary=${boundary}`,
-				},
-				body: arrayBufferBody,
-			});
+		const response: RequestUrlResponse = await requestUrl({
+			url: createSiteUrl,
+			method: "POST",
+			headers: {
+				"Authorization": `Bearer ${await this.user.getToken()}`,
+				"Content-Type": `multipart/form-data; boundary=${boundary}`,
+			},
+			body: arrayBufferBody,
+		});
 
-			// 检查响应状态
-			if (response.status !== 200) {
-				throw new Error(`Site creation failed: ${response.text}`);
-			}
-
-			// 解析返回的 JSON 数据，提取 ID
-			// 假设`data`数组的第一个元素包含所需的`id`
-			return response.json.data[0].id;
-		} catch (error) {
-			console.error("Failed to create site:", error.toString());
-			new Notice("Failed to create site.", 5000);
+		// 检查响应状态
+		if (response.status !== 200) {
+			const err = new Error(`Site creation failed: ${response.text}`);
+			console.error("Failed to create site:", err.toString());
+			new Notice(err.toString(), 5000);
+			return "";
 		}
+
+		// 解析返回的 JSON 数据，提取 ID
+		// 假设`data`数组的第一个元素包含所需的`id`
+		return response.json.data[0].id;
 	}
 
 	async createSitePost(siteId: string, postId: string, file: TFile): Promise<string> {

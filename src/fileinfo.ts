@@ -36,11 +36,7 @@ export class FileInfo {
 			const metadata = app.metadataCache.getFileCache(activeFile);
 			this.frontMatter = metadata?.frontmatter ?? null;
 
-			if (await app.vault.adapter.exists(this.getContentFolder())) {
-				this.isContentFolderExists = true
-			} else {
-				this.isContentFolderExists = false
-			}
+			this.isContentFolderExists = await app.vault.adapter.exists(this.getContentFolder());
 			this.isReadyForBuild = this.hasFridayPluginEnabled() && this.hasThemeConfigured() && this.hasContentConfigured()
 
 			// 获取文件内容
@@ -106,10 +102,7 @@ export class FileInfo {
 
 	hasContentConfigured(): boolean {
 		const contentPath = this.getContentFolder();
-		if (contentPath !== FM_CONTENT_EMPTY && contentPath !== null && this.isContentFolderExists) {
-			return true
-		}
-		return false
+		return contentPath !== FM_CONTENT_EMPTY && contentPath !== null && this.isContentFolderExists;
 	}
 
 	getContentFolder(): string {
@@ -165,6 +158,6 @@ export class FileInfo {
 	}
 
 	getDescription(): string {
-		return this.content;
+		return this.content.replace(/[\r\n]+/g, ' ');
 	}
 }

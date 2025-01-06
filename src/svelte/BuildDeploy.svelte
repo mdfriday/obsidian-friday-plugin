@@ -104,6 +104,7 @@
 	<div class="card is-selected">
 		<p>You can preview your site by clicking the link below:</p>
 		<a href={previewLink} target="_blank">{previewLink}</a>
+		<p class="dns-info">Please note that it may take a few minutes for the DNS to propagate and become active.</p>
 	</div>
 {/if}
 
@@ -122,10 +123,11 @@
 </div>
 
 <!-- 部署完成后显示链接 -->
-{#if deploySuccess}
+{#if deploySuccess && previewFilename === fileInfo.name}
 	<div class="card is-selected">
 		<p>Congratulations! Your site has been deployed. Click the link below to view it:</p>
 		<a href={deployLink} target="_blank">{deployLink}</a>
+		<p class="dns-info">Please note that it may take a few minutes for the DNS to propagate and become active.</p>
 	</div>
 {/if}
 
