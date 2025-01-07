@@ -1,5 +1,13 @@
 import {App, Notice, TFolder} from "obsidian";
-import {FM_CONTENT, FM_CONTENT_EMPTY, FM_FRIDAY_PLUGIN, FM_MENU, FM_SITE_ID, FM_THEME} from "./frontmatter";
+import {
+	FM_CONTENT,
+	FM_CONTENT_EMPTY,
+	FM_DEFAULT_LANGUAGE,
+	FM_FRIDAY_PLUGIN, FM_GA,
+	FM_MENU,
+	FM_SITE_ID,
+	FM_THEME
+} from "./frontmatter";
 import * as path from "path";
 import * as yaml from "js-yaml";
 import {IsLanguageSupported, IsRtlLanguage} from "./language";
@@ -125,8 +133,18 @@ export class FileInfo {
 		return path.basename(this.getThemeName())
 	}
 
+	getDefaultLanguage(): string {
+		return this.frontMatter?.[FM_DEFAULT_LANGUAGE] ?? ''
+	}
+
+	getGA(): string {
+		return this.frontMatter?.[FM_GA] ?? ''
+	}
+
 	getParams(): string {
-		const excludeKeys = [FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_CONTENT, FM_THEME, FM_MENU];
+		const excludeKeys = [
+			FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_CONTENT, FM_THEME,
+			FM_MENU, FM_DEFAULT_LANGUAGE, FM_GA];
 
 		const paramsArray = [];
 		for (const key in this.frontMatter) {

@@ -266,6 +266,8 @@ export class Hugoverse {
 		body.append("owner", this.plugin.user.getName());
 		body.append("Params", this.plugin.fileInfo.getParams());
 		body.append("working_dir", "");
+		body.append("default_content_language", this.plugin.fileInfo.getDefaultLanguage());
+		body.append("google_analytics", this.plugin.fileInfo.getGA());
 
 		this.plugin.fileInfo.languages.forEach((lang, index) => {
 			body.append(`languages.${index}`, lang);
