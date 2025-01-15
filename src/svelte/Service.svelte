@@ -6,7 +6,7 @@
 	import {FileInfo} from "../fileinfo";
 	import JSZip from "jszip";
 	import * as path from "path";
-	import {FM_CONTENT} from "../frontmatter";
+	import {FM_PROJ} from "../frontmatter";
 
 	// 接收 props
 	export let fileInfo: FileInfo;
@@ -59,7 +59,7 @@
 		if (themeZipFileExists) {
 			downloadProgress = 100;
 			await extractFile(themePath, themeProjPath);
-			await fileInfo.updateFrontMatter(FM_CONTENT, themeContentPath);
+			await fileInfo.updateFrontMatter(FM_PROJ, themeContentPath);
 			return
 		}
 
@@ -92,7 +92,9 @@
 				const chunkResponse: RequestUrlResponse = await requestUrl({
 					url: themeDownloadUrl,
 					headers: {
-						'Range': `bytes=${start}-${end}`
+						'Range': `bytes=${start}-${end}`,
+						'Cache-Control': 'no-cache',
+						'Accept-Encoding': 'identity'
 					}
 				});
 
@@ -115,7 +117,7 @@
 			isDownloading = false;
 
 			await extractFile(themePath, themeProjPath);
-			await fileInfo.updateFrontMatter(FM_CONTENT, themeContentPath);
+			await fileInfo.updateFrontMatter(FM_PROJ, themeContentPath);
 		} catch (error) {
 			isDownloading = false;
 		}

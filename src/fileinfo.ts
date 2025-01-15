@@ -4,7 +4,7 @@ import {
 	FM_CONTENT_EMPTY,
 	FM_DEFAULT_LANGUAGE,
 	FM_FRIDAY_PLUGIN, FM_GA,
-	FM_MENU,
+	FM_MENU, FM_PROJ,
 	FM_SITE_ID,
 	FM_THEME
 } from "./frontmatter";
@@ -114,7 +114,11 @@ export class FileInfo {
 	}
 
 	getContentFolder(): string {
-		return this.frontMatter?.[FM_CONTENT] ?? ''
+		return path.join(this.getProjFolder(), FM_CONTENT)
+	}
+
+	getProjFolder(): string {
+		return this.frontMatter?.[FM_PROJ] ?? ''
 	}
 
 	getMenus(): string[] {
@@ -143,7 +147,7 @@ export class FileInfo {
 
 	getParams(): string {
 		const excludeKeys = [
-			FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_CONTENT, FM_THEME,
+			FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_PROJ, FM_THEME,
 			FM_MENU, FM_DEFAULT_LANGUAGE, FM_GA];
 
 		const paramsArray = [];
@@ -160,8 +164,7 @@ export class FileInfo {
 	getThemeContentPath(): string {
 		if (this.hasThemeConfigured()) {
 			const theme = this.getThemeName();
-			const base = path.basename(theme)
-			return path.join(base, 'content')
+			return path.basename(theme)
 		}
 
 		return ''

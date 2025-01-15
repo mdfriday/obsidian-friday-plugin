@@ -10,6 +10,7 @@ interface ManifestConfig {
 }
 
 const supportedImageExtensions = ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp"];
+const supportedCompressionExtensions = ["zip"];
 
 export class Hugoverse {
 	basePath: string;
@@ -116,7 +117,7 @@ export class Hugoverse {
 			callback(15); // 更新 Front Matter 后，进度为15%
 
 			// 获取内容文件夹
-			const folder = this.plugin.app.vault.getAbstractFileByPath(this.plugin.fileInfo.getContentFolder());
+			const folder = this.plugin.app.vault.getAbstractFileByPath(this.plugin.fileInfo.getProjFolder());
 			if (folder instanceof TFolder) {
 				let totalFiles = 0;
 				let processedFiles = 0;
@@ -125,7 +126,9 @@ export class Hugoverse {
 				await new Promise<void>((resolve) => {
 					Vault.recurseChildren(folder, (file) => {
 						if (file instanceof TFile &&
-							(file.extension === "md" || supportedImageExtensions.includes(file.extension))) {
+							(file.extension === "md"
+								|| supportedImageExtensions.includes(file.extension)
+								||supportedCompressionExtensions.includes(file.extension))) {
 							totalFiles++;
 						}
 					});
@@ -156,7 +159,8 @@ export class Hugoverse {
 									callback(progress);
 								})();
 								filePromises.push(fileProcessing);
-							} else if (supportedImageExtensions.includes(currentFile.extension)) {
+							} else if (supportedImageExtensions.includes(currentFile.extension)
+								|| supportedCompressionExtensions.includes(currentFile.extension)) {
 								const imageProcessing = (async () => {
 									const resourceId = await this.createResource(currentFile);
 									if (resourceId === "") return;
@@ -316,14 +320,21 @@ export class Hugoverse {
 			const url = `${this.apiUrl}/api/content?type=${entityType}`;
 
 			// 获取并处理文件路径
-			const contentFolder = this.plugin.fileInfo.getContentFolder();
+			const projFolder = this.plugin.fileInfo.getProjFolder();
 			const filePath = file.path;
-			let relativePath = filePath.startsWith(contentFolder) ? filePath.slice(contentFolder.length) : filePath;
-			let path = `/content${relativePath}`;
+
+			let relativePath = filePath.startsWith(projFolder) ? filePath.slice(projFolder.length) : filePath;
+			let path = relativePath;
+
 			if (this.plugin.fileInfo.isMultiLang()) {
-				const cleanPath = relativePath.startsWith("/") ? relativePath.slice(1) : relativePath;
-				if (this.plugin.fileInfo.languages.some(lang => cleanPath.startsWith(`${lang}/`))) {
-					path = `/content.${cleanPath}`
+				const contentFolder = this.plugin.fileInfo.getContentFolder();
+				if (filePath.startsWith(contentFolder)) {
+					relativePath = filePath.startsWith(contentFolder) ? filePath.slice(contentFolder.length) : filePath;
+
+					const cleanPath = relativePath.startsWith("/") ? relativePath.slice(1) : relativePath;
+					if (this.plugin.fileInfo.languages.some(lang => cleanPath.startsWith(`${lang}/`))) {
+						path = `/content.${cleanPath}`
+					}
 				}
 			}
 
@@ -435,6 +446,9 @@ export class Hugoverse {
 						break;
 					case "webp":
 						mimeType = "image/webp";
+						break;
+					case "zip":
+						mimeType = "application/zip";
 						break;
 				}
 			}
