@@ -11,6 +11,7 @@ interface ManifestConfig {
 
 const supportedImageExtensions = ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp"];
 const supportedCompressionExtensions = ["zip"];
+const NEW_ID = "-1"
 
 export class Hugoverse {
 	basePath: string;
@@ -103,17 +104,12 @@ export class Hugoverse {
 			return errors;
 		}
 
+		const activeFiles: string[] = []
+
 		try {
 			callback(1); // 初始进度设置为 1%
 
-			// 创建站点，进度设置为 10%
-			const siteId = await this.createSite();
-			if (siteId === "" || siteId === undefined) {
-				return "";
-			}
-			callback(10); // 进度更新为10%
-
-			await this.plugin.fileInfo.updateFrontMatter(FM_SITE_ID, siteId);
+			await this.handleSite()
 			callback(15); // 更新 Front Matter 后，进度为15%
 
 			// 获取内容文件夹
@@ -128,7 +124,7 @@ export class Hugoverse {
 						if (file instanceof TFile &&
 							(file.extension === "md"
 								|| supportedImageExtensions.includes(file.extension)
-								||supportedCompressionExtensions.includes(file.extension))) {
+								|| supportedCompressionExtensions.includes(file.extension))) {
 							totalFiles++;
 						}
 					});
@@ -147,11 +143,8 @@ export class Hugoverse {
 						if (currentFile instanceof TFile) {
 							if (currentFile.extension === "md") {
 								const fileProcessing = (async () => {
-									const postId = await this.createPost(currentFile);
-									if (postId === "") return;
-
-									const sitePostId = await this.createSitePost(siteId, postId, currentFile);
-									if (sitePostId === "") return;
+									await this.handlePost(currentFile);
+									activeFiles.push(currentFile.path);
 
 									// 处理完每个文件后，更新进度
 									processedFiles++;
@@ -162,11 +155,8 @@ export class Hugoverse {
 							} else if (supportedImageExtensions.includes(currentFile.extension)
 								|| supportedCompressionExtensions.includes(currentFile.extension)) {
 								const imageProcessing = (async () => {
-									const resourceId = await this.createResource(currentFile);
-									if (resourceId === "") return;
-
-									const sitePostId = await this.createSiteResource(siteId, resourceId, currentFile);
-									if (sitePostId === "") return;
+									await this.handleResource(currentFile);
+									activeFiles.push(currentFile.path);
 
 									processedFiles++;
 									const progress = 45 + 50 * (processedFiles / totalFiles); // 根据文件数量调整进度
@@ -180,16 +170,16 @@ export class Hugoverse {
 
 				// 等待所有文件的处理完成
 				await Promise.all(filePromises);
-				await new Promise(resolve => setTimeout(resolve, 3000));  // 延迟 2 秒
-
 			} else {
 				console.warn(`Path "${this.plugin.fileInfo.getContentFolder()}" is not a folder.`);
 				new Notice(`Path "${this.plugin.fileInfo.getContentFolder()}" is not a folder.`, 5000);
 				return "";
 			}
 
+			await this.removeDisappearedFiles(activeFiles)
+
 			// 生成站点预览
-			const preUrl = await this.previewSite(siteId);
+			const preUrl = await this.previewSite(this.plugin.fileInfo.getSiteId());
 			if (preUrl == "") {
 				throw new Error("Failed to generate preview.");
 			}
@@ -206,6 +196,104 @@ export class Hugoverse {
 			callback(0); // 如果出错，回调设置为0%
 			return "";
 		}
+	}
+
+	async removeDisappearedFiles(activeFiles: string[]) {
+		const removedPaths = this.plugin.store.getRemovedPaths(activeFiles)
+		const siteId = this.plugin.fileInfo.getSiteId();
+		try {
+			for (const path of removedPaths) {
+				const fileId = this.plugin.store.getAssociatedId(siteId, path)
+				const fileType = this.plugin.store.getAssociatedType(siteId, path)
+
+				const res = await this.deleteEntity(fileType, fileId)
+				if (res) {
+					this.plugin.store.removeFileFromProject(siteId, path)
+				}
+			}
+		} catch (error) {
+			console.error(error.toString())
+		}
+	}
+
+	async handleSite() {
+		let siteId = this.plugin.fileInfo.getSiteId();
+		if (Number(siteId) <= 0) {
+			siteId = await this.createSite(NEW_ID);
+			if (siteId === "" || siteId === undefined) {
+				throw new Error("Failed to create site.");
+			}
+			this.plugin.store.createProject(siteId, this.plugin.app.workspace.getActiveFile())
+			await this.plugin.fileInfo.updateFrontMatter(FM_SITE_ID, siteId);
+		} else {
+			this.plugin.store.loadProject(siteId);
+			const siteUpdated = await this.plugin.store.updateProject(siteId, this.plugin.app.workspace.getActiveFile())
+			if (siteUpdated) {
+				const uid = await this.createSite(siteId);
+				if (uid === "" || uid === undefined || uid !== siteId) {
+					throw new Error("Failed to update site.");
+				}
+			}
+		}
+		return
+	}
+
+	async handlePost(file: TFile) {
+		const siteId = this.plugin.fileInfo.getSiteId();
+		const found = this.plugin.store.isFileInProject(siteId, file.path)
+		if (!found) {
+			const postId = await this.createPost(NEW_ID, file);
+			if (postId === "") {
+				throw new Error("Failed to create post in site: " + siteId);
+			}
+
+			const sitePostId = await this.createSitePost(siteId, postId, file);
+			if (sitePostId === "") {
+				throw new Error("Failed to create site post for site: " + siteId + ", post: " + postId);
+			}
+
+			this.plugin.store.addFileToProject(siteId, postId, sitePostId, "SitePost", file)
+		} else {
+			const postId = this.plugin.store.getFileId(siteId, file.path)
+			const updated = await this.plugin.store.updateFileInProject(siteId, postId, file)
+			if (updated) {
+				const uid = await this.createPost(postId, file);
+				if (uid === "" || uid != postId) {
+					throw new Error("Failed to update post: " + postId);
+				}
+			}
+		}
+
+		return
+	}
+
+	async handleResource(file: TFile) {
+		const siteId = this.plugin.fileInfo.getSiteId();
+		const found = this.plugin.store.isFileInProject(siteId, file.path)
+		if (!found) {
+			const resourceId = await this.createResource(NEW_ID, file);
+			if (resourceId === "") {
+				throw new Error("Failed to create resource in site: " + siteId);
+			}
+
+			const siteResourceId = await this.createSiteResource(siteId, resourceId, file);
+			if (siteResourceId === "") {
+				throw new Error("Failed to create site resource for site: " + siteId + ", resource: " + resourceId);
+			}
+
+			this.plugin.store.addFileToProject(siteId, resourceId, siteResourceId, "SiteResource", file)
+		} else {
+			const resourceId = this.plugin.store.getFileId(siteId, file.path)
+			const updated = await this.plugin.store.updateFileInProject(siteId, resourceId, file)
+			if (updated) {
+				const uid = await this.createResource(resourceId, file);
+				if (uid === "" || uid != resourceId) {
+					throw new Error("Failed to update post: " + resourceId);
+				}
+			}
+		}
+
+		return
 	}
 
 	async sendSiteRequest(action: string, siteId: string): Promise<string> {
@@ -258,11 +346,41 @@ export class Hugoverse {
 		return this.sendSiteRequest("deploy", siteId);
 	}
 
+	async deleteEntity(entityType: string, id: string): Promise<boolean> {
+		const deleteUrl = `${this.apiUrl}/api/content/delete`;
 
-	async createSite(): Promise<string> {
+		let body: FormData = new FormData();
+		body.append("id", id);
+		body.append("type", entityType);
+		body.append("status", "");
+
+		// 将 FormData 转换为 ArrayBuffer
+		const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+		const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+
+		const response: RequestUrlResponse = await requestUrl({
+			url: deleteUrl,
+			method: "POST",
+			headers: {
+				"Authorization": `Bearer ${await this.user.getToken()}`,
+				"Content-Type": `multipart/form-data; boundary=${boundary}`,
+			},
+			body: arrayBufferBody,
+		});
+
+		// 检查响应状态
+		if (response.status !== 200) {
+			throw new Error(`Entity ${entityType}, id: ${id} deletion failed: ${response.text}`);
+		}
+
+		return true
+	}
+
+	async createSite(id: string): Promise<string> {
 		const createSiteUrl = `${this.apiUrl}/api/content?type=Site`;
 
 		let body: FormData = new FormData();
+		body.append("id", id);
 		body.append("title", this.plugin.fileInfo.getBaseName());
 		body.append("description", this.plugin.fileInfo.getDescription());
 		body.append("base_url", "/");
@@ -339,6 +457,7 @@ export class Hugoverse {
 			}
 
 			let body = new FormData();
+			body.append("id", NEW_ID);
 			body.append("site", `/api/content?type=Site&id=${siteId}`);
 			body.append(`${entityType === "SitePost" ? "post" : "resource"}`, `/api/content?type=${entityType === "SitePost" ? "Post" : "Resource"}&id=${entityId}`);
 			body.append("path", path);
@@ -369,7 +488,7 @@ export class Hugoverse {
 		}
 	}
 
-	async createPost(file: TFile): Promise<string> {
+	async createPost(id: string, file: TFile): Promise<string> {
 		try {
 			const createPostUrl = `${this.apiUrl}/api/content?type=Post`;
 
@@ -379,6 +498,7 @@ export class Hugoverse {
 			// 创建 FormData 并添加基本字段
 			let body: FormData = new FormData();
 			body.append("type", "Post");
+			body.append("id", id);
 			body.append("title", file.name);
 			body.append("author", this.plugin.user.getName());
 			body.append("params", "key: value");
@@ -412,7 +532,7 @@ export class Hugoverse {
 		}
 	}
 
-	async createResource(file: TFile): Promise<string> {
+	async createResource(id: string, file: TFile): Promise<string> {
 		try {
 			const createResourceUrl = `${this.apiUrl}/api/content?type=Resource`;
 
@@ -422,7 +542,9 @@ export class Hugoverse {
 			// 创建 FormData 并添加基本字段
 			let body: FormData = new FormData();
 			body.append("type", "Resource");
+			body.append("id", id);
 			body.append("name", file.name);
+			body.append("size", fileContent.byteLength.toString());
 
 			const fileExtension = file.extension;
 			let mimeType = "application/octet-stream"; // 默认 MIME 类型

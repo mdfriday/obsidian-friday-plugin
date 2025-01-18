@@ -4,6 +4,7 @@ import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
 import {User} from "./user";
 import {Hugoverse} from "./hugoverse";
 import {FileInfo} from "./fileinfo";
+import {Store} from "./store";
 
 interface FridaySettings {
 	username: string;
@@ -39,6 +40,8 @@ export default class FridayPlugin extends Plugin {
 	user: User
 	hugoverse: Hugoverse
 
+	store: Store
+
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
 		await this.loadSettings();
@@ -59,6 +62,7 @@ export default class FridayPlugin extends Plugin {
 		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
 
 		this.user = new User(this);
+		this.store = new Store(this);
 		this.hugoverse = new Hugoverse(this);
 	}
 

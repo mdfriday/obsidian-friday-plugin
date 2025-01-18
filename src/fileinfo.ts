@@ -98,6 +98,8 @@ export class FileInfo {
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			frontmatter[key] = value;
 		});
+
+		await new Promise(resolve => setTimeout(resolve, 100));
 	}
 
 	hasFridayPluginEnabled(): boolean {
