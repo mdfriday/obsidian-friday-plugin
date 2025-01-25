@@ -116,7 +116,7 @@ export class FileInfo {
 	}
 
 	getContentFolder(): string {
-		return path.join(this.getProjFolder(), FM_CONTENT)
+		return path.posix.join(this.getProjFolder(), FM_CONTENT)
 	}
 
 	getProjFolder(): string {

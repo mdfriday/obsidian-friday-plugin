@@ -169,7 +169,7 @@
 			// 遍历每个目录部分，逐层构建路径
 			for (const part of directoryPath.split('/')) {
 				if (part) { // 确保不处理空部分
-					currentPath = path.join(currentPath, part); // 构建当前路径
+					currentPath = path.posix.join(currentPath, part); // 构建当前路径
 
 					if (!await adapter.stat(currentPath)) {
 						// 如果目录不存在，则创建它

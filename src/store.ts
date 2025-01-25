@@ -21,7 +21,6 @@ export class Store {
 		}
 		this.debounceSaveProjects = setTimeout(() => {
 			localStorage.setItem(key, JSON.stringify(data));
-			console.log('Projects saved');
 		}, 1000);
 	}
 
