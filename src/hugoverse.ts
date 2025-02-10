@@ -9,7 +9,7 @@ interface ManifestConfig {
 	validation: { rules: { field: string; required: boolean; message: string }[] };
 }
 
-const supportedImageExtensions = ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp"];
+const supportedImageExtensions = ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "ico", "tif", "tiff"];
 const supportedCompressionExtensions = ["zip"];
 const NEW_ID = "-1"
 
@@ -327,9 +327,11 @@ export class Hugoverse {
 			let errMsg = `Failed to ${action} site.`;
 			if (response.status === 409) {
 				errMsg = "Domain is already taken. Please choose a different one by changing the note name.";
+			} else if (response.status === 400) {
+				errMsg = response.json.data[0];
 			}
 			console.error(`Error generating site ${action}:`, response.text);
-			new Notice(errMsg, 5000);
+			new Notice(errMsg, 8000);
 
 			return "";
 		}
@@ -387,7 +389,6 @@ export class Hugoverse {
 		body.append("theme", this.plugin.fileInfo.getThemeName());
 		body.append("owner", this.plugin.user.getName());
 		body.append("Params", this.plugin.fileInfo.getParams());
-		body.append("working_dir", "");
 		body.append("default_content_language", this.plugin.fileInfo.getDefaultLanguage());
 		body.append("google_analytics", this.plugin.fileInfo.getGA());
 
@@ -568,6 +569,13 @@ export class Hugoverse {
 						break;
 					case "webp":
 						mimeType = "image/webp";
+						break;
+					case "ico":
+						mimeType = "image/vnd.microsoft.icon";
+						break;
+					case "tif":
+					case "tiff":
+						mimeType = "image/tiff";
 						break;
 					case "zip":
 						mimeType = "application/zip";
