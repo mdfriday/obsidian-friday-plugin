@@ -9,15 +9,39 @@ With 500+(we are working hard to adapt them) free themes and powerful shortcodes
 
 ![basic functionality](https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/demo/demo-preview.gif)
 
+### Youtube Demo
+
+[![YouTube Demo](https://img.youtube.com/vi/LiU-FeT7n28/0.jpg)](https://youtu.be/LiU-FeT7n28?si=6QZZXeIdxMdLl-IP)
+
+## More Resources
+
+- **[Official Website](https://mdfriday.com)**
+- **[Help Docs](https://help.mdfriday.com)**
+- **[Theme Gallery](https://gallery.mdfriday.com)**
+
+## Getting Support
+
+We’re here to help! Here’s how to reach us:
+
+- **Submit an Issue**: If you encounter any issues, feel free to open an issue on our [GitHub Repository](https://github.com/mdfriday/obsidian-friday-plugin/issues).
+- **Email Support**: You can also contact us via email at [support@mdfriday.com](mailto:support@mdfriday.com). Please note that while we strive to respond promptly, replies may not be immediate.
+
+### One-on-One Support
+
+- **WeChat**: wayde191
+- **X (Twitter)**: [@szm_tech](https://x.com/szm_tech)
+
+## Buy Me a Coffee ☕
+
+If you like Friday and want to support its development, you can donate here:  
+[![Buy Me a Coffee](https://www.paypal.com/en_US/i/btn/btn_donate_LG.gif)](https://paypal.me/mdfriday?country.x=C2&locale.x=zh_XC)
+
 ## Features
 
-- **500+ Themes**: Choose from a wide variety of themes to match your style and branding.
-- **Shortcodes Support**: Add dynamic content to your pages with shortcodes for images, links, embeds, and more.
-- **Multilingual Capabilities**: Create websites that support multiple languages.
-- **Easy Preview and Deployment**: See your changes live before publishing.
-- **Seamless Integration**: Friday integrates smoothly with Obsidian, so you can turn your notes into a site in no time.
-- **Native Obsidian Double-Link Syntax Support** (Coming Soon): Support for Obsidian's native double-link syntax is under development, allowing you to use your notes' internal links seamlessly.
-
+- **Launch in Minutes**: Convert your Markdown documents into fully functional websites within minutes, no technical setup required.
+- **Full Ownership**: Own your domain, hosting, and site files entirely. No vendor lock-in, and you can export your site anytime.
+- **No-Trace Mode**: Privacy-focused, ensuring all intermediate build files are removed for a completely private workflow.
+- **No Technical Knowledge Needed**: No need to learn HTML, CSS, or JavaScript—just write in Markdown, and we handle the rest.
 
 ## How to Use
 
@@ -40,13 +64,6 @@ With 500+(we are working hard to adapt them) free themes and powerful shortcodes
 5. **Deploy**
 	- When you’re ready to publish, you can deploy your site with a single click.
 	- Your site will be live within minutes, with options to further manage and update it.
-
-## Getting Support
-
-We’re here to help! Here’s how to reach us:
-
-- **Submit an Issue**: If you encounter any issues, feel free to open an issue on our [GitHub Repository](https://github.com/mdfriday/obsidian-friday-plugin/issues).
-- **Email Support**: You can also contact us via email at [support@mdfriday.com](mailto:support@mdfriday.com). Please note that while we strive to respond promptly, replies may not be immediate.
 
 ## What’s Next
 
