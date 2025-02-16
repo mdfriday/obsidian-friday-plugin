@@ -383,7 +383,8 @@ export class Hugoverse {
 
 		let body: FormData = new FormData();
 		body.append("id", id);
-		body.append("title", this.plugin.fileInfo.getBaseName());
+		body.append("title", this.plugin.fileInfo.getSiteTitle());
+		body.append("sub_domain", this.plugin.fileInfo.getBaseName());
 		body.append("description", this.plugin.fileInfo.getDescription());
 		body.append("base_url", "/");
 		body.append("theme", this.plugin.fileInfo.getThemeName());

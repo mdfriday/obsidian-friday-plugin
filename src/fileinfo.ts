@@ -5,7 +5,7 @@ import {
 	FM_DEFAULT_LANGUAGE,
 	FM_FRIDAY_PLUGIN, FM_GA,
 	FM_MENU, FM_PROJ,
-	FM_SITE_ID,
+	FM_SITE_ID, FM_SITE_TITLE,
 	FM_THEME
 } from "./frontmatter";
 import * as path from "path";
@@ -131,6 +131,10 @@ export class FileInfo {
 		return this.frontMatter?.[FM_SITE_ID] ?? '0';
 	}
 
+	getSiteTitle(): string {
+		return this.frontMatter?.[FM_SITE_TITLE] ?? this.getBaseName();
+	}
+
 	getThemeName(): string {
 		return this.frontMatter?.[FM_THEME] ?? ''
 	}
@@ -149,7 +153,7 @@ export class FileInfo {
 
 	getParams(): string {
 		const excludeKeys = [
-			FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_PROJ, FM_THEME,
+			FM_FRIDAY_PLUGIN, FM_SITE_ID, FM_SITE_TITLE, FM_PROJ, FM_THEME,
 			FM_MENU, FM_DEFAULT_LANGUAGE, FM_GA];
 
 		const paramsArray = [];
