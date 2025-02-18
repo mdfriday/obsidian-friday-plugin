@@ -60,7 +60,6 @@ export class Hugoverse {
 		await this.loadManifestConfig();
 
 		if (!this.manifestConfig) {
-			new Notice('Manifest configuration not loaded.');
 			return "";
 		}
 
@@ -192,7 +191,13 @@ export class Hugoverse {
 			return preUrl;
 		} catch (error) {
 			console.error("Error during preview:", error);
-			new Notice("Failed to generate preview.", 5000);
+			if (error instanceof Error) {
+				if (error.message.includes('401')) {
+					new Notice("Invalid token, please login again.", 8000);
+				}
+			} else {
+				new Notice("Failed to generate preview.", 5000);
+			}
 			callback(0); // 如果出错，回调设置为0%
 			return "";
 		}
@@ -297,6 +302,7 @@ export class Hugoverse {
 	}
 
 	async sendSiteRequest(action: string, siteId: string): Promise<string> {
+		try {
 		// 定义请求的URL
 		const url = `${this.apiUrl}/api/${action}?type=Site&id=${siteId}`;
 
@@ -329,15 +335,22 @@ export class Hugoverse {
 				errMsg = "Domain is already taken. Please choose a different one by changing the note name.";
 			} else if (response.status === 400) {
 				errMsg = response.json.data[0];
+			} else if (response.status === 401) {
+				errMsg = "User token is invalid, please re-login.";
 			}
 			console.error(`Error generating site ${action}:`, response.text);
-			new Notice(errMsg, 8000);
+			new Notice(errMsg, 10000);
 
 			return "";
 		}
 
 		// 解析返回的 JSON 数据，提取 ID
 		return response.json.data[0];
+		} catch (error) {
+			console.error(`Error generating site ${action}:`, error);
+			new Notice("Failed to deploy site.", 5000);
+			return "";
+		}
 	}
 
 	async previewSite(siteId: string): Promise<string> {
@@ -404,27 +417,31 @@ export class Hugoverse {
 		const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
 		const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
 
-		const response: RequestUrlResponse = await requestUrl({
-			url: createSiteUrl,
-			method: "POST",
-			headers: {
-				"Authorization": `Bearer ${await this.user.getToken()}`,
-				"Content-Type": `multipart/form-data; boundary=${boundary}`,
-			},
-			body: arrayBufferBody,
-		});
+		try {
+			const response: RequestUrlResponse = await requestUrl({
+				url: createSiteUrl,
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${await this.user.getToken()}`,
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+				},
+				body: arrayBufferBody,
+			});
 
-		// 检查响应状态
-		if (response.status !== 200) {
-			const err = new Error(`Site creation failed: ${response.text}`);
-			console.error("Failed to create site:", err.toString());
-			new Notice(err.toString(), 5000);
-			return "";
+			// 检查响应状态
+			if (response.status !== 200) {
+				const err = new Error(`Site creation failed: ${response.text}`);
+				console.error("Failed to create site:", err.toString());
+				new Notice(err.toString(), 5000);
+				return "";
+			}
+
+			// 解析返回的 JSON 数据，提取 ID
+			// 假设`data`数组的第一个元素包含所需的`id`
+			return response.json.data[0].id;
+		} catch (error) {
+			throw new Error(`Failed to create site: ${error}`);
 		}
-
-		// 解析返回的 JSON 数据，提取 ID
-		// 假设`data`数组的第一个元素包含所需的`id`
-		return response.json.data[0].id;
 	}
 
 	async createSitePost(siteId: string, postId: string, file: TFile): Promise<string> {

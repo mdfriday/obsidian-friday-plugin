@@ -35,7 +35,7 @@ export class Store {
 
 	createProject(projectId: string, file: TFile) {
 		if (localStorage.getItem(this.projectKey(projectId)) !== null) {
-			throw new Error(`project ID ${projectId} already exists`);
+			localStorage.removeItem(this.projectKey(projectId))
 		}
 		this.currentProject = {
 			project_id: projectId,
