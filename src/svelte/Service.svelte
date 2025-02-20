@@ -1,12 +1,12 @@
 <script lang="ts">
-	import {App, requestUrl, RequestUrlResponse, Platform, Notice} from "obsidian";
+	import {App, Notice, Platform, requestUrl, RequestUrlResponse} from "obsidian";
 	import ProgressBar from './ProgressBar.svelte';
 	import {onMount} from 'svelte';
 	import FridayPlugin from "../main";
 	import {FileInfo} from "../fileinfo";
 	import JSZip from "jszip";
 	import * as path from "path";
-	import {FM_PROJ} from "../frontmatter";
+	import {FM_CONTENT_EMPTY, FM_PROJ} from "../frontmatter";
 
 	// 接收 props
 	export let fileInfo: FileInfo;
@@ -22,10 +22,26 @@
 	let downloadProgress = 0;
 	let isDownloading = false;
 	let themeZipFileExists = false;
+	let isProjectSet = false;
+
+	// Add reactive declaration to watch fileInfo changes
+	$: {
+		if (fileInfo) {
+			const currentProj = fileInfo.getProjFolder();
+			const checkPath = async () => {
+				isProjectSet = currentProj &&
+					currentProj !== FM_CONTENT_EMPTY &&
+					currentProj !== '' &&
+					currentProj !== undefined &&
+					await app.vault.adapter.exists(currentProj);
+			};
+			checkPath();
+		}
+	}
 
 	onMount(async () => {
 		if (Platform.isDesktop) {
-			await refreshDownloadStatus()
+			await refreshDownloadStatus();
 		}
 	});
 
@@ -52,14 +68,22 @@
 	const downloadFile = async () => {
 		await refreshDownloadStatus()
 
-		if (themeZipFileExists && await app.vault.adapter.exists(themeContentPath)){
-			return
+		if (themeZipFileExists && await app.vault.adapter.exists(themeContentPath)) {
+			if (fileInfo.getProjFolder() === FM_CONTENT_EMPTY || fileInfo.getProjFolder() === '' || fileInfo.getProjFolder() === undefined) {
+				await fileInfo.updateFrontMatter(FM_PROJ, themeContentPath);
+				downloadProgress = 100;
+				isProjectSet = true;
+				isDownloading = false;
+				return;
+			}
+			return;
 		}
 
 		if (themeZipFileExists) {
 			downloadProgress = 100;
 			await extractFile(themePath, themeProjPath);
 			await fileInfo.updateFrontMatter(FM_PROJ, themeContentPath);
+			isProjectSet = true;
 			return
 		}
 
@@ -118,6 +142,7 @@
 
 			await extractFile(themePath, themeProjPath);
 			await fileInfo.updateFrontMatter(FM_PROJ, themeContentPath);
+			isProjectSet = true;
 		} catch (error) {
 			isDownloading = false;
 		}
@@ -194,7 +219,13 @@
 				{#if isDownloading}
 					<ProgressBar progress={downloadProgress}/>
 				{:else}
-					<button on:click={downloadFile}>Download Example</button>
+					<button 
+						class="download-btn" 
+						disabled={isProjectSet}
+						on:click={downloadFile}
+					>
+						{isProjectSet ? 'Example Already Downloaded' : 'Download Example'}
+					</button>
 				{/if}
 			</div>
 		{/if}
@@ -214,5 +245,12 @@
 
 	.spacer {
 		height: 20px; /* 可以根据需要调整这个高度 */
+	}
+
+	.download-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+		background-color: var(--interactive-normal);
+		color: var(--text-muted);
 	}
 </style>
