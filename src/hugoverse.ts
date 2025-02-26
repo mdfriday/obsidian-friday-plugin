@@ -326,6 +326,7 @@ export class Hugoverse {
 				"Content-Type": `multipart/form-data; boundary=${boundary}`,
 			},
 			body: arrayBufferBody,
+			throw: false,
 		});
 
 		// 检查响应状态
