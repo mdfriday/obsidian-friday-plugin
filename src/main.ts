@@ -13,6 +13,12 @@ interface FridaySettings {
 
 	rootDomain: string
 	netlifyToken: string
+	deploymentType: 'netlify' | 'scp'
+	scpUsername: string
+	scpPassword: string
+	scpHost: string
+	scpPort: string
+	scpPath: string
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
@@ -20,7 +26,13 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	password: '',
 	userToken: '',
 	rootDomain: '',
-	netlifyToken: ''
+	netlifyToken: '',
+	deploymentType: 'netlify',
+	scpUsername: '',
+	scpPassword: '',
+	scpHost: '',
+	scpPort: '22',
+	scpPath: ''
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -221,31 +233,117 @@ class FridaySettingTab extends PluginSettingTab {
 		}
 
 		containerEl.createEl("h2", {text: "Deployment"});
+		
+		// Add deployment type selector
 		new Setting(containerEl)
-			.setName("Root Domain")
-			.setDesc("Set your custom root domain (e.g., mdfriday.com). This will be used for generated links.")
-			.addText(text =>
-				text
-					.setPlaceholder("Enter your root domain")
-					.setValue(this.plugin.settings.rootDomain || "")
+			.setName("Deployment Type")
+			.setDesc("Choose your deployment method")
+			.addDropdown(dropdown => 
+				dropdown
+					.addOption('netlify', 'Netlify')
+					.addOption('scp', 'SCP (Private Server)')
+					.setValue(this.plugin.settings.deploymentType)
 					.onChange(async (value) => {
-						this.plugin.settings.rootDomain = value;
+						this.plugin.settings.deploymentType = value as 'netlify' | 'scp';
 						await this.plugin.saveSettings();
+						this.display(); // Refresh to show/hide relevant settings
 					})
 			);
 
-		new Setting(containerEl)
-			.setName("Netlify Token")
-			.setDesc("Set your Netlify personal access token here.")
-			.addText(text =>
-				text
-					.setPlaceholder("Enter your Netlify Token")
-					.setValue(this.plugin.settings.netlifyToken || "")
-					.onChange(async (value) => {
-						this.plugin.settings.netlifyToken = value;
-						await this.plugin.saveSettings();
-					})
-			);
+		// Show different settings based on deployment type
+		if (this.plugin.settings.deploymentType === 'netlify') {
+			new Setting(containerEl)
+				.setName("Root Domain")
+				.setDesc("Set your custom root domain (e.g., mdfriday.com). This will be used for generated links.")
+				.addText(text =>
+					text
+						.setPlaceholder("Enter your root domain")
+						.setValue(this.plugin.settings.rootDomain || "")
+						.onChange(async (value) => {
+							this.plugin.settings.rootDomain = value;
+							await this.plugin.saveSettings();
+						})
+				);
 
+			new Setting(containerEl)
+				.setName("Netlify Token")
+				.setDesc("Set your Netlify personal access token here.")
+				.addText(text =>
+					text
+						.setPlaceholder("Enter your Netlify Token")
+						.setValue(this.plugin.settings.netlifyToken || "")
+						.onChange(async (value) => {
+							this.plugin.settings.netlifyToken = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		} else {
+			// SCP Settings
+			new Setting(containerEl)
+				.setName("SCP Username")
+				.setDesc("Username for SCP connection")
+				.addText(text =>
+					text
+						.setPlaceholder("Enter SCP username")
+						.setValue(this.plugin.settings.scpUsername || "")
+						.onChange(async (value) => {
+							this.plugin.settings.scpUsername = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("SCP Password")
+				.setDesc("Password for SCP connection")
+				.addText(text => {
+					text
+						.setPlaceholder("Enter SCP password")
+						.setValue(this.plugin.settings.scpPassword || "")
+						.onChange(async (value) => {
+							this.plugin.settings.scpPassword = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.type = "password";
+				});
+
+			new Setting(containerEl)
+				.setName("SCP Host")
+				.setDesc("Host address for SCP connection")
+				.addText(text =>
+					text
+						.setPlaceholder("Enter host address")
+						.setValue(this.plugin.settings.scpHost || "")
+						.onChange(async (value) => {
+							this.plugin.settings.scpHost = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("SCP Port")
+				.setDesc("Port for SCP connection (default: 22)")
+				.addText(text =>
+					text
+						.setPlaceholder("22")
+						.setValue(this.plugin.settings.scpPort || "22")
+						.onChange(async (value) => {
+							this.plugin.settings.scpPort = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("Remote Path")
+				.setDesc("Remote server path for deployment")
+				.addText(text =>
+					text
+						.setPlaceholder("/var/www/html")
+						.setValue(this.plugin.settings.scpPath || "")
+						.onChange(async (value) => {
+							this.plugin.settings.scpPath = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
 	}
 }

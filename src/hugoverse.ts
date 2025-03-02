@@ -85,7 +85,33 @@ export class Hugoverse {
 		}
 	}
 
-	async deploy(): Promise<string> {
+	private validateNetlifyConfig(): string {
+		if (!this.plugin.settings.rootDomain) {
+			return "Please configure your root domain in settings";
+		}
+		if (!this.plugin.settings.netlifyToken) {
+			return "Please configure your Netlify token in settings";
+		}
+		return "";
+	}
+
+	private validateSCPConfig(): string {
+		if (!this.plugin.settings.scpUsername) {
+			return "Please configure your SCP username in settings";
+		}
+		if (!this.plugin.settings.scpPassword) {
+			return "Please configure your SCP password in settings";
+		}
+		if (!this.plugin.settings.scpHost) {
+			return "Please configure your SCP host in settings";
+		}
+		if (!this.plugin.settings.scpPath) {
+			return "Please configure your SCP remote path in settings";
+		}
+		return "";
+	}
+
+	async deploy(deploymentType: 'netlify' | 'scp'): Promise<string> {
 		const errors = await this.validateActiveFileFrontmatter();
 		if (errors) {
 			return errors;
@@ -93,7 +119,139 @@ export class Hugoverse {
 
 		const siteId = this.plugin.fileInfo.getSiteId();
 
-		return await this.deploySite(siteId)
+		switch (deploymentType) {
+			case 'netlify':
+				const netlifyError = this.validateNetlifyConfig();
+				if (netlifyError) {
+					new Notice(netlifyError, 5000);
+					return "";
+				}
+				return await this.deployToNetlify(siteId);
+			case 'scp':
+				const scpError = this.validateSCPConfig();
+				if (scpError) {
+					new Notice(scpError, 5000);
+					return "";
+				}
+				return await this.deployToSCP(siteId);
+			default:
+				new Notice("Unsupported deployment type", 5000);
+				return "";
+		}
+	}
+
+	private async deployToNetlify(siteId: string): Promise<string> {
+		return await this.deploySite(siteId);
+	}
+
+	private async deployToSCP(siteId: string): Promise<string> {
+		try {
+			// 定义请求的URL
+			const url = `${this.apiUrl}/api/deploy?type=Site&id=${siteId}`;
+
+			// 创建 FormData 实例并添加必要字段
+			let body = new FormData();
+			body.append("site_id", `${siteId}`);
+			body.append("host_name", "Private");
+			body.append("username", this.plugin.settings.scpUsername);
+			body.append("password", this.plugin.settings.scpPassword);
+			body.append("host", this.plugin.settings.scpHost);
+			body.append("port", this.plugin.settings.scpPort);
+			body.append("remote_path", this.plugin.settings.scpPath);
+
+			// 将 FormData 转换为 ArrayBuffer
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+
+			// 发送请求
+			const response: RequestUrlResponse = await requestUrl({
+				url: url,
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${await this.user.getToken()}`,
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+				},
+				body: arrayBufferBody,
+				throw: false,
+			});
+
+			// 检查响应状态
+			if (response.status !== 200) {
+				let errMsg = "Failed to deploy site via SCP.";
+				if (response.status === 401) {
+					errMsg = "User token is invalid, please re-login.";
+				} else if (response.status === 400) {
+					errMsg = response.json.data[0];
+				}
+				console.error("Error deploying site via SCP:", response.text);
+				new Notice(errMsg, 10000);
+				return "";
+			}
+
+			// 获取 session ID 并开始监控进度
+			const sessionId = response.json.data[0].session_id;
+			const totalSize = response.json.data[0].size;
+			
+			if (!sessionId) {
+				throw new Error('No session ID received from server');
+			}
+
+			// 返回包含会话ID和总大小的对象
+			return JSON.stringify({
+				sessionId,
+				totalSize,
+				deployType: 'scp'
+			});
+		} catch (error) {
+			console.error("Error deploying site via SCP:", error);
+			new Notice("Failed to deploy site via SCP.", 5000);
+			return "";
+		}
+	}
+
+	async monitorSCPProgress(sessionId: string, callback: (progress: number, status: string) => void): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const eventSource = new EventSource(`${this.apiUrl}/api/deploy/progress?session_id=${sessionId}`);
+			let accumulatedBytes = 0;
+			let lastFileProgress = 0;
+
+			eventSource.onmessage = (event) => {
+				const data = JSON.parse(event.data);
+				
+				switch (data.event) {
+					case 'progress':
+						const currentFileProgress = data.data.current;
+						const increment = currentFileProgress - lastFileProgress;
+						
+						if (increment > 0) {
+							accumulatedBytes += increment;
+							lastFileProgress = currentFileProgress;
+						}
+
+						if (data.data.current === data.data.total) {
+							lastFileProgress = 0;
+						}
+
+						callback(accumulatedBytes, 'Uploading...');
+						break;
+
+					case 'complete':
+						eventSource.close();
+						resolve(data.data.url || '');
+						break;
+
+					case 'error':
+						eventSource.close();
+						reject(new Error(data.data.message || 'Deployment failed'));
+						break;
+				}
+			};
+
+			eventSource.onerror = (error) => {
+				eventSource.close();
+				reject(new Error('Connection error during deployment'));
+			};
+		});
 	}
 
 	async preview(callback: (progress: number) => void): Promise<string> {
