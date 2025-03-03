@@ -41,7 +41,7 @@ export class User {
 		this.password = this.plugin.settings.password
 
 		if (!this.name || !this.password) {
-			new Notice("Please enter your username and password", 5000);
+			new Notice("Please enter your email and password", 5000);
 			return;
 		}
 
@@ -78,7 +78,14 @@ export class User {
 		this.password = this.plugin.settings.password
 
 		if (!this.name || !this.password) {
-			new Notice("Please enter your username and password", 5000);
+			new Notice("Please enter your email and password", 5000);
+			return;
+		}
+
+		// 验证邮箱格式
+		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+		if (!emailRegex.test(this.name)) {
+			new Notice("Please enter a valid email address", 5000);
 			return;
 		}
 

@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-friday-plugin",
-	"version": "0.2.13",
+	"version": "0.2.14",
 	"description": "Friday is an Obsidian plugin that empowers users to focus on content creation by writing Markdown files, while we handle the distribution. From creating websites to content deployment, Friday serves as a creative output assistant, helping users turn their work into publishable sites with ease.",
 	"main": "main.js",
 	"scripts": {

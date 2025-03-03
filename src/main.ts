@@ -184,11 +184,11 @@ class FridaySettingTab extends PluginSettingTab {
 
 			// Email 输入框
 			new Setting(containerEl)
-				.setName("Username")
-				.setDesc("Enter your username")
+				.setName("Email")
+				.setDesc("Enter your email address")
 				.addText((text) =>
 					text
-						.setPlaceholder("username")
+						.setPlaceholder("your@email.com")
 						.setValue(username || "") // 填充现有用户名
 						.onChange(async (value) => {
 							this.plugin.settings.username = value;
