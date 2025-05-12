@@ -4,6 +4,7 @@
 
 import { MarkdownPostProcessorContext, Plugin } from 'obsidian';
 import { shortcodeService } from './shortcodeService';
+import { transformShortcodeImagePaths } from '../obsidian';
 
 /**
  * Register the shortcode post processor with Obsidian
@@ -33,10 +34,27 @@ async function processShortcodeBlock(
         // First, ensure all shortcodes are registered
         await shortcodeService.ensureShortcodesRegistered(source);
         
-        // Perform step 1: Replace shortcodes with placeholders
-        const renderedMarkdown = shortcodeService.render(source);
+        // Get the current file path for image resolution
+        const currentFilePath = ctx.sourcePath;
         
-        if (renderedMarkdown === source) {
+        // Log the current file and source for debugging
+        console.log(`处理 shortcode (文件: ${currentFilePath}):`);
+        console.log(`原始 shortcode 内容:`, source);
+        
+        // Transform image paths in shortcode content before rendering
+        // Use the async version of the function
+        const transformedSource = await transformShortcodeImagePaths(
+            source, 
+            plugin.app, 
+            currentFilePath
+        );
+        
+        console.log("转换后的内容:", transformedSource);
+
+        // Perform rendering of the shortcode
+        const renderedMarkdown = shortcodeService.render(transformedSource);
+        
+        if (renderedMarkdown === transformedSource) {
             // If no rendering occurred, show the original source
             el.createEl('pre', { text: source });
             return;
@@ -48,11 +66,11 @@ async function processShortcodeBlock(
         // Add a class to the container for styling
         el.addClass('obsidian-friday-shortcode-container');
     } catch (error) {
-        console.error('Error processing shortcode block:', error);
+        console.error('处理 shortcode 时出错:', error);
         
         // Show error in the UI
         const errorEl = el.createEl('div', { cls: 'shortcode-error' });
-        errorEl.createEl('h3', { text: 'Error rendering shortcode' });
+        errorEl.createEl('h3', { text: '渲染 shortcode 时出错' });
         errorEl.createEl('pre', { text: error.message });
         errorEl.createEl('pre', { text: source });
     }

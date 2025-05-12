@@ -7,6 +7,7 @@ import {FileInfo} from "./fileinfo";
 import {Store} from "./store";
 import { registerShortcodeProcessor } from './shortcode';
 import './shortcode/styles.css';
+import './obsidian';
 
 interface FridaySettings {
 	username: string;
