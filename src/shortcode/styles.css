@@ -1,0 +1,65 @@
+/* 
+ * Styles for Obsidian Friday Shortcodes
+ */
+
+.obsidian-friday-shortcode-container {
+    margin: 20px 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.obsidian-friday-shortcode {
+    display: block;
+    padding: 16px;
+    background-color: var(--background-secondary);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.shortcode-error {
+    padding: 16px;
+    background-color: rgba(255, 0, 0, 0.1);
+    border-left: 4px solid #ff5555;
+    border-radius: 4px;
+    margin: 16px 0;
+}
+
+.shortcode-error h3 {
+    color: #ff5555;
+    margin: 0 0 8px 0;
+}
+
+.shortcode-error pre {
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+/* Specific styles for text-based shortcodes */
+.obsidian-friday-shortcode h1,
+.obsidian-friday-shortcode h2,
+.obsidian-friday-shortcode h3 {
+    margin-top: 0;
+}
+
+/* Styles for cover shortcodes */
+.obsidian-friday-shortcode[data-type="cover"] {
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.obsidian-friday-shortcode img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .obsidian-friday-shortcode {
+        padding: 12px;
+    }
+} 

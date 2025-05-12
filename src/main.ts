@@ -5,6 +5,8 @@ import {User} from "./user";
 import {Hugoverse} from "./hugoverse";
 import {FileInfo} from "./fileinfo";
 import {Store} from "./store";
+import { registerShortcodeProcessor } from './shortcode';
+import './shortcode/styles.css';
 
 interface FridaySettings {
 	username: string;
@@ -67,6 +69,9 @@ export default class FridayPlugin extends Plugin {
 
 		this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
 		this.app.workspace.onLayoutReady(() => this.initLeaf())
+		
+		// Register shortcode processor
+		registerShortcodeProcessor(this);
 	}
 
 	async initFriday(): Promise<void> {
