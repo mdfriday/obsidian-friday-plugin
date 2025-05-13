@@ -2,7 +2,7 @@
  * Shortcode processor for Obsidian's post-processing of markdown
  */
 
-import { MarkdownPostProcessorContext, Plugin } from 'obsidian';
+import type { MarkdownPostProcessorContext, Plugin } from 'obsidian';
 import { shortcodeService } from './shortcodeService';
 import { transformShortcodeImagePaths } from '../obsidian';
 

@@ -4,7 +4,7 @@
 
 import { requestUrl } from 'obsidian';
 import { API_URL_DEV, API_URL_PRO } from '../main';
-import { ShortcodeItem, ShortcodeSearchResult } from './types';
+import type { ShortcodeItem, ShortcodeSearchResult } from './types';
 
 // Define API endpoints
 const API_ENDPOINTS = {

@@ -4,7 +4,7 @@
  */
 
 import { Shortcode } from '@mdfriday/shortcode';
-import { ShortcodeMetadata, ShortcodeItem } from './types';
+import type { ShortcodeMetadata, ShortcodeItem } from './types';
 
 // This import is separated to avoid circular dependency issues
 // shortcodeApiService is referenced within functions, not at module level

@@ -6,7 +6,9 @@ import {Hugoverse} from "./hugoverse";
 import {FileInfo} from "./fileinfo";
 import {Store} from "./store";
 import { registerShortcodeProcessor } from './shortcode';
-import './shortcode/styles.css';
+import { DownloadImageFeature } from './download-image';
+import './styles/site-preview.css';
+import './styles/export-image.css';
 import './obsidian';
 
 interface FridaySettings {
@@ -56,6 +58,7 @@ export default class FridayPlugin extends Plugin {
 	hugoverse: Hugoverse
 
 	store: Store
+	downloadImageFeature: DownloadImageFeature;
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
@@ -73,6 +76,10 @@ export default class FridayPlugin extends Plugin {
 		
 		// Register shortcode processor
 		registerShortcodeProcessor(this);
+		
+		// Initialize download image feature
+		this.downloadImageFeature = new DownloadImageFeature(this);
+		this.downloadImageFeature.initialize();
 	}
 
 	async initFriday(): Promise<void> {
@@ -93,7 +100,20 @@ export default class FridayPlugin extends Plugin {
 		}).then(r => {})
 	}
 
-	onunload() {}
+	onunload() {
+		// 检查是否需要清理 ServerView
+		const serverLeaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
+		serverLeaves.forEach(leaf => {
+			if (leaf.view instanceof ServerView) {
+				const view = leaf.view as ServerView;
+				// 将会调用 view.onClose()
+				leaf.detach();
+			}
+		});
+
+		// 清理其他资源
+		console.log('Unloading Friday plugin');
+	}
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
