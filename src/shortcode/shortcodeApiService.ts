@@ -8,15 +8,15 @@ import type { ShortcodeItem, ShortcodeSearchResult } from './types';
 
 // Define API endpoints
 const API_ENDPOINTS = {
-    SHORTCODES: '/api/shortcodes',
-    SHORTCODE_DETAILS: '/api/shortcode/details',
-    SHORTCODE_SEARCH: '/api/shortcodes/search',
-    SHORTCODE_TAGS: '/api/shortcodes/tags',
+    SHORTCODES: '/api/scs',
+    SHORTCODE_DETAILS: '/api/sc',
+    SHORTCODE_SEARCH: '/api/sc/search',
+    SHORTCODE_TAGS: '/api/sc/tags',
 };
 
 // Define shortcode request parameters
 const SHORTCODE_REQUEST_PARAMS = {
-    type: 'shortcode',
+    type: 'ShortCode',
     count: 20,
     order: 'desc',
 };

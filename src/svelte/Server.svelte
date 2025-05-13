@@ -31,6 +31,15 @@
 	function setActiveTab(tab: TabName) {
 		activeTab = tab;
 	}
+
+	// 处理键盘事件
+	function handleKeyDown(event: KeyboardEvent, tab: TabName) {
+		// 当用户按下 Enter 或空格键时触发点击
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			setActiveTab(tab);
+		}
+	}
 </script>
 
 
@@ -47,16 +56,28 @@
 	{:else}
 		<section id="friday-plugin-main">
 			<!-- 标签页切换栏 -->
-			<div class="friday-tabs">
-				<div 
+			<div class="friday-tabs" role="tablist" aria-label="Friday tabs">
+				<div
 					class="friday-tab {activeTab === 'shortcodes' ? 'active' : ''}" 
 					on:click={() => setActiveTab('shortcodes')}
+					on:keydown={(e) => handleKeyDown(e, 'shortcodes')}
+					role="tab"
+					tabindex={activeTab === 'shortcodes' ? 0 : -1}
+					aria-selected={activeTab === 'shortcodes'}
+					id="tab-shortcodes"
+					aria-controls="panel-shortcodes"
 				>
 					Shortcodes
 				</div>
 				<div 
 					class="friday-tab {activeTab === 'site' ? 'active' : ''}" 
 					on:click={() => setActiveTab('site')}
+					on:keydown={(e) => handleKeyDown(e, 'site')}
+					role="tab"
+					tabindex={activeTab === 'site' ? 0 : -1}
+					aria-selected={activeTab === 'site'}
+					id="tab-site"
+					aria-controls="panel-site"
 				>
 					Site
 				</div>
@@ -65,7 +86,12 @@
 			<!-- 标签页内容 -->
 			<div class="friday-tab-content">
 				{#if activeTab === 'site'}
-					<div>
+					<div 
+						role="tabpanel" 
+						id="panel-site" 
+						aria-labelledby="tab-site" 
+						tabindex="0"
+					>
 						<Info/>
 						<Service {fileInfo} {app} {plugin}/>
 						<hr class="centered-line">
@@ -74,7 +100,14 @@
 						{/if}
 					</div>
 				{:else if activeTab === 'shortcodes'}
-					<Shortcodes {fileInfo} {app} {plugin} />
+					<div 
+						role="tabpanel" 
+						id="panel-shortcodes" 
+						aria-labelledby="tab-shortcodes" 
+						tabindex="0"
+					>
+						<Shortcodes {fileInfo} {app} {plugin} />
+					</div>
 				{/if}
 			</div>
 		</section>
@@ -112,6 +145,9 @@
 		font-weight: 500;
 		border-bottom: 2px solid transparent;
 		transition: all 0.2s ease;
+		background: none;
+		border: none;
+		text-align: center;
 	}
 
 	.friday-tab.active {
@@ -121,6 +157,11 @@
 
 	.friday-tab:hover:not(.active) {
 		background-color: var(--background-modifier-hover);
+	}
+
+	.friday-tab:focus {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: -2px;
 	}
 
 	.friday-tab-content {
