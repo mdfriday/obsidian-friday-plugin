@@ -3,15 +3,18 @@
 	import Info from "./Info.svelte"
 	import Service from "./Service.svelte"
 	import BuildDeploy from "./BuildDeploy.svelte"
+	import Shortcodes from "./Shortcodes.svelte"
 	import {FileInfo} from "../fileinfo";
 	import {onMount} from "svelte";
 	import {Notice} from "obsidian";
 	import FridayPlugin from "../main";
+	import type { TabName } from "../server";
 
 	// 接收 props
 	export let fileInfo: FileInfo;
 	export let app: App;
 	export let plugin: FridayPlugin;
+	export let activeTab: TabName = 'shortcodes'; // 接收外部传入的标签页，默认为 shortcodes
 
 	let isClientSupported = false;
 
@@ -23,6 +26,11 @@
 			return;
 		}
 	});
+
+	// 切换标签页函数
+	function setActiveTab(tab: TabName) {
+		activeTab = tab;
+	}
 </script>
 
 
@@ -38,12 +46,35 @@
 		</div>
 	{:else}
 		<section id="friday-plugin-main">
-			<div>
-				<Info/>
-				<Service {fileInfo} {app} {plugin}/>
-				<hr class="centered-line">
-				{#if fileInfo.isReadyForBuild}
-					<BuildDeploy {fileInfo} {plugin} />
+			<!-- 标签页切换栏 -->
+			<div class="friday-tabs">
+				<div 
+					class="friday-tab {activeTab === 'shortcodes' ? 'active' : ''}" 
+					on:click={() => setActiveTab('shortcodes')}
+				>
+					Shortcodes
+				</div>
+				<div 
+					class="friday-tab {activeTab === 'site' ? 'active' : ''}" 
+					on:click={() => setActiveTab('site')}
+				>
+					Site
+				</div>
+			</div>
+
+			<!-- 标签页内容 -->
+			<div class="friday-tab-content">
+				{#if activeTab === 'site'}
+					<div>
+						<Info/>
+						<Service {fileInfo} {app} {plugin}/>
+						<hr class="centered-line">
+						{#if fileInfo.isReadyForBuild}
+							<BuildDeploy {fileInfo} {plugin} />
+						{/if}
+					</div>
+				{:else if activeTab === 'shortcodes'}
+					<Shortcodes {fileInfo} {app} {plugin} />
 				{/if}
 			</div>
 		</section>
@@ -69,4 +100,30 @@
 		background-color: transparent; /* 确保背景透明 */
 	}
 
+	.friday-tabs {
+		display: flex;
+		border-bottom: 1px solid var(--background-modifier-border);
+		margin-bottom: 15px;
+	}
+
+	.friday-tab {
+		padding: 8px 16px;
+		cursor: pointer;
+		font-weight: 500;
+		border-bottom: 2px solid transparent;
+		transition: all 0.2s ease;
+	}
+
+	.friday-tab.active {
+		border-bottom: 2px solid var(--interactive-accent);
+		color: var(--interactive-accent);
+	}
+
+	.friday-tab:hover:not(.active) {
+		background-color: var(--background-modifier-hover);
+	}
+
+	.friday-tab-content {
+		padding: 10px 0;
+	}
 </style>

@@ -4,10 +4,12 @@ import Server from './svelte/Server.svelte';
 import {FileInfo} from "./fileinfo";
 
 export const FRIDAY_SERVER_VIEW_TYPE = 'Friday';
+export type TabName = 'site' | 'shortcodes'; // 定义标签页类型
 
 export default class ServerView extends ItemView {
 	plugin: FridayPlugin;
 	private _app: Server | null = null;
+	private activeTab: TabName = 'shortcodes'; // 默认选中 Shortcodes 标签页
 
 	constructor(leaf: WorkspaceLeaf, plugin: FridayPlugin) {
 		super(leaf);
@@ -37,6 +39,14 @@ export default class ServerView extends ItemView {
 		);
 	}
 
+	// 切换标签页
+	setActiveTab(tabName: TabName) {
+		this.activeTab = tabName;
+		if (this._app) {
+			this._app.$set({ activeTab: tabName });
+		}
+	}
+
 	// 关闭时销毁 Svelte 实例
 	async onClose() {
 		if (this._app) {
@@ -54,6 +64,7 @@ export default class ServerView extends ItemView {
 				fileInfo: this.plugin.fileInfo,
 				app: this.app,
 				plugin: this.plugin,
+				activeTab: this.activeTab, // 传入当前激活的标签页
 			},
 		});
 	}
