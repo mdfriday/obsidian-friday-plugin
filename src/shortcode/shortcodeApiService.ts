@@ -2,9 +2,10 @@
  * Service for communicating with the backend API to fetch shortcodes
  */
 
-import { requestUrl } from 'obsidian';
-import { API_URL_DEV, API_URL_PRO } from '../main';
-import type { ShortcodeItem, ShortcodeSearchResult } from './types';
+import {requestUrl} from 'obsidian';
+import {GetBaseUrl} from '../main';
+import {getFullAssetUrl, getThumbnailUrl} from "./shortcodeUtils";
+import type {ShortcodeItem, ShortcodeSearchResult} from './types';
 
 // Define API endpoints
 const API_ENDPOINTS = {
@@ -27,7 +28,7 @@ const SHORTCODE_REQUEST_PARAMS = {
 const api = {
     async get<T>(url: string, options?: { params?: Record<string, any> }): Promise<T> {
         try {
-            const apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+            const apiUrl = GetBaseUrl();
             let fullUrl = apiUrl + url;
             
             // Add query parameters if provided
@@ -68,15 +69,24 @@ const api = {
  * Maps API Shortcode item to the app's ShortcodeItem format
  */
 function mapApiShortcodeToShortcodeItem(apiShortcode: any): ShortcodeItem {
-    return {
-        id: apiShortcode.uuid || apiShortcode.id.toString(),
-        title: apiShortcode.name,
-        slug: apiShortcode.slug,
-        description: apiShortcode.desc || apiShortcode.description,
-        template: apiShortcode.template,
-        example: apiShortcode.example,
-        tags: apiShortcode.tags || [],
-    };
+	return {
+		id: apiShortcode.uuid || apiShortcode.id.toString(),
+		title: apiShortcode.name,
+		slug: apiShortcode.slug,
+		description: apiShortcode.desc || apiShortcode.description,
+		template: apiShortcode.template,
+		example: apiShortcode.example,
+		tags: apiShortcode.tags || [],
+		asset: getFullAssetUrl(apiShortcode.asset),
+		thumbnail: getThumbnailUrl({
+			id: apiShortcode.id,
+			assetUrl: apiShortcode.asset,
+			width: apiShortcode.width,
+			height: apiShortcode.height
+		}),
+		width: apiShortcode.width,
+		height: apiShortcode.height,
+	};
 }
 
 /**
@@ -104,7 +114,6 @@ function buildSearchQuery(searchTerm: string, selectedTags: string[]): string {
         
         // Add the field searches WITHOUT wrapping in parentheses for simple queries
         parts.push(searchFields.join(' OR '));
-        console.log('Added search term conditions:', searchFields.join(' OR '));
     }
     
     // Add tags filter
@@ -116,7 +125,6 @@ function buildSearchQuery(searchTerm: string, selectedTags: string[]): string {
         
         // No parentheses for simple tag filters
         parts.push(tagsQuery);
-        console.log('Added tag filter conditions:', tagsQuery);
     }
     
     // Join with AND if we have multiple parts to ensure both search term and tags are matched
@@ -128,9 +136,7 @@ function buildSearchQuery(searchTerm: string, selectedTags: string[]): string {
         // For simple queries, no parentheses needed
         finalQuery = parts[0] || '';
     }
-    
-    console.log('Final constructed query:', finalQuery);
-    
+
     // Return the raw query without any URL encoding - the api utility will handle proper encoding
     return finalQuery;
 }
@@ -148,7 +154,7 @@ export const shortcodeApiService = {
      * Get the API URL based on the environment
      */
     getApiUrl(): string {
-        return process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+        return GetBaseUrl();
     },
 
     /**
@@ -175,8 +181,6 @@ export const shortcodeApiService = {
         const offset = page - 1;
         
         try {
-            console.log('Searching shortcodes with:', { page, limit, searchTerm, selectedTags });
-            
             // Determine if we have any filters (search term or tags)
             const hasFilters = searchTerm.trim() !== '' || selectedTags.length > 0;
             
@@ -199,16 +203,12 @@ export const shortcodeApiService = {
                         q: searchQuery,
                     };
                     
-                    console.log('Search query:', searchQuery);
-                    console.log('Search params:', searchParams);
-                    
                     response = await api.get<ApiResponse<any[]>>(
                         API_ENDPOINTS.SHORTCODE_SEARCH,
                         { params: searchParams }
                     );
                 } else {
                     // Fallback to regular endpoint if query is empty
-                    console.log('Empty search query, using regular endpoint');
                     response = await api.get<ApiResponse<any[]>>(
                         API_ENDPOINTS.SHORTCODES,
                         { params }
@@ -240,9 +240,7 @@ export const shortcodeApiService = {
             
             // Determine if there are more shortcodes
             const hasMore = shortcodes.length === limit;
-            
-            console.log(`Fetched ${shortcodes.length} shortcodes, hasMore: ${hasMore}`);
-            
+
             return { shortcodes, hasMore };
         } catch (error) {
             console.error('Error searching shortcodes:', error);
@@ -255,8 +253,6 @@ export const shortcodeApiService = {
      */
     async fetchAllTags(): Promise<string[]> {
         try {
-            console.log('Fetching all shortcode tags');
-            
             const params: Record<string, string> = {
                 type: SHORTCODE_REQUEST_PARAMS.type,
             };
@@ -290,8 +286,6 @@ export const shortcodeApiService = {
      */
     async fetchShortcodeById(id: number): Promise<ShortcodeItem | null> {
         try {
-            console.log(`Fetching shortcode with ID: ${id}`);
-            
             const params: Record<string, string | number | undefined> = {
                 type: SHORTCODE_REQUEST_PARAMS.type,
                 id,
@@ -302,9 +296,7 @@ export const shortcodeApiService = {
                 API_ENDPOINTS.SHORTCODE_DETAILS,
                 { params }
             );
-            
-            console.log('Shortcode details API response:', JSON.stringify(response, null, 2));
-            
+
             // Validate that we received a valid response
             if (!response || !response.data || !Array.isArray(response.data) || response.data.length === 0) {
                 console.error('Invalid API response for shortcode details:', response);
@@ -324,8 +316,6 @@ export const shortcodeApiService = {
      */
     async fetchShortcodeBySlug(slug: string): Promise<ShortcodeItem | null> {
         try {
-            console.log(`Fetching shortcode with slug: ${slug}`);
-            
             // Use search to find by slug
             const params: Record<string, string | number> = {
                 type: SHORTCODE_REQUEST_PARAMS.type,
@@ -338,9 +328,7 @@ export const shortcodeApiService = {
                 API_ENDPOINTS.SHORTCODE_SEARCH,
                 { params }
             );
-            
-            console.log('Shortcode by slug API response:', JSON.stringify(response, null, 2));
-            
+
             // Validate that we received a valid response
             if (!response || !response.data || !Array.isArray(response.data) || response.data.length === 0) {
                 console.error('Invalid API response for shortcode by slug:', response);
@@ -375,8 +363,6 @@ export const shortcodeApiService = {
      */
     async fetchShortcodeByName(name: string): Promise<ShortcodeItem | null> {
         try {
-            console.log(`Fetching shortcode by name: ${name}`);
-            
             // Build the endpoint URL - using the base URL since this endpoint isn't in API_ENDPOINTS
             const apiUrl = this.getApiUrl();
             const endpoint = `${apiUrl}/api/sc/hash?name=${encodeURIComponent(name)}`;

@@ -43,6 +43,9 @@ const DEFAULT_SETTINGS: FridaySettings = {
 export const FRIDAY_ICON = 'dice-5';
 export const API_URL_DEV = 'http://127.0.0.1:1314';
 export const API_URL_PRO = 'https://mdfriday.sunwei.xyz';
+export function GetBaseUrl(): string {
+	return process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+}
 
 const FRIDAY_ROOT_FOLDER = 'MDFriday';
 
@@ -110,9 +113,6 @@ export default class FridayPlugin extends Plugin {
 				leaf.detach();
 			}
 		});
-
-		// 清理其他资源
-		console.log('Unloading Friday plugin');
 	}
 
 	async loadSettings() {

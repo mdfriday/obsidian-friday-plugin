@@ -37,10 +37,6 @@ async function processShortcodeBlock(
         // Get the current file path for image resolution
         const currentFilePath = ctx.sourcePath;
         
-        // Log the current file and source for debugging
-        console.log(`处理 shortcode (文件: ${currentFilePath}):`);
-        console.log(`原始 shortcode 内容:`, source);
-        
         // Transform image paths in shortcode content before rendering
         // Use the async version of the function
         const transformedSource = await transformShortcodeImagePaths(
@@ -48,8 +44,6 @@ async function processShortcodeBlock(
             plugin.app, 
             currentFilePath
         );
-        
-        console.log("转换后的内容:", transformedSource);
 
         // Perform rendering of the shortcode
         const renderedMarkdown = shortcodeService.render(transformedSource);
@@ -66,8 +60,6 @@ async function processShortcodeBlock(
         // Add a class to the container for styling
         el.addClass('obsidian-friday-shortcode-container');
     } catch (error) {
-        console.error('处理 shortcode 时出错:', error);
-        
         // Show error in the UI
         const errorEl = el.createEl('div', { cls: 'shortcode-error' });
         errorEl.createEl('h3', { text: '渲染 shortcode 时出错' });

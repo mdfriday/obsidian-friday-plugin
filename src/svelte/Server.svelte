@@ -1,11 +1,11 @@
 <script lang="ts">
-	import {App, Platform} from "obsidian";
+	import {App, MarkdownView, Platform} from "obsidian";
 	import Info from "./Info.svelte"
 	import Service from "./Service.svelte"
 	import BuildDeploy from "./BuildDeploy.svelte"
 	import Shortcodes from "./Shortcodes.svelte"
 	import {FileInfo} from "../fileinfo";
-	import {onMount} from "svelte";
+	import {onMount, onDestroy} from "svelte";
 	import {Notice} from "obsidian";
 	import FridayPlugin from "../main";
 	import type { TabName } from "../server";
@@ -17,6 +17,8 @@
 	export let activeTab: TabName = 'shortcodes'; // 接收外部传入的标签页，默认为 shortcodes
 
 	let isClientSupported = false;
+	let activeMarkdownView: MarkdownView | null = null;
+	let cleanupActiveViewListener: (() => void) | null = null;
 
 	onMount(async () => {
 		isClientSupported = Platform.isDesktop;
@@ -25,7 +27,82 @@
 			new Notice('Only desktop is supported at this time.', 5000);
 			return;
 		}
+
+		// 设置初始活动视图
+		updateActiveMarkdownView();
+
+		// 1. 监听活动叶子变化，以便追踪最新的活动 MarkdownView
+		const onActiveLeafChange = () => {
+			updateActiveMarkdownView();
+		};
+
+		// 2. 监听文件打开事件，确保在用户打开新文件时更新
+		const onFileOpen = () => {
+			updateActiveMarkdownView();
+		};
+
+		// 3. 监听布局变化，以应对拆分视图和标签页变化
+		const onLayoutChange = () => {
+			updateActiveMarkdownView();
+		};
+
+		// 4. 尝试监听视图模式变化 (在某些 Obsidian API版本中可能无效)
+		const onViewModeChange = () => {
+			// 延迟一下，确保模式切换已完成
+			setTimeout(updateActiveMarkdownView, 50);
+		};
+
+		// 添加所有监听器
+		app.workspace.on('active-leaf-change', onActiveLeafChange);
+		app.workspace.on('file-open', onFileOpen);
+		app.workspace.on('layout-change', onLayoutChange);
+		app.workspace.on('editor-change', onViewModeChange);
+
+		// 设置清理函数
+		cleanupActiveViewListener = () => {
+			app.workspace.off('active-leaf-change', onActiveLeafChange);
+			app.workspace.off('file-open', onFileOpen);
+			app.workspace.off('layout-change', onLayoutChange);
+			app.workspace.off('editor-change', onViewModeChange);
+		};
 	});
+
+	onDestroy(() => {
+		// 清理监听器
+		if (cleanupActiveViewListener) {
+			cleanupActiveViewListener();
+		}
+	});
+
+	// 更新当前活动的 MarkdownView
+	function updateActiveMarkdownView() {
+		// 获取当前活动的视图
+		const currentView = app.workspace.getActiveViewOfType(MarkdownView);
+		
+		// 如果当前视图是可编辑的 markdown 视图，直接使用它
+		if (currentView && currentView.editor && currentView.getMode() !== 'preview') {
+			activeMarkdownView = currentView;
+			return;
+		}
+		
+		// 如果当前视图不可用，尝试从所有打开的视图中找到一个可编辑的视图
+		const leaves = app.workspace.getLeavesOfType('markdown');
+		const editableLeaves = leaves.filter(leaf => {
+			const view = leaf.view as MarkdownView;
+			return view && view.editor && view.getMode() !== 'preview';
+		});
+		
+		// 如果找到了可编辑的视图，使用第一个
+		if (editableLeaves.length > 0) {
+			activeMarkdownView = editableLeaves[0].view as MarkdownView;
+		} else if (currentView) {
+			// 如果没有可编辑的视图但有当前视图（预览模式），仍然记录它以便显示错误信息
+			activeMarkdownView = currentView;
+		} else {
+			// 没有找到任何 markdown 视图
+			activeMarkdownView = null;
+		}
+	}
 
 	// 切换标签页函数
 	function setActiveTab(tab: TabName) {
@@ -106,7 +183,7 @@
 						aria-labelledby="tab-shortcodes" 
 						tabindex="0"
 					>
-						<Shortcodes {fileInfo} {app} {plugin} />
+						<Shortcodes {plugin} {activeMarkdownView} />
 					</div>
 				{/if}
 			</div>

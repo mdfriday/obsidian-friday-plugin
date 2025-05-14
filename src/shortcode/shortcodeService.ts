@@ -78,7 +78,6 @@ export const shortcodeService = {
             
             if (!decodedTemplateString) {
                 console.error(`Failed to decode template for shortcode: ${shortcodeItem.title}`);
-                console.log('Original template:', shortcodeItem.template.substring(0, 100) + '...');
                 // Try to register with original template as fallback
                 this.registerWithOriginalTemplate(shortcodeItem);
                 return;
@@ -88,8 +87,6 @@ export const shortcodeService = {
             const templateJson = parseJson<Record<string, string>>(decodedTemplateString);
             
             if (templateJson && typeof templateJson === 'object') {
-                console.log(`Decoded template JSON for ${shortcodeItem.title} with ${Object.keys(templateJson).length} shortcodes`);
-                
                 // Find the main shortcode template using the title as key
                 const mainTemplate = templateJson[shortcodeItem.title];
                 
@@ -103,9 +100,8 @@ export const shortcodeService = {
                         tags: shortcodeItem.tags || []
                     };
                     
-                    let res = globalShortcode.registerShortcode(mainMetadata);
-                    console.log(`Registered main shortcode: ${shortcodeItem.title}, with ${mainTemplate}, result: ${res}`);
-                    
+					globalShortcode.registerShortcode(mainMetadata);
+
                     // Register all additional sub-shortcodes
                     Object.entries(templateJson).forEach(([name, template], index) => {
                         // Skip the main shortcode we already registered
@@ -123,16 +119,13 @@ export const shortcodeService = {
                             tags: [] // Not needed for registration by name
                         };
                         
-                        let res = globalShortcode.registerShortcode(subMetadata);
-                        console.log(`Registered sub-shortcode: ${name}, with ${template}, result: ${res}`);
+						globalShortcode.registerShortcode(subMetadata);
                     });
                 } else {
                     console.error(`Main template not found for shortcode: ${shortcodeItem.title}`);
-                    console.log('Available keys:', Object.keys(templateJson));
                     // Try with the first available template as fallback
                     const firstKey = Object.keys(templateJson)[0];
                     if (firstKey) {
-                        console.log(`Using first available template key: ${firstKey}`);
                         const fallbackMetadata: ShortcodeMetadata = {
                             id: parseInt(shortcodeItem.id, 10),
                             name: shortcodeItem.title,
@@ -149,8 +142,7 @@ export const shortcodeService = {
             } else {
                 // Not a valid JSON, try to use decoded string directly as template
                 console.warn(`Template for ${shortcodeItem.title} is not in the expected JSON format, using as plain template`);
-                console.log('Decoded template sample:', decodedTemplateString.substring(0, 100) + '...');
-                
+
                 // Create shortcode metadata with the decoded string as template
                 const metadata: ShortcodeMetadata = {
                     id: parseInt(shortcodeItem.id, 10),
@@ -189,7 +181,6 @@ export const shortcodeService = {
 
             // Register the shortcode
             globalShortcode.registerShortcode(metadata);
-            console.log(`Registered shortcode with original template: ${shortcodeItem.title}`);
         } catch (error) {
             console.error(`Critical failure registering shortcode ${shortcodeItem.title}:`, error);
         }
@@ -232,7 +223,7 @@ export const shortcodeService = {
      */
     decodeExample(shortcodeItem: ShortcodeItem): string {
         if (!shortcodeItem || !shortcodeItem.example) {
-            console.log('No example content to decode');
+            console.error('No example content to decode');
             return '';
         }
         
@@ -247,11 +238,9 @@ export const shortcodeService = {
             
             // Check if the decoded content is a URL (don't try to decode URLs)
             if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-                console.log('Example content is a URL:', decoded);
                 return decoded;
             }
             
-            console.log(`Successfully decoded example for ${shortcodeItem.title}`);
             return decoded;
         } catch (error) {
             console.error(`Error decoding example for ${shortcodeItem.title}:`, error);
@@ -277,10 +266,8 @@ export const shortcodeService = {
         const unregisteredShortcodes = shortcodeNames.filter(
             name => !this.isShortcodeRegistered(name)
         );
-        console.log('Unregistered shortcodes:', unregisteredShortcodes);
-        
+
         if (unregisteredShortcodes.length === 0) {
-            console.log('All shortcodes are already registered');
             return;
         }
         
@@ -289,7 +276,6 @@ export const shortcodeService = {
             const shortcodeItem = await this.fetchShortcodeByName(name);
             if (shortcodeItem) {
                 this.registerShortcode(shortcodeItem);
-                console.log(`Registered shortcode: ${name}`);
             } else {
                 console.warn(`Failed to fetch shortcode: ${name}`);
             }

@@ -1,14 +1,13 @@
 <script lang="ts">
-	import { App } from "obsidian";
+	import {App, MarkdownView, Notice} from "obsidian";
 	import { onMount, afterUpdate } from "svelte";
 	import { shortcodeService, shortcodeApiService, type ShortcodeItem, type ShortcodeSearchResult } from "../shortcode";
 	import FridayPlugin from "../main";
 	import { FileInfo } from "../fileinfo";
 
 	// 接收 props
-	export let fileInfo: FileInfo;
-	export let app: App;
 	export let plugin: FridayPlugin;
+	export let activeMarkdownView: MarkdownView | null = null; // 新增：从外部传入当前活动的 MarkdownView
 
 	let shortcodes: ShortcodeItem[] = [];
 	let searchQuery: string = "";
@@ -21,24 +20,18 @@
 	let containerRef: HTMLElement;
 	let searchTimeout: NodeJS.Timeout;
 	let isInitialLoad: boolean = true;
+	let loadedImages: Record<string, boolean> = {}; // Track loaded state of images
+	let insertingShortcodes: Record<string, boolean> = {}; // Track which shortcodes are being inserted
 
 	// 响应式计算过滤后的快捷码
 	$: filteredShortcodes = shortcodes;
 
 	onMount(async () => {
-		// 使用文件信息进行初始化
-		console.log("Initializing Shortcodes with file:", fileInfo);
-		
-		// 使用插件实例记录日志
-		plugin.status("Loading shortcodes...");
-		
 		// 加载标签
 		await loadTags();
 		// 加载初始快捷码
 		await loadShortcodes();
 		isInitialLoad = false;
-		
-		plugin.status("Shortcodes loaded");
 	});
 
 	afterUpdate(() => {
@@ -78,7 +71,6 @@
 	async function loadTags() {
 		try {
 			availableTags = await shortcodeApiService.fetchAllTags();
-			console.log('Loaded tags:', availableTags);
 		} catch (error) {
 			console.error("Error loading tags:", error);
 		}
@@ -91,6 +83,7 @@
 		if (resetList) {
 			shortcodes = [];
 			currentPage = 1;
+			loadedImages = {}; // Reset loaded images state
 		}
 		
 		try {
@@ -113,7 +106,6 @@
 			}
 			
 			hasMoreShortcodes = result.hasMore;
-			console.log(`Loaded ${result.shortcodes.length} shortcodes, has more: ${result.hasMore}`);
 		} catch (error) {
 			console.error("Error loading shortcodes:", error);
 		} finally {
@@ -144,7 +136,6 @@
 			shortcodes = [...shortcodes, ...newShortcodes];
 			
 			hasMoreShortcodes = result.hasMore;
-			console.log(`Loaded more shortcodes (page ${currentPage}), total: ${shortcodes.length}, has more: ${result.hasMore}`);
 		} catch (error) {
 			console.error("Error loading more shortcodes:", error);
 		} finally {
@@ -165,21 +156,71 @@
 	}
 
 	// 插入快捷码到当前文档
-	function insertShortcode(shortcode: ShortcodeItem) {
-		// 获取当前编辑器
-		const activeLeaf = app.workspace.activeLeaf;
-		if (!activeLeaf) return;
-		
-		const activeView = activeLeaf.view;
-		if (!activeView) return;
-		
-		// 使用 Obsidian API 插入文本
-		// @ts-ignore - 编辑器在某些视图类型上可能不存在
-		if (activeView.editor) {
+	async function insertShortcode(shortcode: ShortcodeItem) {
+		try {
+			// 设置加载状态
+			insertingShortcodes[shortcode.id] = true;
+			insertingShortcodes = {...insertingShortcodes}; // 触发响应式更新
+
+			// 首先注册 shortcode
+			shortcodeService.registerShortcode(shortcode);
+
+			// 解码 example 内容
+			let exampleContent = shortcodeService.decodeExample(shortcode) || `{{${shortcode.title}}}`;
+			
+			// 确保所有嵌套的 shortcodes 都已注册
+			await shortcodeService.ensureShortcodesRegistered(exampleContent);
+
+			// 检查是否有有效的 activeMarkdownView 并且它是处于编辑模式
+			if (!activeMarkdownView || !activeMarkdownView.editor || activeMarkdownView.getMode() === 'preview') {
+				// 显示错误信息
+				const isPreviewMode = activeMarkdownView && activeMarkdownView.getMode() === 'preview';
+				
+				if (isPreviewMode) {
+					await plugin.status('Cannot insert shortcode: Current view is in preview mode');
+					new Notice("Please switch to edit mode to insert shortcodes.", 6000);
+				} else {
+					await plugin.status('Cannot insert shortcode: No active editor');
+					new Notice("Please open a note in edit mode first.", 6000);
+				}
+				return;
+			}
+
+			// 获取编辑器实例
+			const editor = activeMarkdownView.editor;
+			
+			// 获取光标位置
+			const cursor = editor.getCursor();
+
+			// 创建带有格式的内容，用 shortcode 代码块包裹
+			const formattedContent = `\`\`\`shortcode\n\n${exampleContent}\n\n\`\`\``;
+			
+			// 插入内容到光标位置
+			editor.replaceRange(formattedContent, cursor);
+
+			// 通知用户
+			let filename = "";
+			if (activeMarkdownView && activeMarkdownView.file) {
+				filename = ` in "${activeMarkdownView.file.name}"`;
+			}
+			await plugin.status(`Inserted ${shortcode.title} shortcode${filename}`);
+		} catch (error) {
+			console.error('Error inserting shortcode:', error);
+			
+			// 提供更具体的错误消息
+			let errorMessage = 'Failed to insert shortcode';
+			
 			// @ts-ignore
-			const cursor = activeView.editor.getCursor();
-			// @ts-ignore
-			activeView.editor.replaceRange(`{{${shortcode.title}}}`, cursor);
+			if (error && error.message) {
+				// @ts-ignore
+				errorMessage += `: ${error.message}`;
+			}
+			
+			await plugin.status(errorMessage);
+		} finally {
+			// 重置加载状态
+			insertingShortcodes[shortcode.id] = false;
+			insertingShortcodes = {...insertingShortcodes}; // 触发响应式更新
 		}
 	}
 
@@ -203,11 +244,15 @@
 			action();
 		}
 	}
+
+	// 处理图片加载完成
+	function handleImageLoad(shortcodeId: string) {
+		loadedImages[shortcodeId] = true;
+		loadedImages = loadedImages; // 触发响应式更新
+	}
 </script>
 
 <div class="shortcodes-container" bind:this={containerRef}>
-	<h2>Shortcodes</h2>
-	
 	<!-- 搜索输入框 -->
 	<div class="search-container">
 		<input 
@@ -224,14 +269,16 @@
 	{#if availableTags.length > 0}
 		<div class="tags-container" role="group" aria-label="Filter by tags">
 			{#each availableTags as tag}
-				<button 
-					class="tag {selectedTags.includes(tag) ? 'selected' : ''}" 
+				<span 
+					class="tag-pill {selectedTags.includes(tag) ? 'selected' : ''}" 
 					on:click={() => toggleTag(tag)}
 					on:keydown={(e) => handleKeyDown(e, () => toggleTag(tag))}
+					tabindex="0"
+					role="button"
 					aria-pressed={selectedTags.includes(tag)}
 				>
 					{tag}
-				</button>
+				</span>
 			{/each}
 		</div>
 	{/if}
@@ -243,36 +290,61 @@
 		<div class="no-results" aria-live="polite">No shortcodes found</div>
 	{:else}
 		<!-- 快捷码列表 -->
-		<div class="shortcodes-list" role="list" aria-label="Shortcodes list">
+		<div class="shortcodes-grid" role="list" aria-label="Shortcodes list">
 			{#each filteredShortcodes as shortcode}
 				<div class="shortcode-item" role="listitem">
-					<div class="shortcode-header">
-						<h3>{shortcode.title}</h3>
-						<button 
-							on:click={() => insertShortcode(shortcode)} 
-							class="insert-btn"
-							aria-label="Insert {shortcode.title} shortcode"
-						>
-							Insert
-						</button>
+					<!-- 缩略图区域 -->
+					<div class="shortcode-thumbnail-container">
+						{#if shortcode.thumbnail}
+							<div class="thumbnail-wrapper">
+								<div class={`thumbnail-placeholder ${loadedImages[shortcode.id] ? 'hidden' : ''}`}></div>
+								<img 
+									src={shortcode.thumbnail} 
+									alt={shortcode.title}
+									class="shortcode-thumbnail {loadedImages[shortcode.id] ? 'loaded' : ''}"
+									on:load={() => handleImageLoad(shortcode.id)}
+									loading="lazy"
+								/>
+							</div>
+						{:else}
+							<div class="thumbnail-placeholder no-image">
+								<span>No preview</span>
+							</div>
+						{/if}
 					</div>
-					{#if shortcode.description}
-						<div class="shortcode-description">{shortcode.description}</div>
-					{/if}
-					{#if shortcode.tags && shortcode.tags.length > 0}
-						<div class="shortcode-tags" role="group" aria-label="Tags">
-							{#each shortcode.tags as tag}
-								<button 
-									class="shortcode-tag {selectedTags.includes(tag) ? 'selected' : ''}" 
-									on:click={() => toggleTag(tag)}
-									on:keydown={(e) => handleKeyDown(e, () => toggleTag(tag))}
-									aria-pressed={selectedTags.includes(tag)}
-								>
-									{tag}
-								</button>
-							{/each}
+					
+					<div class="shortcode-content">
+						<div class="shortcode-header">
+							<h3>{shortcode.title}</h3>
+							<button 
+								on:click={() => insertShortcode(shortcode)} 
+								class="insert-btn {insertingShortcodes[shortcode.id] ? 'loading' : ''}"
+								aria-label="Insert {shortcode.title} shortcode"
+								disabled={insertingShortcodes[shortcode.id]}
+							>
+								{insertingShortcodes[shortcode.id] ? 'Inserting...' : 'Insert'}
+							</button>
 						</div>
-					{/if}
+						{#if shortcode.description}
+							<div class="shortcode-description">{shortcode.description}</div>
+						{/if}
+						{#if shortcode.tags && shortcode.tags.length > 0}
+							<div class="shortcode-tags" role="group" aria-label="Tags">
+								{#each shortcode.tags as tag}
+									<span 
+										class="tag-pill {selectedTags.includes(tag) ? 'selected' : ''}" 
+										on:click={() => toggleTag(tag)}
+										on:keydown={(e) => handleKeyDown(e, () => toggleTag(tag))}
+										tabindex="0"
+										role="button"
+										aria-pressed={selectedTags.includes(tag)}
+									>
+										{tag}
+									</span>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
 			{/each}
 			
@@ -300,17 +372,12 @@
 		overflow-y: auto;
 	}
 	
-	h2 {
-		margin: 0;
-		padding: 0;
-	}
-	
 	.search-container {
 		width: 100%;
 		position: sticky;
 		top: 0;
 		z-index: 10;
-		background-color: var(--background-primary);
+		background-color: transparent;
 		padding: 10px 0;
 	}
 	
@@ -324,52 +391,146 @@
 	.tags-container {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
+		gap: 0.5rem;
 		position: sticky;
 		top: 58px;
 		z-index: 9;
-		background-color: var(--background-primary);
+		background-color: transparent;
 		padding: 5px 0;
 	}
 	
-	.tag {
-		padding: 4px 8px;
-		border-radius: 4px;
-		background-color: var(--background-modifier-border);
+	.tag-pill {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.25rem 0.75rem;
+		border-radius: 9999px; /* Full rounded for pill effect */
+		font-size: 0.75rem;
+		font-weight: 500;
+		background-color: var(--background-primary-alt);
+		color: var(--text-muted);
 		cursor: pointer;
-		font-size: 12px;
-		transition: all 0.2s ease;
-		border: none;
+		transition: all 0.15s ease;
+		user-select: none;
+		line-height: 1.5;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+		border: 1px solid var(--background-modifier-border);
+		min-width: 1.5rem;
+		height: 1.5rem;
 	}
 	
-	.tag.selected {
+	.tag-pill:hover {
+		background-color: var(--background-primary);
+		color: var(--text-normal);
+		transform: translateY(-1px);
+		box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+	}
+	
+	.tag-pill.selected {
 		background-color: var(--interactive-accent);
 		color: var(--text-on-accent);
+		border-color: var(--interactive-accent);
+		transform: translateY(-1px);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+		font-weight: 600;
 	}
 	
-	.tag:focus {
-		outline: 2px solid var(--interactive-accent);
-		outline-offset: -2px;
+	.tag-pill:focus {
+		outline: none;
+		box-shadow: 0 0 0 2px var(--background-modifier-border-hover), 0 0 0 4px var(--interactive-accent-hover);
 	}
 	
-	.shortcodes-list {
-		display: flex;
-		flex-direction: column;
+	.tag-pill:active {
+		transform: translateY(0);
+	}
+	
+	/* Hide but don't remove entirely for backward compatibility */
+	.tag {
+		display: none !important;
+	}
+	
+	.shortcode-tag {
+		display: none !important;
+	}
+	
+	/* 改为网格布局，更好地显示缩略图卡片 */
+	.shortcodes-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 		gap: 15px;
 		padding-bottom: 20px;
 	}
 	
 	.shortcode-item {
-		padding: 12px;
-		border-radius: 4px;
+		display: flex;
+		flex-direction: column;
+		border-radius: 8px;
 		background-color: var(--background-secondary);
 		border: 1px solid var(--background-modifier-border);
 		transition: transform 0.2s ease, box-shadow 0.2s ease;
+		overflow: hidden;
 	}
 	
 	.shortcode-item:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+	}
+	
+	/* 缩略图相关样式 */
+	.shortcode-thumbnail-container {
+		width: 100%;
+		position: relative;
+		overflow: hidden;
+		background-color: var(--background-modifier-border);
+		aspect-ratio: 16/9;
+	}
+	
+	.thumbnail-wrapper {
+		width: 100%;
+		height: 100%;
+		position: relative;
+	}
+	
+	.thumbnail-placeholder {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background-color: var(--background-secondary-alt);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		transition: opacity 0.3s ease;
+	}
+	
+	.thumbnail-placeholder.hidden {
+		opacity: 0;
+	}
+	
+	.thumbnail-placeholder.no-image {
+		position: relative;
+		color: var(--text-muted);
+		font-size: 14px;
+	}
+	
+	.shortcode-thumbnail {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		opacity: 0;
+		transition: opacity 0.3s ease;
+	}
+	
+	.shortcode-thumbnail.loaded {
+		opacity: 1;
+	}
+	
+	.shortcode-content {
+		padding: 12px;
+		display: flex;
+		flex-direction: column;
+		flex: 1;
 	}
 	
 	.shortcode-header {
@@ -403,36 +564,64 @@
 		outline-offset: -2px;
 	}
 	
+	.insert-btn.loading {
+		background-color: var(--background-modifier-border);
+		color: var(--text-muted);
+		cursor: not-allowed;
+		position: relative;
+		overflow: hidden;
+	}
+	
+	.insert-btn.loading::after {
+		content: "";
+		position: absolute;
+		left: -100%;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(
+			to right,
+			transparent 0%,
+			rgba(255, 255, 255, 0.2) 50%,
+			transparent 100%
+		);
+		animation: loading-animation 1.5s infinite;
+	}
+	
+	@keyframes loading-animation {
+		0% {
+			left: -100%;
+		}
+		100% {
+			left: 100%;
+		}
+	}
+	
 	.shortcode-description {
 		font-size: 14px;
 		margin-bottom: 8px;
 		color: var(--text-muted);
+		/* 添加文本截断，防止过长描述 */
+		overflow: hidden;
+		text-overflow: ellipsis;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
 	}
 	
 	.shortcode-tags {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 6px;
+		gap: 0.4rem;
+		margin-top: auto;
+		padding-top: 8px;
 	}
 	
-	.shortcode-tag {
-		padding: 2px 6px;
-		border-radius: 4px;
-		background-color: var(--background-modifier-border);
-		font-size: 11px;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		border: none;
-	}
-	
-	.shortcode-tag.selected {
-		background-color: var(--interactive-accent);
-		color: var(--text-on-accent);
-	}
-	
-	.shortcode-tag:focus {
-		outline: 2px solid var(--interactive-accent);
-		outline-offset: -2px;
+	.shortcode-tags .tag-pill {
+		padding: 0.15rem 0.6rem;
+		font-size: 0.7rem;
+		height: 1.3rem;
+		min-width: 1.3rem;
 	}
 	
 	.loading, .no-results {
@@ -445,6 +634,7 @@
 		text-align: center;
 		padding: 15px 0;
 		margin-top: 10px;
+		grid-column: 1 / -1; /* 让加载器占据整行 */
 	}
 	
 	.loading-more {

@@ -24,6 +24,10 @@ export interface ShortcodeItem {
     tags?: string[];
     slug?: string;
     example?: string;
+	asset?: string; // Image URL
+	thumbnail?: string; // Thumbnail URL
+	width?: number;
+	height?: number;
 }
 
 /**
@@ -32,4 +36,14 @@ export interface ShortcodeItem {
 export interface ShortcodeSearchResult {
     shortcodes: ShortcodeItem[];
     hasMore: boolean;
-} 
+}
+
+// Parameters for getThumbnailUrl
+export interface ThumbnailParams {
+	id: number;
+	assetUrl: string;
+	width: number;
+	height: number;
+	maxWidth?: number;
+	maxHeight?: number;
+}

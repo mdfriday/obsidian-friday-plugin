@@ -60,11 +60,8 @@ async function getObsidianResourceUri(app: App, file: TFile, sourcePath: string)
  * @returns 解析后的图片文件对象和路径
  */
 async function resolveImagePath(imagePath: string, app: App, currentFilePath: string): Promise<{file: TFile, uri: string} | null> {
-    console.log(`解析图片路径: ${imagePath}, 当前文件: ${currentFilePath}`);
-    
     // 如果是外部 URL，直接返回原始路径
     if (isExternalUrl(imagePath)) {
-        console.log(`外部 URL，不处理: ${imagePath}`);
         return null;
     }
     
@@ -72,7 +69,6 @@ async function resolveImagePath(imagePath: string, app: App, currentFilePath: st
         // 获取当前文件
         const currentFile = app.vault.getAbstractFileByPath(currentFilePath);
         if (!currentFile || !(currentFile instanceof TFile)) {
-            console.log(`未找到当前文件: ${currentFilePath}`);
             return null;
         }
         
@@ -81,15 +77,11 @@ async function resolveImagePath(imagePath: string, app: App, currentFilePath: st
         const resolvedFile = app.metadataCache.getFirstLinkpathDest(imagePath, currentFilePath);
         
         if (resolvedFile && resolvedFile instanceof TFile) {
-            console.log(`解析后的图片文件: ${resolvedFile.path}`);
-            
             // 使用 Obsidian 的方法获取正确的资源 URI
             const uri = await getObsidianResourceUri(app, resolvedFile, currentFilePath);
-            console.log(`生成的资源 URI: ${uri}`);
-            
             return { file: resolvedFile, uri };
         } else {
-            console.log(`无法解析图片路径: ${imagePath}`);
+            console.error(`无法解析图片路径: ${imagePath}`);
             return null;
         }
     } catch (error) {
@@ -183,8 +175,6 @@ export async function transformImagePaths(content: string, app: App, currentFile
  * @returns 已转换图片路径的 shortcode 内容
  */
 export async function transformShortcodeImagePaths(content: string, app: App, currentFilePath: string): Promise<string> {
-    console.log('转换 shortcode 中的图片路径:', content);
-    
     // 匹配任何 attribute="value" 模式
     const attributePattern = /(\w+)=["']([^"']*)["']/g;
     const matches = Array.from(content.matchAll(attributePattern));
@@ -206,8 +196,6 @@ export async function transformShortcodeImagePaths(content: string, app: App, cu
         
         // 检查属性值是否是图片路径
         if (isImagePath(attrValue) && !isExternalUrl(attrValue)) {
-            console.log(`检测到可能的图片路径: ${attrName}="${attrValue}"`);
-            
             // 创建替换 Promise
             const promise = (async () => {
                 const resolved = await resolveImagePath(attrValue, app, currentFilePath);
@@ -215,7 +203,6 @@ export async function transformShortcodeImagePaths(content: string, app: App, cu
                 if (resolved) {
                     // 使用 Obsidian 的资源 URI 创建新属性值
                     const newAttr = `${attrName}="${resolved.uri}"`;
-                    console.log(`转换为: ${newAttr}`);
                     return {
                         index: matchIndex,
                         fullMatch,
@@ -224,7 +211,6 @@ export async function transformShortcodeImagePaths(content: string, app: App, cu
                     };
                 } else {
                     // 如果路径无法解析，保留原始属性
-                    console.log(`无法解析路径，保留原始值: ${fullMatch}`);
                     return {
                         index: matchIndex,
                         fullMatch,
@@ -263,6 +249,5 @@ export async function transformShortcodeImagePaths(content: string, app: App, cu
     // 添加剩余内容
     newContent += content.substring(lastIndex);
     
-    console.log('转换结果:', newContent);
     return newContent;
 } 
