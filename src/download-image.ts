@@ -12,7 +12,8 @@ import {
     TFolder,
     Editor,
     FrontMatterCache,
-    MarkdownRenderer
+    MarkdownRenderer,
+    Component
 } from 'obsidian';
 // @ts-ignore - We'll add this file in the lib directory
 import domtoimage from './lib/dom-to-image-more';
@@ -47,13 +48,16 @@ const DEFAULT_SETTINGS: ExportImageSettings = {
 
 export class DownloadImageFeature {
     public plugin: Plugin;
-    settings: ExportImageSettings;
+    public settings: ExportImageSettings;
+    private modal: ExportImageModal | null = null;
     private buttonAdded: Set<string> = new Set();
     private buttons: Map<string, HTMLElement> = new Map();
+    private component: Component;
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
         this.settings = DEFAULT_SETTINGS;
+        this.component = new Component();
         this.loadSettings();
     }
 
@@ -221,7 +225,7 @@ export class DownloadImageFeature {
         frontmatter: FrontMatterCache | undefined,
         type: 'file' | 'selection'
     ): Promise<void> {
-        const modal = new ExportImageModal(app, this.settings, markdown, file, frontmatter, type, this);
+        const modal = new ExportImageModal(app, markdown, file, frontmatter, this.settings, this);
         modal.open();
     }
 
@@ -256,7 +260,7 @@ export class DownloadImageFeature {
             }
             
             const contentEl = document.createElement('div');
-            await MarkdownRenderer.render(app, markdown, contentEl, file.path, null);
+            await MarkdownRenderer.render(app, markdown, contentEl, file.path, this.component);
             el.appendChild(contentEl);
             
             container.appendChild(el);
@@ -381,33 +385,39 @@ export class DownloadImageFeature {
             this.buttons.delete(leafId);
         });
     }
+
+    /**
+     * 在销毁时清理资源
+     */
+    destroy() {
+        // 卸载组件以清理事件监听器
+        this.component.unload();
+        
+        // 关闭任何打开的模态窗口
+        if (this.modal) {
+            this.modal.close();
+            this.modal = null;
+        }
+    }
 }
 
 class ExportImageModal extends Modal {
-    private settings: ExportImageSettings;
     private markdown: string;
     private file: TFile;
     private frontmatter: FrontMatterCache | undefined;
-    private type: 'file' | 'selection';
     private previewElement: HTMLElement;
-    private downloadImageFeature: DownloadImageFeature;
+    private settings: ExportImageSettings;
+    private feature: DownloadImageFeature;
+    private component: Component;
 
-    constructor(
-        app: App, 
-        settings: ExportImageSettings, 
-        markdown: string, 
-        file: TFile, 
-        frontmatter: FrontMatterCache | undefined, 
-        type: 'file' | 'selection',
-        downloadImageFeature: DownloadImageFeature
-    ) {
+    constructor(app: App, markdown: string, file: TFile, frontmatter: FrontMatterCache | undefined, settings: ExportImageSettings, feature: DownloadImageFeature) {
         super(app);
-        this.settings = settings;
         this.markdown = markdown;
         this.file = file;
         this.frontmatter = frontmatter;
-        this.type = type;
-        this.downloadImageFeature = downloadImageFeature;
+        this.settings = settings;
+        this.feature = feature;
+        this.component = new Component();
     }
 
     onOpen() {
@@ -420,7 +430,7 @@ class ExportImageModal extends Modal {
 
         // Create title
         const titleEl = contentEl.createEl('h2');
-        titleEl.textContent = this.type === 'file' ? 'Export Note as Image' : 'Export Selection as Image';
+        titleEl.textContent = 'Export Note as Image';
 
         // Create container with two columns
         const container = contentEl.createEl('div');
@@ -573,7 +583,7 @@ class ExportImageModal extends Modal {
         // Render markdown content
         const contentEl = this.previewElement.createEl('div');
         contentEl.addClass('markdown-rendered');
-        await MarkdownRenderer.render(this.app, this.markdown, contentEl, this.file.path, null);
+        await MarkdownRenderer.render(this.app, this.markdown, contentEl, this.file.path, this.component);
     }
 
     async exportImage() {
@@ -625,15 +635,16 @@ class ExportImageModal extends Modal {
 
     async saveSettings() {
         try {
-            this.downloadImageFeature.settings = this.settings;
-            await this.downloadImageFeature.saveSettings();
+            this.feature.settings = this.settings;
+            await this.feature.saveSettings();
         } catch (error) {
             console.error('Failed to save export image settings:', error);
         }
     }
 
     onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
+        // 清理组件以避免内存泄漏
+        this.component.unload();
+        super.onClose();
     }
 }

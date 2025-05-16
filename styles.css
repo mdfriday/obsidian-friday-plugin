@@ -28,11 +28,12 @@
 .friday-export-modal-window {
   width: 90vw;
   max-width: 1920px;
+  height: 90vh;
+  max-height: 1920px;
 }
 .friday-export-modal .friday-export-container {
   display: flex;
   height: 70vh;
-  max-height: 700px;
   gap: 20px;
 }
 .friday-export-settings {

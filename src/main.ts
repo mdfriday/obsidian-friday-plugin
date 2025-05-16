@@ -113,6 +113,11 @@ export default class FridayPlugin extends Plugin {
 				leaf.detach();
 			}
 		});
+		
+		// 清理 downloadImageFeature 以避免内存泄漏
+		if (this.downloadImageFeature) {
+			this.downloadImageFeature.destroy();
+		}
 	}
 
 	async loadSettings() {
