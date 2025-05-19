@@ -1,7 +1,7 @@
 {
 	"id": "mdfriday",
 	"name": "Friday",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"minAppVersion": "0.15.0",
 	"description": "Notes to Website. Friday helps you turn Markdown documents into websites in minutes.",
 	"author": "sunwei",

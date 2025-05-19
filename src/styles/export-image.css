@@ -126,6 +126,31 @@
     background-color: var(--scrollbar-bg);
 }
 
+/* Unresolved image indicators */
+.friday-unresolved-image {
+    border: 2px dashed red !important;
+    min-width: 50px;
+    min-height: 50px;
+    display: inline-block;
+    position: relative;
+    background-color: rgba(255, 0, 0, 0.1);
+}
+
+.friday-unresolved-bg-image {
+    border: 2px dashed orange !important;
+    position: relative;
+    background-color: rgba(255, 165, 0, 0.1) !important;
+}
+
+.friday-unresolved-image::before,
+.friday-unresolved-bg-image::before {
+    content: "⚠️";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-size: 14px;
+}
+
 /* Mobile responsiveness */
 @media (max-width: 768px) {
     .friday-export-container {

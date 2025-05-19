@@ -53,6 +53,7 @@ export class DownloadImageFeature {
     private buttonAdded: Set<string> = new Set();
     private buttons: Map<string, HTMLElement> = new Map();
     private component: Component;
+    private currentFile: TFile | null = null;
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -182,6 +183,9 @@ export class DownloadImageFeature {
             return;
         }
 
+        // Store the current file
+        this.currentFile = file;
+
         let frontmatter: FrontMatterCache | undefined;
         // @ts-ignore - Accessing internal API
         frontmatter = app.metadataCache.getCache(file.path)?.frontmatter;
@@ -204,6 +208,9 @@ export class DownloadImageFeature {
             return;
         }
 
+        // Store the current file
+        this.currentFile = file;
+
         let frontmatter: FrontMatterCache | undefined;
         // @ts-ignore - Accessing internal API
         frontmatter = app.metadataCache.getCache(file.path)?.frontmatter;
@@ -213,6 +220,278 @@ export class DownloadImageFeature {
         } else {
             await this.showExportModal(app, selection, file, frontmatter, 'selection');
         }
+    }
+
+    /**
+     * Resolves local image paths to data URLs
+     * This ensures local images are properly embedded in the exported image
+     */
+    public async resolveLocalImages(element: HTMLElement, app: App, basePath: string): Promise<void> {
+        // For debugging - collect unresolved images
+        const unresolvedImages: string[] = [];
+        
+        // Process all img elements
+        await this.processImgElements(element, app, basePath, unresolvedImages);
+        
+        // Process background images in inline styles
+        await this.processBackgroundImages(element, app, basePath, unresolvedImages);
+        
+        // If there are unresolved images, log them for debugging
+        if (unresolvedImages.length > 0) {
+            console.warn('Unresolved images:', unresolvedImages);
+            
+            // Show a notice with the count of unresolved images
+            new Notice(`Warning: ${unresolvedImages.length} image(s) could not be resolved. Check console for details.`, 5000);
+        }
+    }
+    
+    /**
+     * Process all img elements in the container
+     */
+    private async processImgElements(element: HTMLElement, app: App, basePath: string, unresolvedImages: string[]): Promise<void> {
+        // Find all image elements
+        const images = element.querySelectorAll('img');
+        
+        for (const img of Array.from(images)) {
+            // Skip images that are already data URLs or external URLs
+            if (img.src.startsWith('data:') || (img.src.startsWith('http') && !img.src.includes('app://'))) {
+                continue;
+            }
+            
+            try {
+                // Extract the image path
+                let imgPath = img.src;
+                
+                // Handle Obsidian app:// URLs
+                if (imgPath.startsWith('app://')) {
+                    imgPath = this.extractPathFromAppUrl(imgPath);
+                } else {
+                    // Handle relative paths
+                    if (!imgPath.startsWith('/')) {
+                        // Get the directory of the base file
+                        const baseDir = basePath.substring(0, basePath.lastIndexOf('/'));
+                        imgPath = `${baseDir}/${imgPath}`;
+                    }
+                    
+                    // Remove leading slash for vault access
+                    if (imgPath.startsWith('/')) {
+                        imgPath = imgPath.substring(1);
+                    }
+                }
+                
+                // Resolve the image
+                const dataUrl = await this.resolveImageToDataUrl(imgPath, app, unresolvedImages);
+                if (dataUrl) {
+                    img.src = dataUrl;
+                } else {
+                    // Image not found - add warning styling
+                    this.markUnresolvedImage(img, imgPath, unresolvedImages);
+                }
+            } catch (error) {
+                console.error('Error processing image:', error);
+                unresolvedImages.push(img.src);
+            }
+        }
+    }
+    
+    /**
+     * Process background images in inline styles
+     */
+    private async processBackgroundImages(element: HTMLElement, app: App, basePath: string, unresolvedImages: string[]): Promise<void> {
+        // Find all elements with inline style
+        const elementsWithStyle = element.querySelectorAll('*[style*="background-image"]');
+        
+        for (const el of Array.from(elementsWithStyle)) {
+            try {
+                const style = (el as HTMLElement).style;
+                const backgroundImage = style.backgroundImage;
+                
+                // Skip if no background image or already a data URL
+                if (!backgroundImage || backgroundImage === 'none' || backgroundImage.startsWith('url("data:')
+                    || (backgroundImage.startsWith('url("http') && !backgroundImage.includes('app://'))) {
+                    continue;
+                }
+                
+                // Extract URL from the background-image style
+                // Format is typically: url("path/to/image.png")
+                const urlMatch = backgroundImage.match(/url\(['"]?([^'"]+)['"]?\)/);
+                if (!urlMatch || !urlMatch[1]) continue;
+                
+                let imgPath = urlMatch[1];
+                
+                // Handle Obsidian app:// URLs
+                if (imgPath.startsWith('app://')) {
+                    imgPath = this.extractPathFromAppUrl(imgPath);
+                } else {
+                    // Handle relative paths
+                    if (!imgPath.startsWith('/')) {
+                        // Get the directory of the base file
+                        const baseDir = basePath.substring(0, basePath.lastIndexOf('/'));
+                        imgPath = `${baseDir}/${imgPath}`;
+                    }
+                    
+                    // Remove leading slash for vault access
+                    if (imgPath.startsWith('/')) {
+                        imgPath = imgPath.substring(1);
+                    }
+                }
+                
+                // Resolve the image
+                const dataUrl = await this.resolveImageToDataUrl(imgPath, app, unresolvedImages);
+                if (dataUrl) {
+                    style.backgroundImage = `url("${dataUrl}")`;
+                } else {
+                    // Mark element with unresolved background image
+                    (el as HTMLElement).classList.add('friday-unresolved-bg-image');
+                    (el as HTMLElement).title = `Background image not found: ${imgPath}`;
+                    // Add a visual indicator for background images
+                    (el as HTMLElement).style.border = '2px dashed orange';
+                    (el as HTMLElement).style.position = 'relative';
+                    
+                    // Add a warning icon or text to indicate missing background
+                    const warningEl = document.createElement('div');
+                    warningEl.style.position = 'absolute';
+                    warningEl.style.top = '2px';
+                    warningEl.style.right = '2px';
+                    warningEl.style.backgroundColor = 'rgba(255, 165, 0, 0.7)';
+                    warningEl.style.color = 'white';
+                    warningEl.style.padding = '2px 5px';
+                    warningEl.style.fontSize = '10px';
+                    warningEl.style.borderRadius = '3px';
+                    warningEl.textContent = '⚠️ Missing BG';
+                    (el as HTMLElement).appendChild(warningEl);
+                }
+            } catch (error) {
+                console.error('Error processing background image:', error);
+                unresolvedImages.push(`background-image in element ${(el as HTMLElement).tagName}`);
+            }
+        }
+    }
+    
+    /**
+     * Extract file path from Obsidian app:// URL
+     */
+    private extractPathFromAppUrl(appUrl: string): string {
+        // Format is typically: app://some-id/absolute/path/to/file.png?timestamp
+        try {
+            // Remove the app:// prefix and any query parameters
+            let cleanPath = appUrl.replace(/^app:\/\/[^\/]+\//, '');
+            cleanPath = cleanPath.split('?')[0];
+            
+            // Extract just the filename for vault lookup
+            const filename = cleanPath.split('/').pop() || '';
+            
+            // Search for the file in the vault
+            const files = this.plugin.app.vault.getAllLoadedFiles();
+            const matchingFile = files.find(f => 
+                f instanceof TFile && 
+                f.name === filename
+            );
+            
+            if (matchingFile && matchingFile instanceof TFile) {
+                return matchingFile.path;
+            }
+            
+            // Fallback: just return the cleaned path, and we'll try to resolve it later
+            return cleanPath;
+        } catch (error) {
+            console.error('Error extracting path from app URL:', error);
+            return '';
+        }
+    }
+    
+    /**
+     * Resolve an image path to a data URL
+     */
+    private async resolveImageToDataUrl(imgPath: string, app: App, unresolvedImages: string[]): Promise<string | null> {
+        // Check if the image file exists in the vault
+        const imageFile = app.vault.getAbstractFileByPath(imgPath);
+        
+        if (imageFile instanceof TFile) {
+            // Read the image file content
+            const imageArrayBuffer = await app.vault.readBinary(imageFile);
+            const blob = new Blob([imageArrayBuffer], { type: this.getMimeType(imageFile.extension) });
+            
+            // Convert to data URL
+            return await this.blobToDataURL(blob);
+        }
+        
+        // If we can't find the file by path, try a more aggressive search by filename
+        const filename = imgPath.split('/').pop() || '';
+        if (filename) {
+            const files = app.vault.getAllLoadedFiles();
+            const matchingFile = files.find(f => 
+                f instanceof TFile && 
+                f.name === filename && 
+                this.isImageFile(f.extension)
+            );
+            
+            if (matchingFile && matchingFile instanceof TFile) {
+                // Read the image file content
+                const imageArrayBuffer = await app.vault.readBinary(matchingFile);
+                const blob = new Blob([imageArrayBuffer], { type: this.getMimeType(matchingFile.extension) });
+                
+                // Convert to data URL
+                return await this.blobToDataURL(blob);
+            }
+        }
+        
+        // If we reach here, the image couldn't be resolved
+        unresolvedImages.push(imgPath);
+        return null;
+    }
+    
+    /**
+     * Mark an unresolved image with visual indicators
+     */
+    private markUnresolvedImage(img: HTMLImageElement, imgPath: string, unresolvedImages: string[]): void {
+        // Add a class to the image for styling
+        img.classList.add('friday-unresolved-image');
+        
+        // Add title attribute with error information
+        img.title = `Image not found: ${imgPath}`;
+        
+        // Add a warning border to make it visible in the preview
+        img.style.border = '2px dashed red';
+        
+        // Add to the list of unresolved images
+        unresolvedImages.push(imgPath);
+    }
+    
+    /**
+     * Check if a file extension is an image type
+     */
+    private isImageFile(extension: string): boolean {
+        const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'tiff', 'tif'];
+        return imageExtensions.includes(extension.toLowerCase());
+    }
+
+    /**
+     * Convert a blob to a data URL
+     */
+    public blobToDataURL(blob: Blob): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+    
+    /**
+     * Get MIME type from file extension
+     */
+    public getMimeType(extension: string): string {
+        const mimeTypes: Record<string, string> = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif': 'image/gif',
+            'svg': 'image/svg+xml',
+            'webp': 'image/webp'
+        };
+        
+        return mimeTypes[extension.toLowerCase()] || 'application/octet-stream';
     }
 
     /**
@@ -268,6 +547,9 @@ export class DownloadImageFeature {
             // Wait for rendering
             await new Promise(r => setTimeout(r, 500));
             
+            // Resolve local images before capturing
+            await this.resolveLocalImages(container, app, file.path);
+            
             // Capture as image
             await this.captureAndSave(container, file.basename);
             
@@ -286,6 +568,11 @@ export class DownloadImageFeature {
     private async captureAndSave(element: HTMLElement, filename: string): Promise<void> {
         const notice = new Notice('Generating image...', 0);
         try {
+            // Before capturing, ensure all local images are resolved
+            if (this.currentFile) {
+                await this.resolveLocalImages(element, this.plugin.app, this.currentFile.path);
+            }
+            
             const scale = this.settings.resolutionMode === '2x' ? 2 : 
                           this.settings.resolutionMode === '3x' ? 3 : 
                           this.settings.resolutionMode === '4x' ? 4 : 1;
@@ -595,6 +882,9 @@ class ExportImageModal extends Modal {
         try {
             // Need to first save the settings
             await this.saveSettings();
+            
+            // Resolve local images before capturing
+            await this.feature.resolveLocalImages(this.previewElement, this.app, this.file.path);
             
             // Capture the preview as an image
             const scale = this.settings.resolutionMode === '2x' ? 2 : 
