@@ -9,7 +9,6 @@ import {
 	FM_THEME
 } from "./frontmatter";
 import * as path from "path";
-import * as yaml from "js-yaml";
 import {IsLanguageSupported, IsRtlLanguage} from "./language";
 
 export class FileInfo {

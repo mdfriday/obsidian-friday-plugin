@@ -9,7 +9,6 @@
 	import {FM_CONTENT_EMPTY, FM_PROJ} from "../frontmatter";
 
 	// 接收 props
-	export let fileInfo: FileInfo;
 	export let app: App;
 	export let plugin: FridayPlugin;
 

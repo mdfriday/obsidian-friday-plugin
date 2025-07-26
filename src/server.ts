@@ -1,42 +1,28 @@
-import {ItemView, WorkspaceLeaf, TFile} from 'obsidian';
+import {ItemView, WorkspaceLeaf, TFile, TFolder} from 'obsidian';
 import FridayPlugin, {FRIDAY_ICON} from "./main";
 import Server from './svelte/Server.svelte';
 import {FileInfo} from "./fileinfo";
 
-export const FRIDAY_SERVER_VIEW_TYPE = 'Friday';
+export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
 export type TabName = 'site' | 'shortcodes'; // 定义标签页类型
 
 export default class ServerView extends ItemView {
 	plugin: FridayPlugin;
 	private _app: Server | null = null;
-	private activeTab: TabName = 'shortcodes'; // 默认选中 Shortcodes 标签页
+	private activeTab: TabName = 'site'; // 默认选中 site 标签页
+	private selectedFolder: TFolder | null = null; // 新增：存储选中的文件夹
 
 	constructor(leaf: WorkspaceLeaf, plugin: FridayPlugin) {
 		super(leaf);
 		this.plugin = plugin;
+	}
 
-		// 监听用户选择文件的变化
-		this.registerEvent(
-			this.app.workspace.on('active-leaf-change', async () => {
-				await this.updateFileInfo();
-			})
-		);
-
-		// 监听 frontmatter 的变化
-		this.registerEvent(
-			this.app.metadataCache.on('changed', async (file) => {
-				if (file === this.app.workspace.getActiveFile()) {
-					await this.updateFileInfo();
-				}
-			})
-		);
-
-		// 监听文件名变化（可以通过 resolved 事件监听文件的重命名）
-		this.registerEvent(
-			this.app.metadataCache.on('resolved', async () => {
-				await this.updateFileInfo();
-			})
-		);
+	// 设置选中的文件夹
+	setSelectedFolder(folder: TFolder) {
+		this.selectedFolder = folder;
+		if (this._app) {
+			this._app.$set({ selectedFolder: folder });
+		}
 	}
 
 	// 切换标签页
@@ -57,26 +43,14 @@ export default class ServerView extends ItemView {
 
 	// 打开时初始化 Svelte 实例并传入 props
 	async onOpen(): Promise<void> {
-		await this.updateFileInfo(); // 初始化时获取 fileInfo
 		this._app = new Server({
 			target: this.contentEl,
 			props: {
-				fileInfo: this.plugin.fileInfo,
 				app: this.app,
 				plugin: this.plugin,
 				activeTab: this.activeTab, // 传入当前激活的标签页
+				selectedFolder: this.selectedFolder, // 传入选中的文件夹
 			},
-		});
-	}
-
-	// 更新 fileInfo 并通知 Svelte 组件
-	private async updateFileInfo() {
-		const fileInfo = new FileInfo();
-		await fileInfo.updateFileInfo(this.app, (updatedFileInfo) => {
-			this.plugin.fileInfo = updatedFileInfo; // 更新 fileInfo
-			if (this._app) {
-				this._app.$set({ fileInfo: this.plugin.fileInfo });
-			}
 		});
 	}
 

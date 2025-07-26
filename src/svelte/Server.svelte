@@ -1,20 +1,18 @@
 <script lang="ts">
-	import {App, MarkdownView, Platform} from "obsidian";
+	import {App, MarkdownView, Platform, TFolder} from "obsidian";
 	import Info from "./Info.svelte"
-	import Service from "./Service.svelte"
-	import BuildDeploy from "./BuildDeploy.svelte"
 	import Shortcodes from "./Shortcodes.svelte"
-	import {FileInfo} from "../fileinfo";
+	import Site from "./Site.svelte"
 	import {onMount, onDestroy} from "svelte";
 	import {Notice} from "obsidian";
 	import FridayPlugin from "../main";
 	import type { TabName } from "../server";
 
 	// 接收 props
-	export let fileInfo: FileInfo;
 	export let app: App;
 	export let plugin: FridayPlugin;
-	export let activeTab: TabName = 'shortcodes'; // 接收外部传入的标签页，默认为 shortcodes
+	export let activeTab: TabName = 'site'; // 接收外部传入的标签页，默认为 site
+	export let selectedFolder: TFolder | null = null; // 新增：选中的文件夹
 
 	let isClientSupported = false;
 	let activeMarkdownView: MarkdownView | null = null;
@@ -169,12 +167,10 @@
 						aria-labelledby="tab-site" 
 						tabindex="0"
 					>
-						<Info/>
-						<Service {fileInfo} {app} {plugin}/>
+						<Site {app} {plugin} {selectedFolder} />
+						
 						<hr class="centered-line">
-						{#if fileInfo.isReadyForBuild}
-							<BuildDeploy {fileInfo} {plugin} />
-						{/if}
+						<Info/>
 					</div>
 				{:else if activeTab === 'shortcodes'}
 					<div 

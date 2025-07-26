@@ -1,13 +1,10 @@
 <script lang="ts">
-	import {App, MarkdownView, Notice} from "obsidian";
 	import { onMount, afterUpdate } from "svelte";
-	import { shortcodeService, shortcodeApiService, type ShortcodeItem, type ShortcodeSearchResult } from "../shortcode";
+	import {shortcodeApiService, type ShortcodeItem, type ShortcodeSearchResult } from "../shortcode";
 	import FridayPlugin from "../main";
-	import { FileInfo } from "../fileinfo";
 
 	// 接收 props
 	export let plugin: FridayPlugin;
-	export let activeMarkdownView: MarkdownView | null = null; // 新增：从外部传入当前活动的 MarkdownView
 
 	let shortcodes: ShortcodeItem[] = [];
 	let searchQuery: string = "";
@@ -162,48 +159,48 @@
 			insertingShortcodes[shortcode.id] = true;
 			insertingShortcodes = {...insertingShortcodes}; // 触发响应式更新
 
-			// 首先注册 shortcode
-			shortcodeService.registerShortcode(shortcode);
-
-			// 解码 example 内容
-			let exampleContent = shortcodeService.decodeExample(shortcode) || `{{${shortcode.title}}}`;
-			
-			// 确保所有嵌套的 shortcodes 都已注册
-			await shortcodeService.ensureShortcodesRegistered(exampleContent);
-
-			// 检查是否有有效的 activeMarkdownView 并且它是处于编辑模式
-			if (!activeMarkdownView || !activeMarkdownView.editor || activeMarkdownView.getMode() === 'preview') {
-				// 显示错误信息
-				const isPreviewMode = activeMarkdownView && activeMarkdownView.getMode() === 'preview';
-				
-				if (isPreviewMode) {
-					await plugin.status('Cannot insert shortcode: Current view is in preview mode');
-					new Notice("Please switch to edit mode to insert shortcodes.", 6000);
-				} else {
-					await plugin.status('Cannot insert shortcode: No active editor');
-					new Notice("Please open a note in edit mode first.", 6000);
-				}
-				return;
-			}
-
-			// 获取编辑器实例
-			const editor = activeMarkdownView.editor;
-			
-			// 获取光标位置
-			const cursor = editor.getCursor();
-
-			// 创建带有格式的内容，用 shortcode 代码块包裹
-			const formattedContent = `\`\`\`shortcode\n\n${exampleContent}\n\n\`\`\``;
-			
-			// 插入内容到光标位置
-			editor.replaceRange(formattedContent, cursor);
-
-			// 通知用户
-			let filename = "";
-			if (activeMarkdownView && activeMarkdownView.file) {
-				filename = ` in "${activeMarkdownView.file.name}"`;
-			}
-			await plugin.status(`Inserted ${shortcode.title} shortcode${filename}`);
+			// // 首先注册 shortcode
+			// shortcodeService.registerShortcode(shortcode);
+			//
+			// // 解码 example 内容
+			// let exampleContent = shortcodeService.decodeExample(shortcode) || `{{${shortcode.title}}}`;
+			//
+			// // 确保所有嵌套的 shortcodes 都已注册
+			// await shortcodeService.ensureShortcodesRegistered(exampleContent);
+			//
+			// // 检查是否有有效的 activeMarkdownView 并且它是处于编辑模式
+			// if (!activeMarkdownView || !activeMarkdownView.editor || activeMarkdownView.getMode() === 'preview') {
+			// 	// 显示错误信息
+			// 	const isPreviewMode = activeMarkdownView && activeMarkdownView.getMode() === 'preview';
+			//
+			// 	if (isPreviewMode) {
+			// 		await plugin.status('Cannot insert shortcode: Current view is in preview mode');
+			// 		new Notice("Please switch to edit mode to insert shortcodes.", 6000);
+			// 	} else {
+			// 		await plugin.status('Cannot insert shortcode: No active editor');
+			// 		new Notice("Please open a note in edit mode first.", 6000);
+			// 	}
+			// 	return;
+			// }
+			//
+			// // 获取编辑器实例
+			// const editor = activeMarkdownView.editor;
+			//
+			// // 获取光标位置
+			// const cursor = editor.getCursor();
+			//
+			// // 创建带有格式的内容，用 shortcode 代码块包裹
+			// const formattedContent = `\`\`\`shortcode\n\n${exampleContent}\n\n\`\`\``;
+			//
+			// // 插入内容到光标位置
+			// editor.replaceRange(formattedContent, cursor);
+			//
+			// // 通知用户
+			// let filename = "";
+			// if (activeMarkdownView && activeMarkdownView.file) {
+			// 	filename = ` in "${activeMarkdownView.file.name}"`;
+			// }
+			await plugin.status(`Inserted ${shortcode.title} shortcode name`);
 		} catch (error) {
 			console.error('Error inserting shortcode:', error);
 			

@@ -1,15 +1,10 @@
 import {App, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder} from 'obsidian';
-import {getDefaultFrontMatter} from './frontmatter';
 import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
 import {User} from "./user";
-import {Hugoverse} from "./hugoverse";
-import {FileInfo} from "./fileinfo";
-import {Store} from "./store";
-import { registerShortcodeProcessor } from './shortcode';
-import { DownloadImageFeature } from './download-image';
 import './styles/site-preview.css';
 import './styles/export-image.css';
 import './obsidian';
+import {stopGlobalHttpServer} from './httpServer';
 
 interface FridaySettings {
 	username: string;
@@ -24,6 +19,9 @@ interface FridaySettings {
 	scpHost: string
 	scpPort: string
 	scpPath: string
+	
+	// 新增主题配置
+	availableThemes: string[]
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
@@ -37,7 +35,10 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	scpPassword: '',
 	scpHost: '',
 	scpPort: '22',
-	scpPath: ''
+	scpPath: '',
+	
+	// 默认主题列表
+	availableThemes: ['theme-book', 'theme-hero', 'theme-academic']
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -53,22 +54,14 @@ export default class FridayPlugin extends Plugin {
 	settings: FridaySettings;
 	statusBar: HTMLElement
 
-	fileInfo: FileInfo;
-
 	pluginDir: string
 	apiUrl: string
 	user: User
-	hugoverse: Hugoverse
-
-	store: Store
-	downloadImageFeature: DownloadImageFeature;
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
 		await this.loadSettings();
 		await this.initFriday()
-
-		this.addRibbonIcon(FRIDAY_ICON, 'Create new Friday note', (evt: MouseEvent) => this.newNote());
 
 		this.statusBar = this.addStatusBarItem();
 
@@ -76,26 +69,57 @@ export default class FridayPlugin extends Plugin {
 
 		this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
 		this.app.workspace.onLayoutReady(() => this.initLeaf())
-		
-		// Register shortcode processor
-		registerShortcodeProcessor(this);
-		
-		// Initialize download image feature
-		this.downloadImageFeature = new DownloadImageFeature(this);
-		this.downloadImageFeature.initialize();
+
+		// Register context menu for files
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu, file) => {
+				if (file instanceof TFolder) {
+					menu.addItem(item => {
+						item
+							.setTitle('Build as site')
+							.setIcon(FRIDAY_ICON)
+							.onClick(async () => {
+								const rightSplit = this.app.workspace.rightSplit;
+								if (!rightSplit) {
+									return;
+								}
+								if (rightSplit.collapsed) {
+									rightSplit.expand();
+								}
+								const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
+								if (leaves.length > 0 ) {
+									const serverView = leaves[0].view as ServerView;
+									// 设置选中的文件夹并切换到site标签页
+									serverView.setSelectedFolder(file);
+									serverView.setActiveTab('site');
+									await this.app.workspace.revealLeaf(leaves[0]);
+								} else {
+									// 如果没有现有的view，创建一个新的
+									const leaf = this.app.workspace.getRightLeaf(false);
+									if (leaf) {
+										await leaf.setViewState({
+											type: FRIDAY_SERVER_VIEW_TYPE,
+											active: true,
+										});
+										const serverView = leaf.view as ServerView;
+										serverView.setSelectedFolder(file);
+										serverView.setActiveTab('site');
+									}
+								}
+							});
+					});
+				}
+			})
+		);
 	}
 
 	async initFriday(): Promise<void> {
-		this.fileInfo = new FileInfo()
 		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
-
 		this.user = new User(this);
-		this.store = new Store(this);
-		this.hugoverse = new Hugoverse(this);
 	}
 
 	initLeaf(): void {
-		if (this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE).length) return
+		if (this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE).length > 0) return
 
 		this.app.workspace.getRightLeaf(false)?.setViewState({
 			type: FRIDAY_SERVER_VIEW_TYPE,
@@ -103,21 +127,8 @@ export default class FridayPlugin extends Plugin {
 		}).then(r => {})
 	}
 
-	onunload() {
-		// 检查是否需要清理 ServerView
-		const serverLeaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
-		serverLeaves.forEach(leaf => {
-			if (leaf.view instanceof ServerView) {
-				const view = leaf.view as ServerView;
-				// 将会调用 view.onClose()
-				leaf.detach();
-			}
-		});
-		
-		// 清理 downloadImageFeature 以避免内存泄漏
-		if (this.downloadImageFeature) {
-			this.downloadImageFeature.destroy();
-		}
+	async onunload() {
+		await stopGlobalHttpServer();
 	}
 
 	async loadSettings() {
@@ -126,51 +137,6 @@ export default class FridayPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-	}
-
-	async newNote(folder?: TFolder) {
-		await this.ensureRootFolderExists();
-
-		try {
-			const fNote: TFile = await this.createUniqueMarkdownFile(FRIDAY_ROOT_FOLDER, 'Untitled Friday Site');
-
-			await this.app.vault.modify(fNote, getDefaultFrontMatter());
-			await this.app.workspace.getLeaf().openFile(fNote);
-		} catch (e) {
-			new Notice('Failed to create new Friday note');
-			console.error('Error creating new Friday note :', e);
-		}
-	}
-
-	async ensureRootFolderExists() {
-		if (!(await this.app.vault.adapter.exists(FRIDAY_ROOT_FOLDER))) {
-			await this.app.vault.createFolder(FRIDAY_ROOT_FOLDER);
-		}
-	}
-
-	async createUniqueMarkdownFile(targetFolder: string, baseFileName: string): Promise<TFile> {
-		let fileIndex = 0;
-		let newFile: TFile | null = null;
-
-		while (!newFile) {
-			// 动态生成文件名：如 Untitled Friday Site, Untitled Friday Site 1, Untitled Friday Site 2
-			const fileName = fileIndex === 0 ? `${baseFileName}.md` : `${baseFileName} ${fileIndex}.md`;
-			const filePath = `${targetFolder}/${fileName}`;
-
-			try {
-				// 尝试创建文件
-				newFile = await this.app.vault.create(filePath, ''); // 创建空文件
-			} catch (error) {
-				// 如果文件已存在，则递增 fileIndex 并重试
-				if (error.message.includes("File already exists")) {
-					fileIndex++;
-				} else {
-					throw error; // 其他错误直接抛出
-				}
-			}
-		}
-
-		return newFile;
 	}
 
 	async status(text: string) {

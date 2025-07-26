@@ -361,103 +361,10 @@ export class Hugoverse {
 		}
 	}
 
-	async removeDisappearedFiles(activeFiles: string[]) {
-		const removedPaths = this.plugin.store.getRemovedPaths(activeFiles)
-		const siteId = this.plugin.fileInfo.getSiteId();
-		try {
-			for (const path of removedPaths) {
-				const fileId = this.plugin.store.getAssociatedId(siteId, path)
-				const fileType = this.plugin.store.getAssociatedType(siteId, path)
-
-				const res = await this.deleteEntity(fileType, fileId)
-				if (res) {
-					this.plugin.store.removeFileFromProject(siteId, path)
-				}
-			}
-		} catch (error) {
-			console.error(error.toString())
-		}
-	}
-
-	async handleSite() {
-		let siteId = this.plugin.fileInfo.getSiteId();
-		if (Number(siteId) <= 0) {
-			siteId = await this.createSite(NEW_ID);
-			if (siteId === "" || siteId === undefined) {
-				throw new Error("Failed to create site.");
-			}
-			this.plugin.store.createProject(siteId, this.plugin.app.workspace.getActiveFile())
-			await this.plugin.fileInfo.updateFrontMatter(FM_SITE_ID, siteId);
-		} else {
-			this.plugin.store.loadProject(siteId);
-			const siteUpdated = await this.plugin.store.updateProject(siteId, this.plugin.app.workspace.getActiveFile())
-			if (siteUpdated) {
-				const uid = await this.createSite(siteId);
-				if (uid === "" || uid === undefined || uid !== siteId) {
-					throw new Error("Failed to update site.");
-				}
-			}
-		}
-		return
-	}
-
-	async handlePost(file: TFile) {
-		const siteId = this.plugin.fileInfo.getSiteId();
-		const found = this.plugin.store.isFileInProject(siteId, file.path)
-		if (!found) {
-			const postId = await this.createPost(NEW_ID, file);
-			if (postId === "") {
-				throw new Error("Failed to create post in site: " + siteId);
-			}
-
-			const sitePostId = await this.createSitePost(siteId, postId, file);
-			if (sitePostId === "") {
-				throw new Error("Failed to create site post for site: " + siteId + ", post: " + postId);
-			}
-
-			this.plugin.store.addFileToProject(siteId, postId, sitePostId, "SitePost", file)
-		} else {
-			const postId = this.plugin.store.getFileId(siteId, file.path)
-			const updated = await this.plugin.store.updateFileInProject(siteId, postId, file)
-			if (updated) {
-				const uid = await this.createPost(postId, file);
-				if (uid === "" || uid != postId) {
-					throw new Error("Failed to update post: " + postId);
-				}
-			}
-		}
-
-		return
-	}
-
-	async handleResource(file: TFile) {
-		const siteId = this.plugin.fileInfo.getSiteId();
-		const found = this.plugin.store.isFileInProject(siteId, file.path)
-		if (!found) {
-			const resourceId = await this.createResource(NEW_ID, file);
-			if (resourceId === "") {
-				throw new Error("Failed to create resource in site: " + siteId);
-			}
-
-			const siteResourceId = await this.createSiteResource(siteId, resourceId, file);
-			if (siteResourceId === "") {
-				throw new Error("Failed to create site resource for site: " + siteId + ", resource: " + resourceId);
-			}
-
-			this.plugin.store.addFileToProject(siteId, resourceId, siteResourceId, "SiteResource", file)
-		} else {
-			const resourceId = this.plugin.store.getFileId(siteId, file.path)
-			const updated = await this.plugin.store.updateFileInProject(siteId, resourceId, file)
-			if (updated) {
-				const uid = await this.createResource(resourceId, file);
-				if (uid === "" || uid != resourceId) {
-					throw new Error("Failed to update post: " + resourceId);
-				}
-			}
-		}
-
-		return
-	}
+	async removeDisappearedFiles(activeFiles: string[]) {}
+	async handleSite() {}
+	async handlePost(file: TFile) {}
+	async handleResource(file: TFile) {}
 
 	async sendSiteRequest(action: string, siteId: string): Promise<string> {
 		try {
