@@ -1,112 +1,187 @@
 <script lang="ts">
-	import {App, Notice, TFolder, TFile} from "obsidian";
+	import {App, Notice, TFolder, TFile, FileSystemAdapter} from "obsidian";
 	import FridayPlugin from "../main";
 	import ProgressBar from "./ProgressBar.svelte";
 	import {onMount, onDestroy} from "svelte";
-	import {getGlobalHttpServer, LocalHttpServer} from "../httpServer";
-	import {FileWatcher} from "../fileWatcher";
+	import {getGlobalHttpServer, LocalHttpServer, stopGlobalHttpServer, resetGlobalHttpServer} from "../httpServer";
 	import * as path from "path";
-	import {processSSG} from "@mdfriday/foundry"
+	import * as fs from "fs";
+	import {processSSGWithProgress} from "@mdfriday/foundry";
+	import JSZip from "jszip";
+	import {GetBaseUrl} from "../main";
 
-	// 接收 props
+	// Receive props
 	export let app: App;
 	export let plugin: FridayPlugin;
 	export let selectedFolder: TFolder | null = null;
 
-	// 状态变量
+	const DEV_BOOK_THEME_URL = "http://localhost:1314/api/uploads/themes/book.zip"
+	const PROD_BOOK_THEME_URL = "https://mdfriday.sunwei.xyz/api/uploads/themes/book.zip";
+
+	// State variables
 	let contentPath = '';
 	let siteName = '';
-	let selectedTheme = 'theme-book';
-	let availableThemes: string[] = ['theme-book', 'theme-hero', 'theme-academic'];
-	
-	// 预览相关状态
+	let sitePath = '/preview/';
+	let selectedThemeDownloadUrl =  process.env.NODE_ENV === 'development' ? DEV_BOOK_THEME_URL : PROD_BOOK_THEME_URL;
+	let selectedThemeName = 'Book';
+	let selectedThemeId = '1'; // Add theme ID tracking for Book theme
+
+	// Advanced settings state
+	let showAdvancedSettings = false;
+
+	let themesDir = ''; // Directory for themes
+
+	// Preview related state
 	let isBuilding = false;
 	let buildProgress = 0;
 	let previewUrl = '';
 	let previewId = '';
 	let hasPreview = false;
-	
-	// 发布相关状态
+	let absPreviewDir = '';
+
+	// Publish related state
 	let isPublishing = false;
 	let publishProgress = 0;
 	let publishSuccess = false;
 	let publishUrl = '';
-	let selectedPublishOption = 'netlify';
+	let selectedPublishOption = 'mdf-preview';
 	let publishOptions = [
-		{ value: 'netlify', label: 'Netlify' },
-		{ value: 'scp', label: 'SCP (Private Server)' }
+		{ value: 'mdf-preview', label: 'MDFriday Preview' },
 	];
 
-	// HTTP服务器相关
+	// HTTP server related
 	let httpServer: LocalHttpServer;
 	let serverRunning = false;
-	let serverPort = 1314;
+	let serverPort = 8090;
 
-	// 文件监控相关
-	let fileWatcher: FileWatcher;
-	let isWatchingFiles = false;
-
-	onMount(() => {
+	onMount(async () => {
 		if (selectedFolder) {
 			contentPath = selectedFolder.name;
 			siteName = selectedFolder.name;
 		}
-		// 从插件设置中获取可用主题
-		loadAvailableThemes();
-		
-		// 初始化HTTP服务器
+
+		themesDir = path.join(plugin.pluginDir, 'themes')
+		await createThemesDirectory()
+
+		// Initialize and start HTTP server
 		const previewBaseDir = path.join(plugin.pluginDir, 'preview');
 		httpServer = getGlobalHttpServer(app, previewBaseDir);
-		checkServerStatus();
 
-		// 初始化文件监控器
-		fileWatcher = new FileWatcher(app);
+		// Start HTTP server
+		const started = await httpServer.start();
+		if (started) {
+			serverRunning = true;
+			serverPort = httpServer.getPort();
+		} else {
+			new Notice('Failed to start HTTP server', 3000);
+		}
 	});
 
 	onDestroy(() => {
-		// 清理文件监控器
-		if (fileWatcher && isWatchingFiles) {
-			fileWatcher.stopWatching();
-		}
+		// No need to stop HTTP server when component is destroyed as it's global
 	});
 
-	// 响应式更新：当selectedFolder改变时更新相关状态
+	// Reactive update: update related state when selectedFolder changes
 	$: if (selectedFolder) {
-		// 只在文件夹真正改变时才重置状态
+		// Only reset state when folder actually changes
 		const newContentPath = selectedFolder.name;
 		const newSiteName = selectedFolder.name;
-		
+
 		if (contentPath !== newContentPath) {
 			contentPath = newContentPath;
 			siteName = newSiteName;
-			// 重置预览状态
+			// Reset preview state
 			hasPreview = false;
 			previewUrl = '';
 			previewId = '';
-			// 停止之前的文件监控（只在文件夹真正改变时）
-			if (fileWatcher && isWatchingFiles) {
-				console.log('Stopping file watcher due to folder change');
-				fileWatcher.stopWatching();
-				isWatchingFiles = false;
+		}
+	}
+
+	function openThemeModal() {
+		// Call plugin method to show theme selection modal
+		plugin.showThemeSelectionModal(selectedThemeId, (themeUrl: string, themeName?: string, themeId?: string) => {
+			selectedThemeDownloadUrl = themeUrl;
+			selectedThemeName = themeName || "Book";
+			selectedThemeId = themeId || selectedThemeId; // Update theme ID when theme changes
+		});
+	}
+
+	function getSelectedThemeName() {
+		// Return the cached theme name or fallback to ID
+		return selectedThemeName || selectedThemeDownloadUrl;
+	}
+
+	function toggleAdvancedSettings() {
+		showAdvancedSettings = !showAdvancedSettings;
+	}
+
+	function normalizeSitePath(path: string): string {
+		// Ensure path starts with / and doesn't end with / (unless it's just "/")
+		if (!path.startsWith('/')) {
+			path = '/' + path;
+		}
+		if (path.length > 1 && path.endsWith('/')) {
+			path = path.slice(0, -1);
+		}
+		return path;
+	}
+
+	function handleSitePathChange() {
+		sitePath = normalizeSitePath(sitePath);
+	}
+
+	async function createSitePathStructure(previewDir: string): Promise<string> {
+		if (sitePath === '/') {
+			// Default root path, return public directory directly
+			return path.join(previewDir, 'public');
+		}
+
+		// Create directory structure for non-root site path
+		// e.g., sitePath = "/path/sub" should create "path" dir and symlink "sub" to "public"
+		const pathParts = sitePath.split('/').filter(part => part !== '');
+		
+		if (pathParts.length === 0) {
+			// Fallback to root
+			return path.join(previewDir, 'public');
+		}
+
+		// Start from preview directory as root
+		let currentDir = previewDir;
+		
+		// Create all parent directories except the last one
+		for (let i = 0; i < pathParts.length - 1; i++) {
+			currentDir = path.join(currentDir, pathParts[i]);
+			if (!await app.vault.adapter.exists(currentDir)) {
+				await app.vault.adapter.mkdir(currentDir);
 			}
 		}
-	}
 
-	function loadAvailableThemes() {
-		// 从plugin.settings中获取主题列表
-		if (plugin.settings.availableThemes && plugin.settings.availableThemes.length > 0) {
-			availableThemes = plugin.settings.availableThemes;
-		} else {
-			// 如果设置中没有主题，使用默认主题列表
-			availableThemes = ['theme-book', 'theme-hero', 'theme-academic'];
-		}
-	}
+		// Create symlink for the final directory to point to public
+		const finalDirName = pathParts[pathParts.length - 1];
+		const finalDirPath = path.join(currentDir, finalDirName);
+		const publicDir = path.join(previewDir, 'public');
 
-	async function checkServerStatus() {
-		if (httpServer) {
-			serverRunning = await httpServer.checkHealth();
-			serverPort = httpServer.getPort();
+		// Remove existing symlink/directory if it exists
+		if (await app.vault.adapter.exists(finalDirPath)) {
+			await app.vault.adapter.rmdir(finalDirPath, true);
 		}
+
+		// Create symlink
+		const adapter = app.vault.adapter;
+		if (adapter instanceof FileSystemAdapter) {
+			const absFinalDirPath = path.join(adapter.getBasePath(), finalDirPath);
+			const absPublicDir = path.join(adapter.getBasePath(), publicDir);
+			try {
+				await fs.promises.symlink(absPublicDir, absFinalDirPath, 'dir');
+			} catch (error) {
+				console.error('Failed to create symlink for site path:', error);
+				// Fallback: just return public directory
+				return path.join(previewDir, 'public');
+			}
+		}
+
+		// Return the preview directory as root for HTTP server
+		return previewDir;
 	}
 
 	async function startPreview() {
@@ -115,69 +190,81 @@
 			return;
 		}
 
+		if (!serverRunning) {
+			new Notice('HTTP server is not running', 3000);
+			return;
+		}
+
 		isBuilding = true;
 		buildProgress = 0;
 		hasPreview = false;
 
 		try {
-			// 生成随机预览ID
+			// Stop and reset HTTP server for new directory structure
+			await stopGlobalHttpServer();
+			resetGlobalHttpServer();
+
+			// Generate random preview ID
 			previewId = generateRandomId();
-			
-			// 创建预览目录
+
+			// Create preview directory
 			const previewDir = path.join(plugin.pluginDir, 'preview', previewId);
 			await createPreviewDirectory(previewDir);
-			const themesDir = path.join(plugin.pluginDir, 'themes')
-			await createThemesDirectory()
-			buildProgress = 20;
-			
-			// 创建配置文件
+			buildProgress = 5;
+
+			// Create config file
+			if (sitePath.startsWith("/preview")){
+				sitePath = `/preview/${previewId}`;
+			}
 			await createConfigFile(previewDir);
-			buildProgress = 40;
-			
-			// 复制内容文件
-			await copyFolderContents(selectedFolder, path.join(previewDir, 'content'));
-			buildProgress = 70;
-			
-			// 启动HTTP服务器（如果未运行）
-			if (!serverRunning) {
-				const started = await httpServer.start();
-				if (started) {
-					serverRunning = true;
-					new Notice(`HTTP server started on port ${serverPort}`, 3000);
-				} else {
-					throw new Error('Failed to start HTTP server');
-				}
+			buildProgress = 10;
+
+			// Create symbolic link to content files
+			await linkFolderContents(selectedFolder, path.join(previewDir, 'content'));
+			buildProgress = 15;
+
+			// Build site (reserved for future implementation)
+			const adapter = app.vault.adapter;
+			let absThemesDir: string;
+
+			if (adapter instanceof FileSystemAdapter) {
+				absPreviewDir = path.join(adapter.getBasePath(), previewDir);
+				absThemesDir = path.join(adapter.getBasePath(), themesDir)
 			}
-			buildProgress = 90;
-			
-			// 启动文件监控
-			if (fileWatcher) {
-				console.log(`Starting file watcher for folder: ${selectedFolder.path}`);
-				fileWatcher.startWatching(selectedFolder, previewDir);
-				isWatchingFiles = true;
-				console.log('File watcher started successfully');
-				new Notice('File watching enabled for hot reload', 2000);
-			} else {
-				console.warn('FileWatcher not initialized');
-			}
-			
-			// 构建站点（预留给后续实现）
-			const rootDir = "/Users/weisun/github/sunwei/obsidian-vault/.obsidian/plugins/mdfriday"
-			const absPreviewDir = path.join(rootDir, 'preview', previewId);
-			const absThemesDir = path.join(rootDir, 'themes')
-			await processSSG(absPreviewDir, absThemesDir)
+
+			await processSSGWithProgress(absPreviewDir, absThemesDir, (progress) => {
+				buildProgress = 15 + (progress.percentage / 100 * 85); // Start from 15%, up to 100%
+			});
 
 			buildProgress = 100;
-			
-			// 设置预览URL
-			previewUrl = httpServer.getPreviewUrl(previewId);
+
+			// Create site path structure and get server root directory
+			const serverRootDir = await createSitePathStructure(previewDir);
+
+			// Initialize and start new HTTP server with correct directory
+			httpServer = getGlobalHttpServer(app, serverRootDir);
+			const started = await httpServer.start();
+			if (started) {
+				serverRunning = true;
+				serverPort = httpServer.getPort();
+			} else {
+				new Notice('Failed to restart HTTP server', 3000);
+				return;
+			}
+
+			// Set preview URL
+			if (sitePath === '/') {
+				previewUrl = `http://localhost:${serverPort}/`;
+			} else {
+				previewUrl = `http://localhost:${serverPort}${sitePath}/`;
+			}
 			hasPreview = true;
-			
-			// 打开浏览器预览
-			window.open(previewUrl + 'public/', '_blank');
-			
+
+			// Open browser preview
+			window.open(previewUrl, '_blank');
+
 			new Notice('Preview generated successfully!', 3000);
-			
+
 		} catch (error) {
 			console.error('Preview generation failed:', error);
 			new Notice(`Preview failed: ${error.message}`, 5000);
@@ -192,20 +279,41 @@
 			return;
 		}
 
+		if (!previewId || !absPreviewDir) {
+			new Notice('Preview data is missing', 3000);
+			return;
+		}
+
 		isPublishing = true;
 		publishProgress = 0;
 		publishSuccess = false;
 
 		try {
-			// 这里应该调用实际的发布逻辑
-			// 暂时模拟发布过程
-			for (let i = 0; i <= 100; i += 10) {
-				publishProgress = i;
-				await new Promise(resolve => setTimeout(resolve, 200));
-			}
+			// Step 1: Create ZIP file from public directory (0-50%)
+			publishProgress = 5;
+			const publicDir = path.join(absPreviewDir, 'public');
 
+			const zipContent = await createZipFromDirectory(publicDir);
+			publishProgress = 50;
+
+			const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent);
+			if (!previewApiId) {
+				throw new Error('Failed to create MDFriday preview');
+			}
+			publishProgress = 80;
+
+			// Step 3: Deploy the preview (80-100%)
+			const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
+			if (!deployPath) {
+				throw new Error('Failed to deploy MDFriday preview');
+			}
+			publishProgress = 100;
+
+			// Step 4: Construct final publish URL
+			const baseUrl = GetBaseUrl();
+			publishUrl = `${baseUrl}${deployPath}`;
 			publishSuccess = true;
-			publishUrl = `https://example.com/${previewId}`;
+
 			new Notice('Site published successfully!', 3000);
 
 		} catch (error) {
@@ -221,18 +329,18 @@
 	}
 
 	async function createPreviewDirectory(previewDir: string) {
-		// 创建预览根目录
+		// Create preview root directory
 		const previewRoot = path.join(plugin.pluginDir, 'preview');
 		if (!await app.vault.adapter.exists(previewRoot)) {
 			await app.vault.adapter.mkdir(previewRoot);
 		}
-		
-		// 创建具体的预览目录
+
+		// Create specific preview directory
 		if (!await app.vault.adapter.exists(previewDir)) {
 			await app.vault.adapter.mkdir(previewDir);
 		}
-		
-		// 创建content子目录
+
+		// Create content subdirectory
 		const contentDir = path.join(previewDir, 'content');
 		if (!await app.vault.adapter.exists(contentDir)) {
 			await app.vault.adapter.mkdir(contentDir);
@@ -245,15 +353,14 @@
 	}
 
 	async function createThemesDirectory() {
-		const themesRoot = path.join(plugin.pluginDir, 'themes');
-		if (!await app.vault.adapter.exists(themesRoot)) {
-			await app.vault.adapter.mkdir(themesRoot);
+		if (!await app.vault.adapter.exists(themesDir)) {
+			await app.vault.adapter.mkdir(themesDir);
 		}
 	}
 
 	async function createConfigFile(previewDir: string) {
 		const config = {
-			baseURL: `/${previewId}/public/`,
+			baseURL: sitePath, // Use site path as base URL
 			title: siteName,
 			contentDir: "content",
 			publishDir: "public",
@@ -265,7 +372,7 @@
 			module: {
 				imports: [
 					{
-						path: "http://localhost:8090/long-teng.zip"
+						path: selectedThemeDownloadUrl,
 					}
 				]
 			},
@@ -276,114 +383,39 @@
 
 		const configPath = path.join(previewDir, 'config.json');
 		await app.vault.adapter.write(configPath, JSON.stringify(config, null, 2));
-
-		// 同时生成预览HTML页面
-		await createPreviewHtml(previewDir);
 	}
 
-	async function createPreviewHtml(previewDir: string) {
-		// 生成HTML模板内容
-		const contentList = await generateContentList();
-		
-		// 使用字符串拼接构建HTML，避免Svelte解析器问题
-		let htmlTemplate = '';
-		
-		// HTML头部
-		htmlTemplate += '<!DOCTYPE html>\n';
-		htmlTemplate += '<html lang="en">\n';
-		htmlTemplate += '<head>\n';
-		htmlTemplate += '    <meta charset="UTF-8">\n';
-		htmlTemplate += '    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n';
-		htmlTemplate += `    <title>${siteName} - MDFriday Preview</title>\n`;
-		htmlTemplate += '    <style>\n';
-		htmlTemplate += '        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }\n';
-		htmlTemplate += '        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\n';
-		htmlTemplate += '        h1 { color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }\n';
-		htmlTemplate += '        .preview-info { background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196f3; }\n';
-		htmlTemplate += '        .theme-info { margin-top: 20px; padding: 15px; background: #fff3e0; border-radius: 4px; border-left: 4px solid #ff9800; }\n';
-		htmlTemplate += '        .content-preview { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745; }\n';
-		htmlTemplate += '        .file-item { padding: 8px 0; border-bottom: 1px solid #eee; }\n';
-		htmlTemplate += '        .hot-reload-status { position: fixed; top: 20px; right: 20px; background: #4caf50; color: white; padding: 10px 15px; border-radius: 4px; font-size: 12px; opacity: 0.9; }\n';
-		htmlTemplate += '    </style>\n';
-		htmlTemplate += '</head>\n';
-		
-		// HTML主体开始
-		const bodyOpenTag = '<body>';
-		htmlTemplate += bodyOpenTag + '\n';
-		htmlTemplate += '    <div class="hot-reload-status">🔥 Hot Reload Active</div>\n';
-		htmlTemplate += '    <div class="container">\n';
-		htmlTemplate += `        <h1>${siteName}</h1>\n`;
-		
-		// 预览信息
-		htmlTemplate += '        <div class="preview-info">\n';
-		htmlTemplate += '            <strong>📁 Preview Information</strong><br>\n';
-		htmlTemplate += `            <strong>Content Path:</strong> ${contentPath}<br>\n`;
-		htmlTemplate += `            <strong>Theme:</strong> ${selectedTheme}<br>\n`;
-		htmlTemplate += `            <strong>Base URL:</strong> /${previewId}/<br>\n`;
-		htmlTemplate += `            <strong>Generated:</strong> ${new Date().toLocaleString()}\n`;
-		htmlTemplate += '        </div>\n';
-		
-		// 主题信息
-		htmlTemplate += '        <div class="theme-info">\n';
-		htmlTemplate += `            <strong>🎨 Theme: ${selectedTheme}</strong><br>\n`;
-		htmlTemplate += '            This is a preview of your site using the selected theme.\n';
-		htmlTemplate += '        </div>\n';
-		
-		// 内容预览
-		htmlTemplate += '        <div class="content-preview">\n';
-		htmlTemplate += '            <h3>📄 Content Preview</h3>\n';
-		htmlTemplate += '            <p>Your markdown files will be processed and displayed here.</p>\n';
-		htmlTemplate += '            <div id="content-list">\n';
-		htmlTemplate += contentList;
-		htmlTemplate += '            </div>\n';
-		htmlTemplate += '        </div>\n';
-		
-		// 页脚
-		htmlTemplate += '        <div style="margin-top: 30px; text-align: center; color: #666; font-size: 14px;">\n';
-		htmlTemplate += '            <p>This is a development preview generated by MDFriday Obsidian Plugin</p>\n';
-		htmlTemplate += '            <p>Changes to your files will be automatically reflected here</p>\n';
-		htmlTemplate += '        </div>\n';
-		htmlTemplate += '    </div>\n';
-		
-		// HTML结束标签
-		const bodyCloseTag = '</body>';
-		const htmlCloseTag = '</html>';
-		htmlTemplate += bodyCloseTag + '\n';
-		htmlTemplate += htmlCloseTag;
+	async function linkFolderContents(folder: TFolder, targetPath: string) {
+		// Get absolute path of source folder
+		const adapter = app.vault.adapter;
+		let sourcePath: string;
+		let absTargetPath: string;
 
-		const htmlPath = path.join(previewDir, 'index.html');
-		await app.vault.adapter.write(htmlPath, htmlTemplate);
-	}
-
-	async function generateContentList(): Promise<string> {
-		if (!selectedFolder) {
-			return '<p>No content folder selected</p>';
+		if (adapter instanceof FileSystemAdapter) {
+			sourcePath = path.join(adapter.getBasePath(), folder.path);
+			absTargetPath = path.join(adapter.getBasePath(), targetPath);
+		} else {
+			// If not FileSystemAdapter, fall back to copying files
+			console.warn('Not using FileSystemAdapter, falling back to copying files');
+			await copyFolderContents(folder, targetPath);
+			return;
 		}
 
-		let contentHtml = '';
-		
-		const processFolder = (folder: TFolder, level: number = 0): string => {
-			let html = '';
-			const indent = '  '.repeat(level);
-			
-			for (const child of folder.children) {
-				if (child instanceof TFile && child.extension === 'md') {
-					html += `${indent}<div class="file-item">📄 ${child.name}</div>\n`;
-				} else if (child instanceof TFolder) {
-					html += `${indent}<div class="file-item">📁 ${child.name}/</div>\n`;
-					html += processFolder(child, level + 1);
-				}
+		try {
+			if (await app.vault.adapter.exists(targetPath)) {
+				await app.vault.adapter.rmdir(targetPath, true);
 			}
-			return html;
-		};
 
-		contentHtml = processFolder(selectedFolder);
-		
-		return contentHtml || '<p>No markdown files found in the selected folder</p>';
+			await fs.promises.symlink(sourcePath, absTargetPath, 'dir');
+		} catch (error) {
+			console.error('Failed to create symbolic link, falling back to copying:', error);
+			// If symbolic link fails, fall back to copying files
+			await copyFolderContents(folder, targetPath);
+		}
 	}
 
 	async function copyFolderContents(folder: TFolder, targetPath: string) {
-		// 递归复制文件夹内容
+		// Recursively copy folder contents (kept as backup solution)
 		const copyRecursive = async (sourceFolder: TFolder, destPath: string) => {
 			for (const child of sourceFolder.children) {
 				if (child instanceof TFolder) {
@@ -407,101 +439,163 @@
 		await copyRecursive(folder, targetPath);
 	}
 
+	async function createZipFromDirectory(sourceDir: string): Promise<Uint8Array> {
+		const zip = new JSZip();
+		
+		// Recursively add files to ZIP
+		const addDirectoryToZip = async (dirPath: string, zipFolder: JSZip) => {
+			const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+			
+			for (const item of items) {
+				const itemPath = path.join(dirPath, item.name);
+				
+				if (item.isDirectory()) {
+					const subFolder = zipFolder.folder(item.name);
+					if (subFolder) {
+						await addDirectoryToZip(itemPath, subFolder);
+					}
+				} else if (item.isFile()) {
+					const fileContent = await fs.promises.readFile(itemPath);
+					zipFolder.file(item.name, fileContent);
+				}
+			}
+		};
+
+		await addDirectoryToZip(sourceDir, zip);
+		
+		// Generate ZIP file
+		return await zip.generateAsync({ type: 'uint8array' });
+	}
 </script>
 
 <div class="site-builder">
 	<div class="section">
-		<label class="section-label" for="content-path">内容路径</label>
-		<input 
-			type="text" 
-			class="form-input readonly" 
-			value={contentPath} 
-			readonly 
+		<label class="section-label" for="content-path">Content Path</label>
+		<input
+			type="text"
+			class="form-input readonly"
+			value={contentPath}
+			readonly
 		/>
 	</div>
 
-	<!-- 站点名称 -->
+	<!-- Site Name -->
 	<div class="section">
-		<label class="section-label" for="site-name">站点名称</label>
-		<input 
-			type="text" 
-			class="form-input" 
-			bind:value={siteName} 
-			placeholder="输入站点名称"
+		<label class="section-label" for="site-name">Site Name</label>
+		<input
+			type="text"
+			class="form-input"
+			bind:value={siteName}
+			placeholder="Enter site name"
 		/>
 	</div>
 
-	<!-- 使用主题 -->
+	<!-- Advanced Settings -->
 	<div class="section">
-		<label class="section-label" for="themes">使用主题</label>
-		<select class="form-select" bind:value={selectedTheme}>
-			{#each availableThemes as theme}
-				<option value={theme}>{theme}</option>
-			{/each}
-		</select>
-	</div>
-
-	<!-- 预览章节 -->
-	<div class="section">
-		<h3 class="section-title">预览章节</h3>
-		<div class="preview-section">
-			{#if isBuilding}
-				<div class="progress-container">
-					<p>正在生成预览...</p>
-					<ProgressBar progress={buildProgress} />
-				</div>
-			{:else}
-				<button 
-					class="action-button preview-button" 
-					on:click={startPreview}
-					disabled={!selectedFolder}
-				>
-					{hasPreview ? '重新预览' : '生成预览'}
-				</button>
-			{/if}
+		<div class="advanced-settings">
+			<button 
+				class="advanced-toggle" 
+				on:click={toggleAdvancedSettings}
+				aria-expanded={showAdvancedSettings}
+			>
+				<span class="toggle-icon" class:expanded={showAdvancedSettings}>▶</span>
+				Advanced Settings
+			</button>
 			
-			{#if hasPreview && previewUrl}
-				<div class="preview-link">
-					<p>预览链接:</p>
-					<a href={previewUrl} target="_blank" class="preview-url">{previewUrl}</a>
-					{#if isWatchingFiles}
-						<p class="hot-reload-info">🔥 热重载已启用 - 文件更改将自动同步</p>
-					{/if}
+			{#if showAdvancedSettings}
+				<div class="advanced-content">
+					<div class="advanced-field">
+						<label class="section-label" for="site-path">Site Path</label>
+						<input
+							type="text"
+							class="form-input"
+							bind:value={sitePath}
+							on:blur={handleSitePathChange}
+							placeholder="/"
+							title="The base path where your site will be deployed (e.g., /docs, /blog)"
+						/>
+						<div class="field-hint">
+							Specify the base path for your site. Use "/" for root deployment.
+						</div>
+					</div>
 				</div>
 			{/if}
 		</div>
 	</div>
 
-	<!-- 发布章节 -->
+	<!-- Theme Selection -->
 	<div class="section">
-		<h3 class="section-title">发布章节</h3>
+		<label class="section-label" for="themes">Theme</label>
+		<div class="theme-selector">
+			<div class="current-theme">
+				<span class="theme-name">{getSelectedThemeName()}</span>
+				<button class="change-theme-btn" on:click={openThemeModal}>
+					Change Theme
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Preview Section -->
+	<div class="section">
+		<h3 class="section-title">Preview</h3>
+		<div class="preview-section">
+			{#if isBuilding}
+				<div class="progress-container">
+					<p>Generating preview...</p>
+					<ProgressBar progress={buildProgress} />
+				</div>
+			{:else}
+				<button
+					class="action-button preview-button"
+					on:click={startPreview}
+					disabled={!selectedFolder}
+				>
+					{hasPreview ? 'Regenerate Preview' : 'Generate Preview'}
+				</button>
+			{/if}
+
+			{#if hasPreview && previewUrl}
+				<div class="preview-link">
+					<p>Preview link:</p>
+					<a href={previewUrl} target="_blank" class="preview-url">{previewUrl}</a>
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Publish Section -->
+	<div class="section">
+		<h3 class="section-title">Publish</h3>
 		<div class="publish-section">
 			<div class="publish-options">
-				<select class="form-select" bind:value={selectedPublishOption}>
-					{#each publishOptions as option}
-						<option value={option.value}>{option.label}</option>
-					{/each}
-				</select>
-				
+				<div class="publish-select-wrapper">
+					<select class="form-select" bind:value={selectedPublishOption}>
+						{#each publishOptions as option}
+							<option value={option.value}>{option.label}</option>
+						{/each}
+					</select>
+				</div>
+
 				{#if isPublishing}
 					<div class="progress-container">
-						<p>正在发布...</p>
+						<p>Publishing...</p>
 						<ProgressBar progress={publishProgress} />
 					</div>
 				{:else}
-					<button 
-						class="action-button publish-button" 
+					<button
+						class="action-button publish-button"
 						on:click={startPublish}
 						disabled={!hasPreview}
 					>
-						发布站点
+						Publish Site
 					</button>
 				{/if}
 			</div>
-			
+
 			{#if publishSuccess && publishUrl}
 				<div class="publish-success">
-					<p class="success-message">✅ 发布成功!</p>
+					<p class="success-message">✅ Published successfully!</p>
 					<a href={publishUrl} target="_blank" class="publish-url">{publishUrl}</a>
 				</div>
 			{/if}
@@ -521,19 +615,23 @@
 
 	.section-label {
 		display: block;
-		margin-bottom: 5px;
+		margin-bottom: 8px;
 		font-weight: 500;
 		color: var(--text-normal);
+		font-size: 14px;
 	}
 
 	.form-input {
 		width: 100%;
-		padding: 8px 12px;
+		padding: 10px 12px;
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 4px;
 		background: var(--background-primary);
 		color: var(--text-normal);
 		font-size: 14px;
+		line-height: 1.4;
+		box-sizing: border-box;
+		min-height: 38px;
 	}
 
 	.form-input.readonly {
@@ -544,12 +642,58 @@
 
 	.form-select {
 		width: 100%;
-		padding: 8px 12px;
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 4px;
 		background: var(--background-primary);
 		color: var(--text-normal);
 		font-size: 14px;
+		line-height: 1.4;
+		box-sizing: border-box;
+		min-height: 38px;
+		appearance: none;
+		background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+		background-repeat: no-repeat;
+		background-position: right 12px center;
+		background-size: 16px;
+		padding-right: 40px;
+	}
+
+	.theme-selector {
+		width: 100%;
+	}
+
+	.current-theme {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 12px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-primary);
+		min-height: 38px;
+		box-sizing: border-box;
+	}
+
+	.theme-name {
+		color: var(--text-normal);
+		font-size: 14px;
+	}
+
+	.change-theme-btn {
+		padding: 6px 12px;
+		border: 1px solid var(--interactive-accent);
+		border-radius: 3px;
+		background: transparent;
+		color: var(--interactive-accent);
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.2s;
+		white-space: nowrap;
+	}
+
+	.change-theme-btn:hover {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
 	}
 
 	.section-title {
@@ -576,6 +720,7 @@
 		font-weight: 500;
 		cursor: pointer;
 		transition: background-color 0.2s;
+		min-height: 38px;
 	}
 
 	.action-button:hover:not(:disabled) {
@@ -616,13 +761,6 @@
 		text-decoration: underline;
 	}
 
-	.hot-reload-info {
-		margin: 10px 0 0 0;
-		font-size: 12px;
-		color: var(--text-muted);
-		font-style: italic;
-	}
-
 	.progress-container {
 		margin: 10px 0;
 	}
@@ -635,12 +773,12 @@
 
 	.publish-options {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 10px;
 		flex-wrap: wrap;
 	}
 
-	.publish-options .form-select {
+	.publish-select-wrapper {
 		flex: 1;
 		min-width: 150px;
 	}
@@ -649,5 +787,58 @@
 		margin: 0 0 5px 0;
 		color: var(--text-success);
 		font-weight: 500;
+	}
+
+	.advanced-settings {
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.advanced-toggle {
+		width: 100%;
+		padding: 12px 16px;
+		border: none;
+		background: transparent;
+		color: var(--text-normal);
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		transition: background-color 0.2s;
+		box-shadow: none;
+	}
+
+	.advanced-toggle:hover {
+		background: var(--background-modifier-hover);
+	}
+
+	.toggle-icon {
+		transition: transform 0.2s;
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+
+	.toggle-icon.expanded {
+		transform: rotate(90deg);
+	}
+
+	.advanced-content {
+		background: var(--background-secondary);
+		padding: 16px;
+		border-top: 1px solid var(--background-modifier-border);
+	}
+
+	.advanced-field {
+		margin-bottom: 0;
+	}
+
+	.field-hint {
+		font-size: 12px;
+		color: var(--text-muted);
+		margin-top: 4px;
+		line-height: 1.4;
 	}
 </style> 
