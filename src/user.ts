@@ -41,7 +41,7 @@ export class User {
 		this.password = this.plugin.settings.password
 
 		if (!this.name || !this.password) {
-			new Notice("Please enter your email and password", 5000);
+			new Notice(this.plugin.i18n.t('messages.enter_email_password'), 5000);
 			return;
 		}
 
@@ -69,7 +69,7 @@ export class User {
 			await this.plugin.saveSettings();
 		} catch (error) {
 			console.error("Failed to login:", error);
-			new Notice("Failed to login", 5000);
+			new Notice(this.plugin.i18n.t('messages.login_failed'), 5000);
 		}
 	}
 
@@ -78,14 +78,14 @@ export class User {
 		this.password = this.plugin.settings.password
 
 		if (!this.name || !this.password) {
-			new Notice("Please enter your email and password", 5000);
+			new Notice(this.plugin.i18n.t('messages.enter_email_password'), 5000);
 			return;
 		}
 
 		// 验证邮箱格式
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 		if (!emailRegex.test(this.name)) {
-			new Notice("Please enter a valid email address", 5000);
+			new Notice(this.plugin.i18n.t('messages.enter_valid_email'), 5000);
 			return;
 		}
 
@@ -113,7 +113,7 @@ export class User {
 			await this.plugin.saveSettings();
 		} catch (error) {
 			console.error("Failed to register user:", error);
-			new Notice("Failed to register user", 5000);
+			new Notice(this.plugin.i18n.t('messages.register_failed'), 5000);
 		}
 	}
 }

@@ -11,12 +11,15 @@
 	export let selectedFolder: TFolder | null = null; // 新增：选中的文件夹
 
 	let isClientSupported = false;
+	
+	// Reactive translation function
+	$: t = plugin.i18n?.t || ((key: string) => key);
 
 	onMount(async () => {
 		isClientSupported = Platform.isDesktop;
 
 		if (!isClientSupported) {
-			new Notice('Only desktop is supported at this time.', 5000);
+			new Notice(t('messages.desktop_only_notice'), 5000);
 			return;
 		}
 	});
@@ -31,10 +34,9 @@
 	{#if !isClientSupported}
 		<div>
 			<p>
-				We're sorry, only desktop is supported at this time.
+				{t('ui.desktop_only_message')}
 				<br/>
-				Mobile and Tablet is coming soon.
-				Thank you for your patience and understanding!
+				{t('ui.mobile_coming_soon')}
 			</p>
 		</div>
 	{:else}
@@ -50,7 +52,7 @@
 						<Site {app} {plugin} {selectedFolder} />
 						
 						<hr class="centered-line">
-						<Info/>
+						<Info {plugin}/>
 					</div>
 			</div>
 		</section>

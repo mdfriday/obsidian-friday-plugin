@@ -3,10 +3,9 @@
 	import FridayPlugin from "../main";
 	import ProgressBar from "./ProgressBar.svelte";
 	import {onMount, onDestroy} from "svelte";
-	import {getGlobalHttpServer, LocalHttpServer, stopGlobalHttpServer, resetGlobalHttpServer} from "../httpServer";
 	import * as path from "path";
 	import * as fs from "fs";
-	import {processSSGWithProgress} from "@mdfriday/foundry";
+	import {startIncrementalBuild, IncrementalBuildConfig, IncrementalBuildCoordinator} from "@mdfriday/foundry";
 	import JSZip from "jszip";
 	import {GetBaseUrl} from "../main";
 
@@ -14,14 +13,22 @@
 	export let app: App;
 	export let plugin: FridayPlugin;
 	export let selectedFolder: TFolder | null = null;
+	
+	// Reactive translation function
+	$: t = plugin.i18n?.t || ((key: string) => key);
 
 	const DEV_BOOK_THEME_URL = "http://localhost:1314/api/uploads/themes/book.zip"
 	const PROD_BOOK_THEME_URL = "https://mdfriday.sunwei.xyz/api/uploads/themes/book.zip";
 
+	const isWindows = process.platform === 'win32';
+
 	// State variables
+	let basePath = plugin.pluginDir;
+	let absSelectedFolderPath = '';
+	let absProjContentPath = '';
 	let contentPath = '';
 	let siteName = '';
-	let sitePath = '/preview/';
+	let sitePath = '/';
 	let selectedThemeDownloadUrl =  process.env.NODE_ENV === 'development' ? DEV_BOOK_THEME_URL : PROD_BOOK_THEME_URL;
 	let selectedThemeName = 'Book';
 	let selectedThemeId = '1'; // Add theme ID tracking for Book theme
@@ -45,13 +52,25 @@
 	let publishSuccess = false;
 	let publishUrl = '';
 	let selectedPublishOption = 'mdf-preview';
-	let publishOptions = [
-		{ value: 'mdf-preview', label: 'MDFriday Preview' },
+
+	// Export related state
+	let isExporting = false;
+	
+	// Reactive publish options
+	$: publishOptions = [
+		{ value: 'netlify', label: t('ui.publish_option_netlify') },
+		...(sitePath.startsWith('/preview/') ? [{ value: 'mdf-preview', label: t('ui.publish_option_mdfriday') }] : []),
 	];
 
+	// Auto-switch to netlify if mdf-preview is not available when sitePath changes
+	$: if (!sitePath.startsWith('/preview/') && selectedPublishOption === 'mdf-preview') {
+		selectedPublishOption = 'netlify';
+	}
+
 	// HTTP server related
-	let httpServer: LocalHttpServer;
+	let httpServer: IncrementalBuildCoordinator;
 	let serverRunning = false;
+	let serverHost = 'localhost';
 	let serverPort = 8090;
 
 	onMount(async () => {
@@ -63,22 +82,17 @@
 		themesDir = path.join(plugin.pluginDir, 'themes')
 		await createThemesDirectory()
 
-		// Initialize and start HTTP server
-		const previewBaseDir = path.join(plugin.pluginDir, 'preview');
-		httpServer = getGlobalHttpServer(app, previewBaseDir);
-
-		// Start HTTP server
-		const started = await httpServer.start();
-		if (started) {
-			serverRunning = true;
-			serverPort = httpServer.getPort();
-		} else {
-			new Notice('Failed to start HTTP server', 3000);
+		const adapter = app.vault.adapter;
+		if (adapter instanceof FileSystemAdapter) {
+			basePath = adapter.getBasePath()
 		}
 	});
 
 	onDestroy(() => {
-		// No need to stop HTTP server when component is destroyed as it's global
+		if (serverRunning) {
+			httpServer.stopWatching();
+			serverRunning = false;
+		}
 	});
 
 	// Reactive update: update related state when selectedFolder changes
@@ -156,7 +170,7 @@
 			}
 		}
 
-		// Create symlink for the final directory to point to public
+		// Create symlink or copy for the final directory
 		const finalDirName = pathParts[pathParts.length - 1];
 		const finalDirPath = path.join(currentDir, finalDirName);
 		const publicDir = path.join(previewDir, 'public');
@@ -166,17 +180,20 @@
 			await app.vault.adapter.rmdir(finalDirPath, true);
 		}
 
-		// Create symlink
 		const adapter = app.vault.adapter;
 		if (adapter instanceof FileSystemAdapter) {
 			const absFinalDirPath = path.join(adapter.getBasePath(), finalDirPath);
 			const absPublicDir = path.join(adapter.getBasePath(), publicDir);
 			try {
-				await fs.promises.symlink(absPublicDir, absFinalDirPath, 'dir');
+				if (isWindows) {
+					await fs.promises.symlink(absPublicDir, absFinalDirPath, 'junction');
+				} else {
+					await fs.promises.symlink(absPublicDir, absFinalDirPath, 'dir');
+				}
 			} catch (error) {
 				console.error('Failed to create symlink for site path:', error);
-				// Fallback: just return public directory
-				return path.join(previewDir, 'public');
+				// Fallback: copy directory
+				await fs.promises.cp(absPublicDir, absFinalDirPath, { recursive: true });
 			}
 		}
 
@@ -186,12 +203,7 @@
 
 	async function startPreview() {
 		if (!selectedFolder) {
-			new Notice('No folder selected', 3000);
-			return;
-		}
-
-		if (!serverRunning) {
-			new Notice('HTTP server is not running', 3000);
+			new Notice(t('messages.no_folder_selected'), 3000);
 			return;
 		}
 
@@ -200,9 +212,10 @@
 		hasPreview = false;
 
 		try {
-			// Stop and reset HTTP server for new directory structure
-			await stopGlobalHttpServer();
-			resetGlobalHttpServer();
+			if (serverRunning) {
+				await httpServer.stopWatching();
+				serverRunning = false;
+			}
 
 			// Generate random preview ID
 			previewId = generateRandomId();
@@ -224,50 +237,52 @@
 			buildProgress = 15;
 
 			// Build site (reserved for future implementation)
-			const adapter = app.vault.adapter;
-			let absThemesDir: string;
-
-			if (adapter instanceof FileSystemAdapter) {
-				absPreviewDir = path.join(adapter.getBasePath(), previewDir);
-				absThemesDir = path.join(adapter.getBasePath(), themesDir)
-			}
-
-			await processSSGWithProgress(absPreviewDir, absThemesDir, (progress) => {
-				buildProgress = 15 + (progress.percentage / 100 * 85); // Start from 15%, up to 100%
-			});
-
-			buildProgress = 100;
+			absPreviewDir = path.join(basePath, previewDir);
+			const absThemesDir = path.join(basePath, themesDir)
 
 			// Create site path structure and get server root directory
 			const serverRootDir = await createSitePathStructure(previewDir);
 
-			// Initialize and start new HTTP server with correct directory
-			httpServer = getGlobalHttpServer(app, serverRootDir);
-			const started = await httpServer.start();
-			if (started) {
-				serverRunning = true;
-				serverPort = httpServer.getPort();
-			} else {
-				new Notice('Failed to restart HTTP server', 3000);
-				return;
-			}
+			httpServer = await startIncrementalBuild({
+				projDir: absPreviewDir,
+				modulesDir: absThemesDir,
+				contentDir: absSelectedFolderPath,
+				projContentDir: absProjContentPath,
+				publicDir: path.join(basePath, serverRootDir),
+				enableWatching: true, // 启用完整的文件监控和增量构建
+				batchDelay: 500,
+				progressCallback: (progress) => {
+					buildProgress = 15 + (progress.percentage / 100 * 85); // Start from 15%, up to 100%
+				},
+
+				// Live Reload 配置
+				liveReload: {
+					enabled: true,
+					port: serverPort,
+					host: serverHost,
+					livereloadPort: 35729
+				}
+			})
+
+			serverRunning = true;
+			buildProgress = 100;
 
 			// Set preview URL
 			if (sitePath === '/') {
-				previewUrl = `http://localhost:${serverPort}/`;
+				previewUrl = httpServer.getServerUrl();
 			} else {
-				previewUrl = `http://localhost:${serverPort}${sitePath}/`;
+				previewUrl = `${httpServer.getServerUrl()}${sitePath}/`;
 			}
 			hasPreview = true;
 
 			// Open browser preview
 			window.open(previewUrl, '_blank');
 
-			new Notice('Preview generated successfully!', 3000);
+			new Notice(t('messages.preview_generated_successfully'), 3000);
 
 		} catch (error) {
 			console.error('Preview generation failed:', error);
-			new Notice(`Preview failed: ${error.message}`, 5000);
+			new Notice(t('messages.preview_failed', { error: error.message }), 5000);
 		} finally {
 			isBuilding = false;
 		}
@@ -275,13 +290,21 @@
 
 	async function startPublish() {
 		if (!hasPreview) {
-			new Notice('Please generate preview first', 3000);
+			new Notice(t('messages.please_generate_preview_first'), 3000);
 			return;
 		}
 
 		if (!previewId || !absPreviewDir) {
-			new Notice('Preview data is missing', 3000);
+			new Notice(t('messages.preview_data_missing'), 3000);
 			return;
+		}
+
+		// Check Netlify settings if Netlify is selected
+		if (selectedPublishOption === 'netlify') {
+			if (!plugin.settings.netlifyAccessToken || !plugin.settings.netlifyProjectId) {
+				new Notice(t('messages.netlify_settings_missing'), 5000);
+				return;
+			}
 		}
 
 		isPublishing = true;
@@ -293,34 +316,53 @@
 			publishProgress = 5;
 			const publicDir = path.join(absPreviewDir, 'public');
 
-			const zipContent = await createZipFromDirectory(publicDir);
-			publishProgress = 50;
+			if (selectedPublishOption === 'netlify') {
+				// Netlify deployment
+				await publishToNetlify(publicDir);
+			} else {
+				// MDFriday Preview deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
 
-			const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent);
-			if (!previewApiId) {
-				throw new Error('Failed to create MDFriday preview');
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent);
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%)
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday preview');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL
+				const baseUrl = GetBaseUrl();
+				publishUrl = `${baseUrl}${deployPath}`;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
 			}
-			publishProgress = 80;
-
-			// Step 3: Deploy the preview (80-100%)
-			const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
-			if (!deployPath) {
-				throw new Error('Failed to deploy MDFriday preview');
-			}
-			publishProgress = 100;
-
-			// Step 4: Construct final publish URL
-			const baseUrl = GetBaseUrl();
-			publishUrl = `${baseUrl}${deployPath}`;
-			publishSuccess = true;
-
-			new Notice('Site published successfully!', 3000);
 
 		} catch (error) {
 			console.error('Publishing failed:', error);
-			new Notice(`Publishing failed: ${error.message}`, 5000);
+			new Notice(t('messages.publishing_failed', { error: error.message }), 5000);
 		} finally {
 			isPublishing = false;
+		}
+	}
+
+	async function publishToNetlify(publicDir: string) {
+		try {
+			publishUrl = await plugin.netlify.deployToNetlify(publicDir, (progress) => {
+				publishProgress = Math.round(progress);
+			});
+			publishSuccess = true;
+			new Notice(t('messages.netlify_deploy_success'), 3000);
+		} catch (error) {
+			console.error('Netlify deployment failed:', error);
+			throw new Error(t('messages.netlify_deploy_failed', { error: error.message }));
 		}
 	}
 
@@ -394,6 +436,9 @@
 		if (adapter instanceof FileSystemAdapter) {
 			sourcePath = path.join(adapter.getBasePath(), folder.path);
 			absTargetPath = path.join(adapter.getBasePath(), targetPath);
+
+			absSelectedFolderPath = sourcePath;
+			absProjContentPath = absTargetPath;
 		} else {
 			// If not FileSystemAdapter, fall back to copying files
 			console.warn('Not using FileSystemAdapter, falling back to copying files');
@@ -404,6 +449,11 @@
 		try {
 			if (await app.vault.adapter.exists(targetPath)) {
 				await app.vault.adapter.rmdir(targetPath, true);
+			}
+
+			if (isWindows) {
+				await fs.promises.symlink(sourcePath, absTargetPath, 'junction');
+				return;
 			}
 
 			await fs.promises.symlink(sourcePath, absTargetPath, 'dir');
@@ -439,6 +489,44 @@
 		await copyRecursive(folder, targetPath);
 	}
 
+	async function exportSite() {
+		if (!hasPreview || !absPreviewDir) {
+			new Notice(t('messages.please_generate_preview_first'), 3000);
+			return;
+		}
+
+		isExporting = true;
+
+		try {
+			// Create ZIP from public directory
+			const publicDir = path.join(absPreviewDir, 'public');
+			const zipContent = await createZipFromDirectory(publicDir);
+
+			// Use Electron's dialog API to show save dialog
+			const { dialog } = require('@electron/remote') || require('electron').remote;
+			const { canceled, filePath } = await dialog.showSaveDialog({
+				title: t('ui.export_site_dialog_title'),
+				defaultPath: 'mdfriday-site.zip',
+				filters: [
+					{ name: 'ZIP Files', extensions: ['zip'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+
+			if (!canceled && filePath) {
+				// Save the ZIP file to the selected path
+				await fs.promises.writeFile(filePath, zipContent);
+				new Notice(t('messages.site_exported_successfully', { path: filePath }), 3000);
+			}
+
+		} catch (error) {
+			console.error('Export failed:', error);
+			new Notice(t('messages.export_failed', { error: error.message }), 5000);
+		} finally {
+			isExporting = false;
+		}
+	}
+
 	async function createZipFromDirectory(sourceDir: string): Promise<Uint8Array> {
 		const zip = new JSZip();
 		
@@ -470,7 +558,7 @@
 
 <div class="site-builder">
 	<div class="section">
-		<label class="section-label" for="content-path">Content Path</label>
+		<label class="section-label" for="content-path">{t('ui.content_path')}</label>
 		<input
 			type="text"
 			class="form-input readonly"
@@ -481,12 +569,12 @@
 
 	<!-- Site Name -->
 	<div class="section">
-		<label class="section-label" for="site-name">Site Name</label>
+		<label class="section-label" for="site-name">{t('ui.site_name')}</label>
 		<input
 			type="text"
 			class="form-input"
 			bind:value={siteName}
-			placeholder="Enter site name"
+			placeholder={t('ui.site_name_placeholder')}
 		/>
 	</div>
 
@@ -499,23 +587,23 @@
 				aria-expanded={showAdvancedSettings}
 			>
 				<span class="toggle-icon" class:expanded={showAdvancedSettings}>▶</span>
-				Advanced Settings
+{t('ui.advanced_settings')}
 			</button>
 			
 			{#if showAdvancedSettings}
 				<div class="advanced-content">
 					<div class="advanced-field">
-						<label class="section-label" for="site-path">Site Path</label>
+						<label class="section-label" for="site-path">{t('ui.site_path')}</label>
 						<input
 							type="text"
 							class="form-input"
 							bind:value={sitePath}
 							on:blur={handleSitePathChange}
-							placeholder="/"
-							title="The base path where your site will be deployed (e.g., /docs, /blog)"
+							placeholder={t('ui.site_path_placeholder')}
+							title={t('ui.site_path_hint')}
 						/>
 						<div class="field-hint">
-							Specify the base path for your site. Use "/" for root deployment.
+							{t('ui.site_path_hint')}
 						</div>
 					</div>
 				</div>
@@ -525,12 +613,12 @@
 
 	<!-- Theme Selection -->
 	<div class="section">
-		<label class="section-label" for="themes">Theme</label>
+		<label class="section-label" for="themes">{t('ui.theme')}</label>
 		<div class="theme-selector">
 			<div class="current-theme">
 				<span class="theme-name">{getSelectedThemeName()}</span>
 				<button class="change-theme-btn" on:click={openThemeModal}>
-					Change Theme
+					{t('ui.change_theme')}
 				</button>
 			</div>
 		</div>
@@ -538,11 +626,11 @@
 
 	<!-- Preview Section -->
 	<div class="section">
-		<h3 class="section-title">Preview</h3>
+		<h3 class="section-title">{t('ui.preview')}</h3>
 		<div class="preview-section">
 			{#if isBuilding}
 				<div class="progress-container">
-					<p>Generating preview...</p>
+					<p>{t('ui.preview_building')}</p>
 					<ProgressBar progress={buildProgress} />
 				</div>
 			{:else}
@@ -551,14 +639,23 @@
 					on:click={startPreview}
 					disabled={!selectedFolder}
 				>
-					{hasPreview ? 'Regenerate Preview' : 'Generate Preview'}
+{hasPreview ? t('ui.regenerate_preview') : t('ui.generate_preview')}
 				</button>
 			{/if}
 
 			{#if hasPreview && previewUrl}
 				<div class="preview-link">
-					<p>Preview link:</p>
+					<p>{t('ui.preview_link')}</p>
 					<a href={previewUrl} target="_blank" class="preview-url">{previewUrl}</a>
+					<div class="preview-actions">
+						<button
+							class="action-button export-button"
+							on:click={exportSite}
+							disabled={isExporting}
+						>
+							{isExporting ? t('ui.exporting') : t('ui.export_site')}
+						</button>
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -566,7 +663,7 @@
 
 	<!-- Publish Section -->
 	<div class="section">
-		<h3 class="section-title">Publish</h3>
+		<h3 class="section-title">{t('ui.publish')}</h3>
 		<div class="publish-section">
 			<div class="publish-options">
 				<div class="publish-select-wrapper">
@@ -579,7 +676,7 @@
 
 				{#if isPublishing}
 					<div class="progress-container">
-						<p>Publishing...</p>
+						<p>{t('ui.publish_building')}</p>
 						<ProgressBar progress={publishProgress} />
 					</div>
 				{:else}
@@ -588,14 +685,14 @@
 						on:click={startPublish}
 						disabled={!hasPreview}
 					>
-						Publish Site
+{t('ui.publish')}
 					</button>
 				{/if}
 			</div>
 
 			{#if publishSuccess && publishUrl}
 				<div class="publish-success">
-					<p class="success-message">✅ Published successfully!</p>
+					<p class="success-message">{t('ui.published_successfully')}</p>
 					<a href={publishUrl} target="_blank" class="publish-url">{publishUrl}</a>
 				</div>
 			{/if}
@@ -787,6 +884,26 @@
 		margin: 0 0 5px 0;
 		color: var(--text-success);
 		font-weight: 500;
+	}
+
+	.preview-actions {
+		margin-top: 10px;
+		display: flex;
+		gap: 10px;
+	}
+
+	.export-button {
+		background: var(--interactive-normal);
+		color: var(--text-normal);
+		border: 1px solid var(--background-modifier-border);
+	}
+
+	.export-button:hover:not(:disabled) {
+		background: var(--interactive-hover);
+	}
+
+	.export-button:disabled {
+		opacity: 0.6;
 	}
 
 	.advanced-settings {

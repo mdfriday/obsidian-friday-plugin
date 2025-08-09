@@ -2,20 +2,25 @@ import {App, Plugin, PluginSettingTab, Setting, TFolder} from 'obsidian';
 import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
 import {User} from "./user";
 import './styles/theme-modal.css';
-import {stopGlobalHttpServer} from './httpServer';
 import {ThemeSelectionModal} from "./theme/modal";
 import {Hugoverse} from "./hugoverse";
+import {NetlifyAPI} from "./netlify";
+import {I18nService} from "./i18n";
 
 interface FridaySettings {
 	username: string;
 	password: string;
 	userToken: string;
+	netlifyAccessToken: string;
+	netlifyProjectId: string;
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
 	username: '',
 	password: '',
 	userToken: '',
+	netlifyAccessToken: '',
+	netlifyProjectId: '',
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -33,6 +38,8 @@ export default class FridayPlugin extends Plugin {
 	apiUrl: string
 	user: User
 	hugoverse: Hugoverse
+	netlify: NetlifyAPI
+	i18n: I18nService
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
@@ -52,7 +59,7 @@ export default class FridayPlugin extends Plugin {
 				if (file instanceof TFolder) {
 					menu.addItem(item => {
 						item
-							.setTitle('Build as site')
+							.setTitle(this.i18n.t('menu.build_as_site'))
 							.setIcon(FRIDAY_ICON)
 							.onClick(async () => {
 								const rightSplit = this.app.workspace.rightSplit;
@@ -88,14 +95,20 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	showThemeSelectionModal(selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void) {
-		const modal = new ThemeSelectionModal(this.app, selectedTheme, onSelect);
+		const modal = new ThemeSelectionModal(this.app, selectedTheme, onSelect, this);
 		modal.open();
 	}
 
 	async initFriday(): Promise<void> {
 		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+		
+		// Initialize i18n service first
+		this.i18n = new I18nService(this);
+		await this.i18n.init();
+		
 		this.user = new User(this);
 		this.hugoverse = new Hugoverse(this);
+		this.netlify = new NetlifyAPI(this);
 	}
 
 	initLeaf(): void {
@@ -108,7 +121,6 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	async onunload() {
-		await stopGlobalHttpServer();
 	}
 
 	async loadSettings() {
@@ -137,17 +149,53 @@ class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		const {username, password, userToken} = this.plugin.settings;
+		const {username, password, userToken, netlifyAccessToken, netlifyProjectId} = this.plugin.settings;
 
+
+
+		// Netlify Settings Section (always visible)
+		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.netlify_settings')});
+		
+		// Netlify Access Token
+		new Setting(containerEl)
+			.setName(this.plugin.i18n.t('settings.netlify_access_token'))
+			.setDesc(this.plugin.i18n.t('settings.netlify_access_token_desc'))
+			.addText((text) => {
+				text
+					.setPlaceholder(this.plugin.i18n.t('settings.netlify_access_token_placeholder'))
+					.setValue(netlifyAccessToken || "")
+					.onChange(async (value) => {
+						this.plugin.settings.netlifyAccessToken = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.type = "password";
+			});
+
+		// Netlify Project ID
+		new Setting(containerEl)
+			.setName(this.plugin.i18n.t('settings.netlify_project_id'))
+			.setDesc(this.plugin.i18n.t('settings.netlify_project_id_desc'))
+			.addText((text) =>
+				text
+					.setPlaceholder(this.plugin.i18n.t('settings.netlify_project_id_placeholder'))
+					.setValue(netlifyProjectId || "")
+					.onChange(async (value) => {
+						this.plugin.settings.netlifyProjectId = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		// MDFriday Account Section (optional for advanced features)
+		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.mdfriday_account')});
+		
 		if (userToken) {
 			// 用户已登录的界面
-			containerEl.createEl("h2", {text: "Welcome Back!"});
-			containerEl.createEl("p", {text: `Logged in as: ${username}`});
+			containerEl.createEl("p", {text: this.plugin.i18n.t('settings.logged_in_as', { username })});
 
 			new Setting(containerEl)
 				.addButton((button) =>
 					button
-						.setButtonText("Logout")
+						.setButtonText(this.plugin.i18n.t('settings.logout'))
 						.setCta()
 						.onClick(async () => {
 							await this.plugin.user.logout(); // 处理登出逻辑
@@ -156,16 +204,15 @@ class FridaySettingTab extends PluginSettingTab {
 				);
 		} else {
 			// 用户未登录的界面
-			containerEl.createEl("h2", {text: "Welcome!"});
-			containerEl.createEl("p", {text: "Please enter your credentials."});
+			containerEl.createEl("p", {text: this.plugin.i18n.t('settings.mdfriday_account_desc')});
 
 			// Email 输入框
 			new Setting(containerEl)
-				.setName("Email")
-				.setDesc("Enter your email address")
+				.setName(this.plugin.i18n.t('settings.email'))
+				.setDesc(this.plugin.i18n.t('settings.email_desc'))
 				.addText((text) =>
 					text
-						.setPlaceholder("your@email.com")
+						.setPlaceholder(this.plugin.i18n.t('settings.email_placeholder'))
 						.setValue(username || "") // 填充现有用户名
 						.onChange(async (value) => {
 							this.plugin.settings.username = value;
@@ -175,11 +222,11 @@ class FridaySettingTab extends PluginSettingTab {
 
 			// Password 输入框
 			new Setting(containerEl)
-				.setName("Password")
-				.setDesc("Enter your password")
+				.setName(this.plugin.i18n.t('settings.password'))
+				.setDesc(this.plugin.i18n.t('settings.password_desc'))
 				.addText((text) => {
 					text
-						.setPlaceholder("password")
+						.setPlaceholder(this.plugin.i18n.t('settings.password_placeholder'))
 						.setValue(password || "") // 填充现有密码
 						.onChange(async (value) => {
 							this.plugin.settings.password = value;
@@ -192,7 +239,7 @@ class FridaySettingTab extends PluginSettingTab {
 			new Setting(containerEl)
 				.addButton((button) =>
 					button
-						.setButtonText("Register")
+						.setButtonText(this.plugin.i18n.t('settings.register'))
 						.setCta()
 						.onClick(async () => {
 							await this.plugin.user.register(); // 处理注册逻辑
@@ -200,7 +247,7 @@ class FridaySettingTab extends PluginSettingTab {
 						})
 				).addButton((button) =>
 				button
-					.setButtonText("Login")
+					.setButtonText(this.plugin.i18n.t('settings.login'))
 					.setCta()
 					.onClick(async () => {
 						await this.plugin.user.login(); // 处理登录逻辑

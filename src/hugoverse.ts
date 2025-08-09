@@ -70,7 +70,7 @@ export class Hugoverse {
 			return response.json.data[0];
 		} catch (error) {
 			console.error("Failed to create post:", error.toString());
-			new Notice("Failed to create post.", 5000);
+			new Notice(this.plugin.i18n.t('messages.failed_to_create_post'), 5000);
 		}
 	}
 
@@ -119,7 +119,7 @@ export class Hugoverse {
 			return response.json.data[0].id;
 		} catch (error) {
 			console.error("Failed to create resource:", error.toString());
-			new Notice("Failed to create resource.", 5000);
+			new Notice(this.plugin.i18n.t('messages.failed_to_create_resource'), 5000);
 		}
 	}
 

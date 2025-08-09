@@ -2,6 +2,7 @@
 import {App, Modal, Notice} from "obsidian";
 import {themeApiService} from "./themeApiService";
 import type {ThemeItem} from "./types";
+import type FridayPlugin from "../main";
 
 export class ThemeSelectionModal extends Modal {
 	private selectedTheme: string;
@@ -11,12 +12,23 @@ export class ThemeSelectionModal extends Modal {
 	private selectedTags: string[] = [];
 	private searchTerm: string = '';
 	private loading = false;
+	private loadingTags = false;
+	private loadingError: string | null = null;
+	private loadingState: 'initial' | 'tags' | 'themes' | 'search' | 'idle' | 'error' = 'idle';
+	private searchTimeout: NodeJS.Timeout | null = null;
+	private plugin: FridayPlugin;
 
-	constructor(app: App, selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void) {
+	constructor(app: App, selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void, plugin: FridayPlugin) {
 		super(app);
 		this.selectedTheme = selectedTheme;
 		this.onSelect = onSelect;
-		this.setTitle("Choose a Theme");
+		this.plugin = plugin;
+		this.setTitle(plugin.i18n.t('theme.choose_theme'));
+	}
+
+	// Helper function for translations
+	private t(key: string, params?: Record<string, any>): string {
+		return this.plugin.i18n.t(key, params);
 	}
 
 	async onOpen() {
@@ -24,31 +36,52 @@ export class ThemeSelectionModal extends Modal {
 		modalEl.addClass('friday-theme-modal');
 
 		contentEl.empty();
+		
+		// Set initial loading state
+		this.loadingState = 'initial';
+		this.renderModal();
 
 		// Load initial data
-		await this.loadTags();
-		await this.loadThemes();
-
-		// Render the modal content
-		this.renderModal();
+		try {
+			await this.loadTags();
+			await this.loadThemes();
+			// After loading completes, render the full modal
+			this.renderModal();
+		} catch (error) {
+			console.error('Failed to load initial data:', error);
+			this.loadingState = 'error';
+			this.loadingError = error instanceof Error ? error.message : 'Unknown error';
+			this.renderModal();
+		}
 	}
 
 	private async loadTags() {
+		this.loadingTags = true;
+		this.loadingState = 'tags';
 		try {
 			this.allTags = await themeApiService.fetchAllTags();
 		} catch (error) {
 			console.error('Failed to load tags:', error);
+			throw error;
+		} finally {
+			this.loadingTags = false;
 		}
 	}
 
 	private async loadThemes() {
 		this.loading = true;
+		this.loadingState = this.searchTerm || this.selectedTags.length > 0 ? 'search' : 'themes';
+		this.loadingError = null;
+		
 		try {
 			const result = await themeApiService.searchThemes(1, 20, this.searchTerm, this.selectedTags);
 			this.themes = result.themes;
+			this.loadingState = 'idle';
 		} catch (error) {
 			console.error('Failed to load themes:', error);
 			this.themes = [];
+			this.loadingState = 'error';
+			this.loadingError = error instanceof Error ? error.message : 'Unknown error';
 		} finally {
 			this.loading = false;
 		}
@@ -57,6 +90,13 @@ export class ThemeSelectionModal extends Modal {
 	private renderModal() {
 		const {contentEl} = this;
 		contentEl.empty();
+		
+		// If still in initial loading state, show loading screen
+		if (this.loadingState === 'initial' || this.loadingState === 'tags') {
+			const themesSection = contentEl.createDiv('themes-section');
+			this.renderLoadingState(themesSection);
+			return;
+		}
 
 		// Search section
 		const searchSection = contentEl.createDiv('search-section');
@@ -65,24 +105,33 @@ export class ThemeSelectionModal extends Modal {
 		const searchWrapper = searchSection.createDiv('search-input-wrapper');
 		const searchInput = searchWrapper.createEl('input', {
 			type: 'text',
-			placeholder: 'Search themes...',
+			placeholder: this.t('theme.search_themes'),
 			cls: 'search-input'
 		});
 		searchWrapper.createDiv('search-icon').setText('🔍');
 
 		searchInput.addEventListener('input', async (e) => {
 			this.searchTerm = (e.target as HTMLInputElement).value;
-			await this.loadThemes();
-			this.renderThemes();
+			
+			// Clear existing timeout
+			if (this.searchTimeout) {
+				clearTimeout(this.searchTimeout);
+			}
+			
+			// Debounce search
+			this.searchTimeout = setTimeout(async () => {
+				await this.loadThemes();
+				this.renderThemes();
+			}, 300); // 300ms delay
 		});
 
 		// Tags section
 		const tagsSection = searchSection.createDiv('tags-section');
 		const tagsHeader = tagsSection.createDiv('tags-header');
-		tagsHeader.createEl('span', {text: 'Filter by tags:', cls: 'tags-label'});
+		tagsHeader.createEl('span', {text: this.t('theme.filter_by_tags'), cls: 'tags-label'});
 		
 		if (this.selectedTags.length > 0) {
-			const clearBtn = tagsHeader.createEl('button', {text: 'Clear filters', cls: 'clear-filters-btn'});
+			const clearBtn = tagsHeader.createEl('button', {text: this.t('theme.clear_filters'), cls: 'clear-filters-btn'});
 			clearBtn.addEventListener('click', async () => {
 				this.selectedTags = [];
 				this.searchTerm = '';
@@ -120,14 +169,21 @@ export class ThemeSelectionModal extends Modal {
 
 		themesSection.empty();
 
-		if (this.loading) {
-			themesSection.createDiv('loading-message').setText('Loading themes...');
+		// Handle error state
+		if (this.loadingState === 'error') {
+			this.renderErrorState(themesSection);
+			return;
+		}
+
+		// Handle different loading states
+		if (this.loading || this.loadingState !== 'idle') {
+			this.renderLoadingState(themesSection);
 			return;
 		}
 
 		if (this.themes.length === 0) {
 			const noResults = themesSection.createDiv('no-results');
-			noResults.createEl('p', {text: 'No themes found'});
+			noResults.createEl('p', {text: this.t('theme.no_themes_found')});
 			return;
 		}
 
@@ -167,7 +223,7 @@ export class ThemeSelectionModal extends Modal {
 			if (theme.author || theme.version) {
 				const authorInfo = overlay.createDiv('theme-author-info');
 				if (theme.author) {
-					authorInfo.createEl('span', {text: `by ${theme.author}`, cls: 'theme-author'});
+					authorInfo.createEl('span', {text: this.t('theme.by_author', { author: theme.author }), cls: 'theme-author'});
 				}
 				if (theme.version) {
 					if (theme.author) {
@@ -190,7 +246,7 @@ export class ThemeSelectionModal extends Modal {
 			// Theme actions
 			const actions = overlay.createDiv('theme-actions');
 			if (theme.demo) {
-				const demoLink = actions.createEl('a', {text: 'View Demo', cls: 'demo-link'});
+				const demoLink = actions.createEl('a', {text: this.t('theme.view_demo'), cls: 'demo-link'});
 				demoLink.href = theme.demo;
 				demoLink.target = '_blank';
 				// Prevent event bubbling to card click
@@ -200,7 +256,7 @@ export class ThemeSelectionModal extends Modal {
 			}
 
 			const useBtn = actions.createEl('button', {
-				text: theme.id === this.selectedTheme ? 'Current' : 'Use It',
+				text: theme.id === this.selectedTheme ? this.t('theme.current') : this.t('theme.use_it'),
 				cls: `use-theme-btn ${theme.id === this.selectedTheme ? 'current' : ''}`
 			});
 
@@ -218,8 +274,68 @@ export class ThemeSelectionModal extends Modal {
 		});
 	}
 
+	private renderLoadingState(container: HTMLElement) {
+		// For initial loading, show full loading screen
+		if (this.loadingState === 'initial' || this.loadingState === 'tags') {
+			const loadingContainer = container.createDiv('loading-container');
+			
+			let loadingText = this.t('theme.loading_initial');
+			if (this.loadingState === 'tags') {
+				loadingText = this.t('theme.loading_tags');
+			}
+			
+			// Create spinner
+			loadingContainer.createDiv('loading-spinner');
+			
+			// Create text elements
+			loadingContainer.createDiv('loading-text').setText(loadingText);
+			return;
+		}
+		
+		// For other loading states, show simple loading message
+		if (this.loading) {
+			let loadingText = this.t('theme.loading_themes');
+			if (this.loadingState === 'search') {
+				loadingText = this.t('theme.loading_search');
+			}
+			
+			container.createDiv('loading-message').setText(loadingText);
+		}
+	}
+	
+	private renderErrorState(container: HTMLElement) {
+		const errorContainer = container.createDiv('error-container');
+		
+		// Error icon
+		errorContainer.createDiv('error-icon').setText('⚠️');
+		
+		// Error message
+		const errorMessage = this.loadingError || this.t('theme.loading_error');
+		errorContainer.createDiv('error-message').setText(errorMessage);
+		
+		// Retry button
+		const retryButton = errorContainer.createEl('button', {
+			text: this.t('theme.retry'),
+			cls: 'retry-button'
+		});
+		
+		retryButton.addEventListener('click', async () => {
+			try {
+				await this.loadThemes();
+			} catch (error) {
+				console.error('Retry failed:', error);
+			}
+		});
+	}
+
 	onClose() {
 		const {contentEl} = this;
 		contentEl.empty();
+		
+		// Clear search timeout
+		if (this.searchTimeout) {
+			clearTimeout(this.searchTimeout);
+			this.searchTimeout = null;
+		}
 	}
 }
