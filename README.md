@@ -14,6 +14,9 @@ Preview locally with real-time updates, then deploy to your choice of hosting pl
 ### Real-time Preview: What You See Is What You Get
 ![Real-time preview demonstration](demo/see-get.gif)
 
+### YouTube Demo
+[![YouTube Demo](demo/ob+friday.png)](https://youtu.be/2maPgW5uDCI?si=VfRf9kapGSZLHYzG)
+
 ## Why Friday?
 
 - **🚀 Lightning Fast Local Preview**: Build and preview instantly on your machine — no waiting, no uploads
