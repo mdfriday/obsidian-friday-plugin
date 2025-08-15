@@ -53,7 +53,7 @@ Publish individual notes or entire folders, preview locally with real-time updat
 ## More Resources
 
 - **[Official Website](https://mdfriday.com)** - Completely redesigned and upgraded
-- **[中文官网](https://mdfriday.sunwei.xyz/mdfriday)** - 全新升级的中文版本
+- **[中文官网](https://sunwei.xyz/mdfriday)** - 全新升级的中文版本
 - **[Help Documentation](https://help.mdfriday.com)**
 - **[Theme Gallery](https://gallery.mdfriday.com)**
 
