@@ -19,6 +19,13 @@ export const en: TranslationNamespace = {
 		login: 'Login',
 		logout: 'Logout',
 		
+		// Publish settings
+		publish_settings: 'Publish Settings',
+		publish_method: 'Publish Method',
+		publish_method_desc: 'Choose how you want to publish your site',
+		publish_method_netlify: 'Netlify',
+		publish_method_ftp: 'FTP',
+		
 		// Netlify settings
 		netlify_settings: 'Netlify Settings',
 		netlify_access_token: 'Personal Access Token',
@@ -27,6 +34,28 @@ export const en: TranslationNamespace = {
 		netlify_project_id: 'Project ID',
 		netlify_project_id_desc: 'The ID of your Netlify project/site',
 		netlify_project_id_placeholder: 'Enter your project ID',
+		
+		// FTP settings
+		ftp_settings: 'FTP Settings',
+		ftp_server: 'Server Address',
+		ftp_server_desc: 'FTP server domain or IP address',
+		ftp_server_placeholder: 'e.g. ftp.example.com',
+		ftp_username: 'Username',
+		ftp_username_desc: 'FTP login username',
+		ftp_username_placeholder: 'Enter username',
+		ftp_password: 'Password',
+		ftp_password_desc: 'FTP login password',
+		ftp_password_placeholder: 'Enter password',
+		ftp_remote_dir: 'Remote Directory',
+		ftp_remote_dir_desc: 'Target directory path for upload',
+		ftp_remote_dir_placeholder: 'e.g. /www/site',
+		ftp_ignore_cert: 'Ignore Certificate Verification',
+		ftp_ignore_cert_desc: 'Enable for self-signed certificates, recommended',
+		ftp_test_connection: 'Test FTP Connection',
+		ftp_test_connection_desc: 'Test if current FTP settings are correct',
+		ftp_test_connection_testing: 'Testing...',
+		ftp_test_connection_success: 'Connection Successful',
+		ftp_test_connection_failed: 'Connection Failed',
 		
 		// MDFriday Account
 		mdfriday_account: 'MDFriday Account (Optional)',
@@ -66,6 +95,7 @@ export const en: TranslationNamespace = {
 		publish: 'Publish',
 		publish_option_mdfriday: 'MDFriday Preview',
 		publish_option_netlify: 'Netlify',
+		publish_option_ftp: 'FTP Upload',
 		publish_building: 'Publishing...',
 		publish_success: 'Published successfully!',
 		publish_failed: 'Publish failed',
@@ -79,7 +109,10 @@ export const en: TranslationNamespace = {
 	},
 
 	menu: {
-		build_as_site: 'Build as site',
+		publish_to_web: 'Publish to Web',
+	},
+
+	commands: {
 	},
 
 	theme: {
@@ -113,6 +146,7 @@ export const en: TranslationNamespace = {
 		
 		// Preview messages
 		no_folder_selected: 'No folder selected',
+		no_folder_or_file_selected: 'No folder or file selected',
 		preview_generated_successfully: 'Preview generated successfully!',
 		preview_failed: 'Preview failed: {{error}}',
 		please_generate_preview_first: 'Please generate preview first',
@@ -126,6 +160,12 @@ export const en: TranslationNamespace = {
 		netlify_settings_missing: 'Please configure Netlify settings first',
 		netlify_deploy_failed: 'Netlify deployment failed: {{error}}',
 		netlify_deploy_success: 'Site deployed to Netlify successfully!',
+		
+		// FTP messages
+		ftp_settings_missing: 'Please configure FTP settings first',
+		ftp_upload_failed: 'FTP upload failed: {{error}}',
+		ftp_upload_success: 'Site uploaded to FTP server successfully!',
+		ftp_fallback_to_plain: 'Server does not support encryption, switched to plain FTP',
 		
 		// User messages
 		enter_email_password: 'Please enter your email and password',

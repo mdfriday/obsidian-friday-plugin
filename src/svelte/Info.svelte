@@ -13,7 +13,7 @@
 	<br />
 	<br />
 	<a href="https://mdfriday.com" target="_blank">
-		<img src="https://mdfriday.com/images/logo.svg" alt="MDFriday" width="20" height="20" />
+		<img src="https://gohugo.net/mdfriday.svg" alt="MDFriday" width="20" height="20" />
 	</a>
 </div>
 

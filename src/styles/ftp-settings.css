@@ -1,0 +1,57 @@
+/* Publish Settings Styles */
+
+/* Publish Method Containers */
+.netlify-settings-container,
+.ftp-settings-container {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+}
+
+.netlify-settings-container h3,
+.ftp-settings-container h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: var(--text-normal);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* FTP Test Connection Button Styles */
+.ftp-test-success {
+  background-color: var(--color-green) !important;
+  color: white !important;
+  border-color: var(--color-green) !important;
+}
+
+.ftp-test-error {
+  background-color: var(--color-red) !important;
+  color: white !important;
+  border-color: var(--color-red) !important;
+}
+
+.ftp-test-result {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  clear: both;
+}
+
+.ftp-test-result-success {
+  background-color: rgba(var(--color-green-rgb), 0.1);
+  color: var(--color-green);
+  border: 1px solid rgba(var(--color-green-rgb), 0.3);
+}
+
+.ftp-test-result-error {
+  background-color: rgba(var(--color-red-rgb), 0.1);
+  color: var(--color-red);
+  border: 1px solid rgba(var(--color-red-rgb), 0.3);
+}

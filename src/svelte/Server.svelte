@@ -1,5 +1,5 @@
 <script lang="ts">
-	import {App, Platform, TFolder, Notice} from "obsidian";
+	import {App, Platform, TFolder, TFile, Notice} from "obsidian";
 	import Info from "./Info.svelte"
 	import Site from "./Site.svelte"
 	import {onMount, onDestroy} from "svelte";
@@ -8,7 +8,8 @@
 	// 接收 props
 	export let app: App;
 	export let plugin: FridayPlugin;
-	export let selectedFolder: TFolder | null = null; // 新增：选中的文件夹
+	export let selectedFolder: TFolder | null = null; // 选中的文件夹
+	export let selectedFile: TFile | null = null; // 选中的文件
 
 	let isClientSupported = false;
 	
@@ -49,7 +50,7 @@
 						aria-labelledby="tab-site" 
 						tabindex="0"
 					>
-						<Site {app} {plugin} {selectedFolder} />
+						<Site {app} {plugin} {selectedFolder} {selectedFile} />
 						
 						<hr class="centered-line">
 						<Info {plugin}/>

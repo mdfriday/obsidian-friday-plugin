@@ -19,6 +19,13 @@ export const zhCn: TranslationNamespace = {
 		login: '登录',
 		logout: '退出登录',
 		
+		// Publish settings
+		publish_settings: '发布设置',
+		publish_method: '发布方式',
+		publish_method_desc: '选择您想要发布网站的方式',
+		publish_method_netlify: 'Netlify',
+		publish_method_ftp: 'FTP',
+		
 		// Netlify settings
 		netlify_settings: 'Netlify 设置',
 		netlify_access_token: '个人访问令牌',
@@ -27,6 +34,28 @@ export const zhCn: TranslationNamespace = {
 		netlify_project_id: '项目 ID',
 		netlify_project_id_desc: '您的 Netlify 项目/站点的 ID',
 		netlify_project_id_placeholder: '请输入您的项目 ID',
+		
+		// FTP settings
+		ftp_settings: 'FTP 设置',
+		ftp_server: '服务器地址',
+		ftp_server_desc: 'FTP 服务器域名或 IP 地址',
+		ftp_server_placeholder: '例如：ftp.example.com',
+		ftp_username: '用户名',
+		ftp_username_desc: 'FTP 登录用户名',
+		ftp_username_placeholder: '请输入用户名',
+		ftp_password: '密码',
+		ftp_password_desc: 'FTP 登录密码',
+		ftp_password_placeholder: '请输入密码',
+		ftp_remote_dir: '远程目录',
+		ftp_remote_dir_desc: '上传的目标目录路径',
+		ftp_remote_dir_placeholder: '例如：/www/site',
+		ftp_ignore_cert: '忽略证书验证',
+		ftp_ignore_cert_desc: '适配自签名证书，建议开启',
+		ftp_test_connection: '测试 FTP 连接',
+		ftp_test_connection_desc: '测试当前 FTP 设置是否正确',
+		ftp_test_connection_testing: '测试中...',
+		ftp_test_connection_success: '连接成功',
+		ftp_test_connection_failed: '连接失败',
 		
 		// MDFriday Account
 		mdfriday_account: 'MDFriday 账户（可选）',
@@ -66,6 +95,7 @@ export const zhCn: TranslationNamespace = {
 		publish: '发布',
 		publish_option_mdfriday: 'MDFriday 预览',
 		publish_option_netlify: 'Netlify',
+		publish_option_ftp: 'FTP 上传',
 		publish_building: '正在发布...',
 		publish_success: '发布成功！',
 		publish_failed: '发布失败',
@@ -79,7 +109,10 @@ export const zhCn: TranslationNamespace = {
 	},
 
 	menu: {
-		build_as_site: '构建为站点',
+		publish_to_web: '发布到网络',
+	},
+
+	commands: {
 	},
 
 	theme: {
@@ -113,6 +146,7 @@ export const zhCn: TranslationNamespace = {
 		
 		// Preview messages
 		no_folder_selected: '未选择文件夹',
+		no_folder_or_file_selected: '未选择文件夹或文件',
 		preview_generated_successfully: '预览生成成功！',
 		preview_failed: '预览失败：{{error}}',
 		please_generate_preview_first: '请先生成预览',
@@ -126,6 +160,12 @@ export const zhCn: TranslationNamespace = {
 		netlify_settings_missing: '请先配置 Netlify 设置',
 		netlify_deploy_failed: 'Netlify 部署失败：{{error}}',
 		netlify_deploy_success: '站点已成功部署到 Netlify！',
+		
+		// FTP messages
+		ftp_settings_missing: '请先配置 FTP 设置',
+		ftp_upload_failed: 'FTP 上传失败：{{error}}',
+		ftp_upload_success: '站点已成功上传到 FTP 服务器！',
+		ftp_fallback_to_plain: '服务器不支持加密，已切换到普通 FTP',
 		
 		// User messages
 		enter_email_password: '请输入您的邮箱和密码',

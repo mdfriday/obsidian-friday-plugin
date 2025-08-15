@@ -7,7 +7,8 @@ export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
 export default class ServerView extends ItemView {
 	plugin: FridayPlugin;
 	private _app: Server | null = null;
-	private selectedFolder: TFolder | null = null; // 新增：存储选中的文件夹
+	private selectedFolder: TFolder | null = null; // 存储选中的文件夹
+	private selectedFile: TFile | null = null; // 存储选中的文件
 
 	constructor(leaf: WorkspaceLeaf, plugin: FridayPlugin) {
 		super(leaf);
@@ -17,8 +18,18 @@ export default class ServerView extends ItemView {
 	// 设置选中的文件夹
 	setSelectedFolder(folder: TFolder) {
 		this.selectedFolder = folder;
+		this.selectedFile = null; // 清除文件选择
 		if (this._app) {
-			this._app.$set({ selectedFolder: folder });
+			this._app.$set({ selectedFolder: folder, selectedFile: null });
+		}
+	}
+
+	// 设置选中的文件
+	setSelectedFile(file: TFile) {
+		this.selectedFile = file;
+		this.selectedFolder = null; // 清除文件夹选择
+		if (this._app) {
+			this._app.$set({ selectedFile: file, selectedFolder: null });
 		}
 	}
 
@@ -38,6 +49,7 @@ export default class ServerView extends ItemView {
 				app: this.app,
 				plugin: this.plugin,
 				selectedFolder: this.selectedFolder, // 传入选中的文件夹
+				selectedFile: this.selectedFile, // 传入选中的文件
 			},
 		});
 	}

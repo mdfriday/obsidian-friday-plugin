@@ -8,6 +8,7 @@ export class ThemeSelectionModal extends Modal {
 	private selectedTheme: string;
 	private onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void;
 	private themes: ThemeItem[] = [];
+	private allThemes: ThemeItem[] = []; // Store all themes for filtering
 	private allTags: string[] = [];
 	private selectedTags: string[] = [];
 	private searchTerm: string = '';
@@ -17,12 +18,14 @@ export class ThemeSelectionModal extends Modal {
 	private loadingState: 'initial' | 'tags' | 'themes' | 'search' | 'idle' | 'error' = 'idle';
 	private searchTimeout: NodeJS.Timeout | null = null;
 	private plugin: FridayPlugin;
+	private isForSingleFile: boolean = false;
 
-	constructor(app: App, selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void, plugin: FridayPlugin) {
+	constructor(app: App, selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void, plugin: FridayPlugin, isForSingleFile: boolean = false) {
 		super(app);
 		this.selectedTheme = selectedTheme;
 		this.onSelect = onSelect;
 		this.plugin = plugin;
+		this.isForSingleFile = isForSingleFile;
 		this.setTitle(plugin.i18n.t('theme.choose_theme'));
 	}
 
@@ -59,7 +62,18 @@ export class ThemeSelectionModal extends Modal {
 		this.loadingTags = true;
 		this.loadingState = 'tags';
 		try {
-			this.allTags = await themeApiService.fetchAllTags();
+			// Get all themes first
+			this.allThemes = await themeApiService.getAllThemes();
+			
+			// Filter themes for single file mode
+			if (this.isForSingleFile) {
+				this.allThemes = this.allThemes.filter(theme =>
+					theme.tags.some(tag => tag.toLowerCase() === 'page')
+				);
+			}
+			
+			// Extract tags from the filtered themes
+			this.allTags = this.extractTagsFromThemes(this.allThemes);
 		} catch (error) {
 			console.error('Failed to load tags:', error);
 			throw error;
@@ -68,14 +82,42 @@ export class ThemeSelectionModal extends Modal {
 		}
 	}
 
+	private extractTagsFromThemes(themes: ThemeItem[]): string[] {
+		const allTags = themes.flatMap(theme => theme.tags);
+		const uniqueTags = [...new Set(allTags)];
+		return uniqueTags.sort((a, b) => a.localeCompare(b));
+	}
+
 	private async loadThemes() {
 		this.loading = true;
 		this.loadingState = this.searchTerm || this.selectedTags.length > 0 ? 'search' : 'themes';
 		this.loadingError = null;
 		
 		try {
-			const result = await themeApiService.searchThemes(1, 20, this.searchTerm, this.selectedTags);
-			this.themes = result.themes;
+			// Use the pre-filtered themes (already filtered for single file mode if needed)
+			let filteredThemes = [...this.allThemes];
+			
+			// Apply search term filter
+			if (this.searchTerm.trim()) {
+				const term = this.searchTerm.trim().toLowerCase();
+				filteredThemes = filteredThemes.filter(theme => 
+					theme.name.toLowerCase().includes(term) ||
+					theme.author.toLowerCase().includes(term) ||
+					theme.tags.some(tag => tag.toLowerCase().includes(term))
+				);
+			}
+			
+			// Apply tags filter
+			if (this.selectedTags.length > 0) {
+				filteredThemes = filteredThemes.filter(theme =>
+					this.selectedTags.every(selectedTag =>
+						theme.tags.some(tag => tag === selectedTag)
+					)
+				);
+			}
+			
+			// Apply pagination (show first 20)
+			this.themes = filteredThemes.slice(0, 20);
 			this.loadingState = 'idle';
 		} catch (error) {
 			console.error('Failed to load themes:', error);

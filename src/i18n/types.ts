@@ -32,6 +32,13 @@ export interface TranslationNamespace {
 		login: string;
 		logout: string;
 		
+		// Publish settings
+		publish_settings: string;
+		publish_method: string;
+		publish_method_desc: string;
+		publish_method_netlify: string;
+		publish_method_ftp: string;
+		
 		// Netlify settings
 		netlify_settings: string;
 		netlify_access_token: string;
@@ -40,6 +47,28 @@ export interface TranslationNamespace {
 		netlify_project_id: string;
 		netlify_project_id_desc: string;
 		netlify_project_id_placeholder: string;
+		
+		// FTP settings
+		ftp_settings: string;
+		ftp_server: string;
+		ftp_server_desc: string;
+		ftp_server_placeholder: string;
+		ftp_username: string;
+		ftp_username_desc: string;
+		ftp_username_placeholder: string;
+		ftp_password: string;
+		ftp_password_desc: string;
+		ftp_password_placeholder: string;
+		ftp_remote_dir: string;
+		ftp_remote_dir_desc: string;
+		ftp_remote_dir_placeholder: string;
+		ftp_ignore_cert: string;
+		ftp_ignore_cert_desc: string;
+		ftp_test_connection: string;
+		ftp_test_connection_desc: string;
+		ftp_test_connection_testing: string;
+		ftp_test_connection_success: string;
+		ftp_test_connection_failed: string;
 		
 		// MDFriday Account
 		mdfriday_account: string;
@@ -80,6 +109,7 @@ export interface TranslationNamespace {
 		publish: string;
 		publish_option_mdfriday: string;
 		publish_option_netlify: string;
+		publish_option_ftp: string;
 		publish_building: string;
 		publish_success: string;
 		publish_failed: string;
@@ -94,7 +124,11 @@ export interface TranslationNamespace {
 
 	// Menu and actions
 	menu: {
-		build_as_site: string;
+		publish_to_web: string;
+	};
+
+	// Commands
+	commands: {
 	};
 
 	// Theme selection
@@ -130,6 +164,7 @@ export interface TranslationNamespace {
 		
 		// Preview messages
 		no_folder_selected: string;
+		no_folder_or_file_selected: string;
 		preview_generated_successfully: string;
 		preview_failed: string;
 		please_generate_preview_first: string;
@@ -153,6 +188,12 @@ export interface TranslationNamespace {
 		netlify_settings_missing: string;
 		netlify_deploy_failed: string;
 		netlify_deploy_success: string;
+		
+		// FTP messages
+		ftp_settings_missing: string;
+		ftp_upload_failed: string;
+		ftp_upload_success: string;
+		ftp_fallback_to_plain: string;
 	};
 
 	// Info and descriptions

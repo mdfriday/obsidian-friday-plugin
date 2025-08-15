@@ -8,17 +8,24 @@
 	import {startIncrementalBuild, IncrementalBuildConfig, IncrementalBuildCoordinator} from "@mdfriday/foundry";
 	import JSZip from "jszip";
 	import {GetBaseUrl} from "../main";
+	import {createStyleRenderer, OBStyleRenderer} from "../markdown";
+	import {themeApiService} from "../theme/themeApiService";
 
 	// Receive props
 	export let app: App;
 	export let plugin: FridayPlugin;
 	export let selectedFolder: TFolder | null = null;
+	export let selectedFile: TFile | null = null;
 	
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
 
-	const DEV_BOOK_THEME_URL = "http://localhost:1314/api/uploads/themes/book.zip"
-	const PROD_BOOK_THEME_URL = "https://mdfriday.sunwei.xyz/api/uploads/themes/book.zip";
+	const BOOK_THEME_URL = "https://gohugo.net/book-ob.zip?version=1.0"
+	const BOOK_THEME_ID = "3"
+	const BOOK_THEME_NAME = "Obsidian Book"
+	const NOTE_THEME_URL = "https://gohugo.net/note.zip?version=1.0"
+	const NOTE_THEME_ID = "2"
+	const NOTE_THEME_NAME = "Note";
 
 	const isWindows = process.platform === 'win32';
 
@@ -29,9 +36,10 @@
 	let contentPath = '';
 	let siteName = '';
 	let sitePath = '/';
-	let selectedThemeDownloadUrl =  process.env.NODE_ENV === 'development' ? DEV_BOOK_THEME_URL : PROD_BOOK_THEME_URL;
-	let selectedThemeName = 'Book';
-	let selectedThemeId = '1'; // Add theme ID tracking for Book theme
+	let selectedThemeDownloadUrl = BOOK_THEME_URL;
+	let selectedThemeName = BOOK_THEME_NAME;
+	let selectedThemeId = BOOK_THEME_ID; // Add theme ID tracking for Book theme
+	let isForSingleFile = false; // Track if we're working with a single file
 
 	// Advanced settings state
 	let showAdvancedSettings = false;
@@ -51,7 +59,7 @@
 	let publishProgress = 0;
 	let publishSuccess = false;
 	let publishUrl = '';
-	let selectedPublishOption = 'mdf-preview';
+	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-preview' = plugin.settings.publishMethod || 'netlify';
 
 	// Export related state
 	let isExporting = false;
@@ -59,12 +67,13 @@
 	// Reactive publish options
 	$: publishOptions = [
 		{ value: 'netlify', label: t('ui.publish_option_netlify') },
+		{ value: 'ftp', label: t('ui.publish_option_ftp') },
 		...(sitePath.startsWith('/preview/') ? [{ value: 'mdf-preview', label: t('ui.publish_option_mdfriday') }] : []),
 	];
 
 	// Auto-switch to netlify if mdf-preview is not available when sitePath changes
 	$: if (!sitePath.startsWith('/preview/') && selectedPublishOption === 'mdf-preview') {
-		selectedPublishOption = 'netlify';
+		selectedPublishOption = plugin.settings.publishMethod || 'netlify';
 	}
 
 	// HTTP server related
@@ -77,6 +86,20 @@
 		if (selectedFolder) {
 			contentPath = selectedFolder.name;
 			siteName = selectedFolder.name;
+			isForSingleFile = false;
+			// Set default theme for folder (Book)
+			selectedThemeDownloadUrl = BOOK_THEME_URL;
+			selectedThemeName = BOOK_THEME_NAME;
+			selectedThemeId = BOOK_THEME_ID;
+		} else if (selectedFile) {
+			contentPath = selectedFile.name;
+			siteName = selectedFile.basename; // Remove .md extension
+			isForSingleFile = true;
+			// Set default theme for single file (Note)
+			selectedThemeDownloadUrl = NOTE_THEME_URL;
+			selectedThemeName = NOTE_THEME_NAME;
+			// Find the actual Note theme ID by searching themes
+			selectedThemeId = NOTE_THEME_ID; // Default to Note theme ID
 		}
 
 		themesDir = path.join(plugin.pluginDir, 'themes')
@@ -95,7 +118,7 @@
 		}
 	});
 
-	// Reactive update: update related state when selectedFolder changes
+	// Reactive update: update related state when selectedFolder or selectedFile changes
 	$: if (selectedFolder) {
 		// Only reset state when folder actually changes
 		const newContentPath = selectedFolder.name;
@@ -104,6 +127,30 @@
 		if (contentPath !== newContentPath) {
 			contentPath = newContentPath;
 			siteName = newSiteName;
+			isForSingleFile = false;
+			// Set default theme for folder
+			selectedThemeDownloadUrl = BOOK_THEME_URL;
+			selectedThemeName = BOOK_THEME_NAME;
+			selectedThemeId = BOOK_THEME_ID;
+			// Reset preview state
+			hasPreview = false;
+			previewUrl = '';
+			previewId = '';
+		}
+	} else if (selectedFile) {
+		// Only reset state when file actually changes
+		const newContentPath = selectedFile.name;
+		const newSiteName = selectedFile.basename;
+
+		if (contentPath !== newContentPath) {
+			contentPath = newContentPath;
+			siteName = newSiteName;
+			isForSingleFile = true;
+			// Set default theme for single file
+			selectedThemeDownloadUrl = NOTE_THEME_URL;
+			selectedThemeName = NOTE_THEME_NAME;
+			// Find the actual Note theme ID
+			selectedThemeId = NOTE_THEME_ID;
 			// Reset preview state
 			hasPreview = false;
 			previewUrl = '';
@@ -114,16 +161,15 @@
 	function openThemeModal() {
 		// Call plugin method to show theme selection modal
 		plugin.showThemeSelectionModal(selectedThemeId, (themeUrl: string, themeName?: string, themeId?: string) => {
+			// Force reactive updates by reassigning all variables
 			selectedThemeDownloadUrl = themeUrl;
-			selectedThemeName = themeName || "Book";
-			selectedThemeId = themeId || selectedThemeId; // Update theme ID when theme changes
-		});
+			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Book");
+			selectedThemeId = themeId || selectedThemeId;
+		}, isForSingleFile);
 	}
 
-	function getSelectedThemeName() {
-		// Return the cached theme name or fallback to ID
-		return selectedThemeName || selectedThemeDownloadUrl;
-	}
+	// Reactive statement to ensure theme name updates
+	$: displayThemeName = selectedThemeName || BOOK_THEME_NAME;
 
 	function toggleAdvancedSettings() {
 		showAdvancedSettings = !showAdvancedSettings;
@@ -142,6 +188,70 @@
 
 	function handleSitePathChange() {
 		sitePath = normalizeSitePath(sitePath);
+	}
+
+	/**
+	 * Create renderer based on theme tags
+	 * If theme has "Book" tag, use OBStyleRenderer (full-featured with plugin rendering)
+	 * Otherwise, use lightweight StyleRenderer
+	 */
+	async function createRendererBasedOnTheme() {
+		try {
+			// Get theme information by ID
+			const themeInfo = await themeApiService.getThemeById(selectedThemeId);
+			const obImagesDir = path.join(absPreviewDir, 'public', 'ob-images');
+			
+			// Check if theme has "Book" tag (case-insensitive)
+			const hasOBTag = themeInfo?.tags?.some(tag =>
+				tag.toLowerCase() === 'obsidian'
+			) || false;
+			
+			if (hasOBTag) {
+				// Use OBStyleRenderer for themes with "Book" tag
+				// This includes full CSS collection, plugin rendering, and theme styles
+				console.log(`Theme "${selectedThemeName}" has Book tag, using OBStyleRenderer with plugin rendering`);
+				const renderer = new OBStyleRenderer(plugin, {
+					includeCSS: true, // Include CSS in HTML for complete styling
+					waitForPlugins: true, // Wait for plugin rendering callbacks
+					timeout: 200, // Shorter timeout with smart detection
+					containerWidth: "1000px",
+					includeTheme: true // Include theme styles
+				});
+				
+				// Configure resource processor for app:// URLs
+				renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, selectedFolder?.name);
+				return renderer;
+			} else {
+				// Use lightweight StyleRenderer for other themes
+				console.log(`Theme "${selectedThemeName}" doesn't have Book tag, using lightweight StyleRenderer`);
+				const renderer = createStyleRenderer(plugin, {
+					autoHeadingID: true,
+					waitForStable: false, // Don't wait for DOM stable for better performance
+				});
+				
+				// Configure resource processor for internal links
+				if (renderer.getResourceProcessor) {
+					renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, selectedFolder?.name);
+				}
+				
+				return renderer;
+			}
+		} catch (error) {
+			console.warn('Failed to get theme info, falling back to lightweight renderer:', error);
+			// Fallback to lightweight renderer
+			const obImagesDir = path.join(absPreviewDir, 'public', 'ob-images');
+			const renderer = createStyleRenderer(plugin, {
+				autoHeadingID: true,
+				waitForStable: false,
+			});
+			
+			// Configure resource processor for internal links
+			if (renderer.getResourceProcessor) {
+				renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, selectedFolder?.name);
+			}
+			
+			return renderer;
+		}
 	}
 
 	async function createSitePathStructure(previewDir: string): Promise<string> {
@@ -202,8 +312,8 @@
 	}
 
 	async function startPreview() {
-		if (!selectedFolder) {
-			new Notice(t('messages.no_folder_selected'), 3000);
+		if (!selectedFolder && !selectedFile) {
+			new Notice(t('messages.no_folder_or_file_selected'), 3000);
 			return;
 		}
 
@@ -232,8 +342,12 @@
 			await createConfigFile(previewDir);
 			buildProgress = 10;
 
-			// Create symbolic link to content files
-			await linkFolderContents(selectedFolder, path.join(previewDir, 'content'));
+			// Create symbolic link to content files or copy single file
+			if (selectedFolder) {
+				await linkFolderContents(selectedFolder, path.join(previewDir, 'content'));
+			} else if (selectedFile) {
+				await linkSingleFileContent(selectedFile, path.join(previewDir, 'content'));
+			}
 			buildProgress = 15;
 
 			// Build site (reserved for future implementation)
@@ -242,6 +356,12 @@
 
 			// Create site path structure and get server root directory
 			const serverRootDir = await createSitePathStructure(previewDir);
+
+			// Configure image output directory for app:// URLs
+			const obImagesDir = path.join(absPreviewDir, 'public', 'ob-images');
+			
+			// Create renderer based on theme tags
+			const styleRenderer = await createRendererBasedOnTheme();
 
 			httpServer = await startIncrementalBuild({
 				projDir: absPreviewDir,
@@ -254,6 +374,7 @@
 				progressCallback: (progress) => {
 					buildProgress = 15 + (progress.percentage / 100 * 85); // Start from 15%, up to 100%
 				},
+				markdown: styleRenderer,
 
 				// Live Reload 配置
 				liveReload: {
@@ -269,7 +390,11 @@
 
 			// Set preview URL
 			if (sitePath === '/') {
-				previewUrl = httpServer.getServerUrl();
+				if (isForSingleFile) {
+					previewUrl = `${httpServer.getServerUrl()}/`;
+				} else {
+					previewUrl = httpServer.getServerUrl();
+				}
 			} else {
 				previewUrl = `${httpServer.getServerUrl()}${sitePath}/`;
 			}
@@ -299,10 +424,15 @@
 			return;
 		}
 
-		// Check Netlify settings if Netlify is selected
+		// Check settings based on selected publish option
 		if (selectedPublishOption === 'netlify') {
 			if (!plugin.settings.netlifyAccessToken || !plugin.settings.netlifyProjectId) {
 				new Notice(t('messages.netlify_settings_missing'), 5000);
+				return;
+			}
+		} else if (selectedPublishOption === 'ftp') {
+			if (!plugin.settings.ftpServer || !plugin.settings.ftpUsername || !plugin.settings.ftpPassword) {
+				new Notice(t('messages.ftp_settings_missing'), 5000);
 				return;
 			}
 		}
@@ -319,6 +449,9 @@
 			if (selectedPublishOption === 'netlify') {
 				// Netlify deployment
 				await publishToNetlify(publicDir);
+			} else if (selectedPublishOption === 'ftp') {
+				// FTP deployment
+				await publishToFTP(publicDir);
 			} else {
 				// MDFriday Preview deployment
 				const zipContent = await createZipFromDirectory(publicDir);
@@ -366,6 +499,44 @@
 		}
 	}
 
+	async function publishToFTP(publicDir: string) {
+		try {
+			// Reinitialize FTP uploader to ensure latest settings
+			plugin.initializeFTP();
+			
+			if (!plugin.ftp) {
+				throw new Error('FTP uploader not initialized - please check FTP settings');
+			}
+
+			console.log('Starting FTP upload from:', publicDir);
+
+			// Set up progress callback
+			plugin.ftp.setProgressCallback((progress) => {
+				publishProgress = Math.round(progress.percentage);
+			});
+
+			// Upload directory
+			const result = await plugin.ftp.uploadDirectory(publicDir);
+
+			if (result.success) {
+				publishSuccess = true;
+				publishUrl = ''; // FTP doesn't return a URL
+				
+				// Show appropriate success message
+				if (!result.usedSecure) {
+					new Notice(t('messages.ftp_fallback_to_plain'), 4000);
+				}
+				new Notice(t('messages.ftp_upload_success'), 3000);
+			} else {
+				throw new Error(result.error || 'Unknown FTP error');
+			}
+
+		} catch (error) {
+			console.error('FTP upload failed:', error);
+			throw new Error(t('messages.ftp_upload_failed', { error: error.message }));
+		}
+	}
+
 	function generateRandomId(): string {
 		return Math.random().toString(36).substring(2, 8);
 	}
@@ -391,6 +562,12 @@
 		const publicDir = path.join(previewDir, 'public');
 		if (!await app.vault.adapter.exists(publicDir)) {
 			await app.vault.adapter.mkdir(publicDir);
+		}
+
+		// Create ob-images subdirectory for Obsidian app:// images
+		const obImagesDir = path.join(publicDir, 'ob-images');
+		if (!await app.vault.adapter.exists(obImagesDir)) {
+			await app.vault.adapter.mkdir(obImagesDir);
 		}
 	}
 
@@ -487,6 +664,68 @@
 		};
 
 		await copyRecursive(folder, targetPath);
+	}
+
+	async function linkSingleFileContent(file: TFile, targetPath: string) {
+		// Get absolute path of source file
+		const adapter = app.vault.adapter;
+		let sourcePath: string;
+		let absTargetPath: string;
+		let absContentDir: string;
+
+		if (adapter instanceof FileSystemAdapter) {
+			sourcePath = path.join(adapter.getBasePath(), file.path);
+			absContentDir = path.join(adapter.getBasePath(), targetPath);
+			absTargetPath = path.join(absContentDir, 'index.md');
+
+			absSelectedFolderPath = path.dirname(sourcePath);
+			absProjContentPath = absContentDir;
+		} else {
+			// If not FileSystemAdapter, fall back to copying file
+			console.warn('Not using FileSystemAdapter, falling back to copying file');
+			await copySingleFileContent(file, targetPath);
+			return;
+		}
+
+		try {
+			// Create content directory if it doesn't exist
+			if (!await app.vault.adapter.exists(targetPath)) {
+				await app.vault.adapter.mkdir(targetPath);
+			}
+
+			// Remove existing index.md if it exists
+			if (await app.vault.adapter.exists(path.join(targetPath, 'index.md'))) {
+				await app.vault.adapter.remove(path.join(targetPath, 'index.md'));
+			}
+
+			// Create symbolic link to the file as index.md
+			if (isWindows) {
+				await fs.promises.symlink(sourcePath, absTargetPath, 'file');
+			} else {
+				await fs.promises.symlink(sourcePath, absTargetPath);
+			}
+		} catch (error) {
+			console.error('Failed to create symbolic link for file, falling back to copying:', error);
+			// If symbolic link fails, fall back to copying file
+			await copySingleFileContent(file, targetPath);
+		}
+	}
+
+	async function copySingleFileContent(file: TFile, targetPath: string) {
+		// Create content directory if it doesn't exist
+		if (!await app.vault.adapter.exists(targetPath)) {
+			await app.vault.adapter.mkdir(targetPath);
+		}
+
+		// Copy the file as index.md
+		const indexPath = path.join(targetPath, 'index.md');
+		try {
+			const fileContent = await app.vault.read(file);
+			await app.vault.adapter.write(indexPath, fileContent);
+		} catch (error) {
+			console.error('Failed to copy file content:', error);
+			throw error;
+		}
 	}
 
 	async function exportSite() {
@@ -616,7 +855,7 @@
 		<label class="section-label" for="themes">{t('ui.theme')}</label>
 		<div class="theme-selector">
 			<div class="current-theme">
-				<span class="theme-name">{getSelectedThemeName()}</span>
+				<span class="theme-name">{displayThemeName}</span>
 				<button class="change-theme-btn" on:click={openThemeModal}>
 					{t('ui.change_theme')}
 				</button>
@@ -637,7 +876,7 @@
 				<button
 					class="action-button preview-button"
 					on:click={startPreview}
-					disabled={!selectedFolder}
+					disabled={!selectedFolder && !selectedFile}
 				>
 {hasPreview ? t('ui.regenerate_preview') : t('ui.generate_preview')}
 				</button>
@@ -690,10 +929,14 @@
 				{/if}
 			</div>
 
-			{#if publishSuccess && publishUrl}
+			{#if publishSuccess}
 				<div class="publish-success">
 					<p class="success-message">{t('ui.published_successfully')}</p>
-					<a href={publishUrl} target="_blank" class="publish-url">{publishUrl}</a>
+					{#if publishUrl}
+						<a href={publishUrl} target="_blank" class="publish-url">{publishUrl}</a>
+					{:else if selectedPublishOption === 'ftp'}
+						<p class="ftp-success-info">{t('messages.ftp_upload_success')}</p>
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -884,6 +1127,12 @@
 		margin: 0 0 5px 0;
 		color: var(--text-success);
 		font-weight: 500;
+	}
+
+	.ftp-success-info {
+		margin: 5px 0 0 0;
+		color: var(--text-muted);
+		font-size: 14px;
 	}
 
 	.preview-actions {
