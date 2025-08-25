@@ -123,64 +123,94 @@ export class ObsidianResourceProcessor {
     return processedHtml;
   }
 
-  /**
-   * 处理内部链接（指向 markdown 文件的链接）
-   * 将形如 <a class="internal-link" href="ob plugins/games/game1.md">game1</a> 
-   * 转换为 <a class="internal-link" href="/sitePath/games/game1.html">game1</a>
-   * @param html HTML 内容
-   */
-  private async processInternalLinks(html: string): Promise<string> {
-    if (!this.sitePath || !this.selectedFolderName) {
-      return html;
-    }
+	/**
+	 * 处理内部链接（指向 markdown 文件的链接）
+	 * 只处理带有 data-href 且以 app:// 开头的链接
+	 * 例如：<a data-href="app://xxx/path/to/file.md" href="file1" class="internal-link">file1</a>
+	 * @param html HTML 内容
+	 */
+	private async processInternalLinks(html: string): Promise<string> {
+		if (!this.sitePath || !this.selectedFolderName) {
+			return html;
+		}
 
-    // 匹配所有 a 标签
-    const aTagPattern = /<a[^>]*>/g;
-    
-    let processedHtml = html;
-    const matches = Array.from(html.matchAll(aTagPattern));
-    
-    for (const match of matches) {
-      try {
-        const fullTag = match[0];
-        
-        // 检查是否包含 internal-link 类
-        if (!fullTag.includes('internal-link')) {
-          continue;
-        }
-        
-        // 提取 href 属性值
-        const hrefMatch = fullTag.match(/href=["']([^"']+\.md)["']/);
-        if (!hrefMatch) {
-          continue;
-        }
-        
-        const originalHref = hrefMatch[1];
-        
-        // 检查 href 是否以 selectedFolderName 开头
-        if (originalHref.startsWith(this.selectedFolderName + '/')) {
-          // 提取相对于 selectedFolder 的路径
-          const relativePath = originalHref.substring(this.selectedFolderName.length + 1);
-          
-          // 将 .md 扩展名替换为 .html
-          const htmlPath = relativePath.replace(/\.md$/, '.html');
-          
-          // 构建新的 href
-          const newHref = path.posix.join(this.sitePath, htmlPath);
-          
-          // 替换 href 属性中的原始值
-          const newTag = fullTag.replace(`href="${originalHref}"`, `href="${newHref}"`).replace(`href='${originalHref}'`, `href='${newHref}'`);
-          
-          processedHtml = processedHtml.replace(fullTag, newTag);
-        }
-        
-      } catch (error) {
-        console.error('Error processing internal link:', error);
-      }
-    }
-    
-    return processedHtml;
-  }
+		let processedHtml = html;
+
+		// 使用正则表达式匹配完整的 a 标签（包括内容和闭合标签）
+		const aTagPattern = /<a[^>]*data-href=["'](app:\/\/[^"']+)["'][^>]*>.*?<\/a>/g;
+
+		const replacements: Array<{original: string, replacement: string}> = [];
+		let match;
+
+		// 收集所有需要替换的内容
+		while ((match = aTagPattern.exec(html)) !== null) {
+			try {
+				const fullATag = match[0];
+				const dataHref = match[1];
+
+				// 从 app:// URL 中提取文件路径
+				// app://6ed7f74e07ef94016f98d6fb6a21317b8511/Users/weisun/github/sunwei/obsidian-vault/tests/file1.md?1756105631239
+				const urlParts = dataHref.match(/^app:\/\/[^\/]+(.+?)(?:\?.*)?$/);
+				if (!urlParts || !urlParts[1]) {
+					continue;
+				}
+
+				const fullPath = decodeURIComponent(urlParts[1]);
+
+				// 查找选中文件夹在路径中的位置
+				const folderIndex = fullPath.indexOf('/' + this.selectedFolderName + '/');
+				if (folderIndex === -1) {
+					continue;
+				}
+
+				// 提取相对于选中文件夹的路径
+				const relativePath = fullPath.substring(folderIndex + this.selectedFolderName.length + 2);
+
+				// 将 .md 扩展名替换为 .html
+				const htmlPath = relativePath.replace(/\.md$/, '.html');
+
+				// 构建新的 href
+				const newHref = path.posix.join(this.sitePath, htmlPath);
+
+				// 提取开始标签部分
+				const openTagMatch = fullATag.match(/^<a[^>]*>/);
+				if (!openTagMatch) {
+					continue;
+				}
+
+				const openTag = openTagMatch[0];
+
+				// 提取当前的 href 属性值并替换（确保不匹配 data-href）
+				const hrefMatch = openTag.match(/(?<!data-)href=["']([^"']+)["']/);
+				if (hrefMatch) {
+					const currentHref = hrefMatch[1];
+
+					// 只替换 href 属性，使用负向后瞻确保不替换 data-href
+					const newOpenTag = openTag.replace(
+						/(?<!data-)href=["'][^"']*["']/,
+						`href="${newHref}"`
+					);
+
+					const newFullATag = fullATag.replace(openTag, newOpenTag);
+
+					replacements.push({
+						original: fullATag,
+						replacement: newFullATag
+					});
+				}
+
+			} catch (error) {
+				console.error('Error processing internal link:', error);
+			}
+		}
+
+		// 执行所有替换
+		for (const replacement of replacements) {
+			processedHtml = processedHtml.replace(replacement.original, replacement.replacement);
+		}
+
+		return processedHtml;
+	}
 
   /**
    * 处理 Obsidian 内部链接
