@@ -84,20 +84,23 @@ export class ObsidianResourceProcessor {
         const [fullMatch, before, appUrl, after] = match;
         
         // 解析 app:// URL，提取实际的文件路径
-        // app://62244c1b041bc9fdd27dbfda8203cb39bde1/Users/weisun/github/sunwei/obsidian-vault/book/mdfriday.png?1754632371797
+        // macOS: app://62244c1b041bc9fdd27dbfda8203cb39bde1/Users/weisun/github/sunwei/obsidian-vault/book/mdfriday.png?1754632371797
+        // Windows: app://f7298a11456e4f08f4983a1e41a7e5065bfc/D:/BaiduSyncdisk/mdfriday/%E5%B0%8F%E7%BA%A2%E4%B9%A6/%E5%B7%B2%E7%9C%8B/1.png?1748075861217
         const urlParts = appUrl.match(/^app:\/\/[^\/]+(.+?)(?:\?.*)?$/);
         if (!urlParts || !urlParts[1]) {
           continue; // 无法解析，跳过
         }
 
-        const imagePath = decodeURIComponent(urlParts[1]);
+        // 规范化路径，处理跨平台兼容性
+        const imagePath = this.normalizeAppUrlPath(urlParts[1]);
+        
         const imageName = path.basename(imagePath);
         
         // 检查文件是否存在
         try {
           await fs.promises.access(imagePath);
-        } catch {
-          console.warn(`Image file not found: ${imagePath}`);
+        } catch (error) {
+          console.warn(`Image file not found: ${imagePath}`, error);
           continue; // 文件不存在，跳过
         }
 
@@ -105,7 +108,12 @@ export class ObsidianResourceProcessor {
         const targetPath = path.join(this.obImagesDir, imageName);
         
         // 复制文件到 ob-images 目录
-        await fs.promises.copyFile(imagePath, targetPath);
+        try {
+          await fs.promises.copyFile(imagePath, targetPath);
+        } catch (copyError) {
+          console.error(`Failed to copy image: ${imagePath}`, copyError);
+          continue; // 复制失败，跳过
+        }
         
         // 生成新的 src 路径 (使用正斜杠，因为这是网页路径)
         const newSrc = path.posix.join(this.sitePath, 'ob-images', imageName);
@@ -149,16 +157,19 @@ export class ObsidianResourceProcessor {
 				const dataHref = match[1];
 
 				// 从 app:// URL 中提取文件路径
-				// app://6ed7f74e07ef94016f98d6fb6a21317b8511/Users/weisun/github/sunwei/obsidian-vault/tests/file1.md?1756105631239
+				// macOS: app://6ed7f74e07ef94016f98d6fb6a21317b8511/Users/weisun/github/sunwei/obsidian-vault/tests/file1.md?1756105631239
+				// Windows: app://f7298a11456e4f08f4983a1e41a7e5065bfc/D:/BaiduSyncdisk/mdfriday/%E5%B0%8F%E7%BA%A2%E4%B9%A6/%E5%B7%B2%E7%9C%8B/file1.md?1748075861217
 				const urlParts = dataHref.match(/^app:\/\/[^\/]+(.+?)(?:\?.*)?$/);
 				if (!urlParts || !urlParts[1]) {
 					continue;
 				}
 
-				const fullPath = decodeURIComponent(urlParts[1]);
+				// 规范化路径，处理跨平台兼容性
+				const fullPath = this.normalizeAppUrlPath(urlParts[1]);
 
-				// 查找选中文件夹在路径中的位置
-				const folderIndex = fullPath.indexOf('/' + this.selectedFolderName + '/');
+				// 查找选中文件夹在路径中的位置 - 使用系统路径分隔符
+				const folderPattern = path.sep + this.selectedFolderName + path.sep;
+				const folderIndex = fullPath.indexOf(folderPattern);
 				if (folderIndex === -1) {
 					continue;
 				}
@@ -316,6 +327,37 @@ export class ObsidianResourceProcessor {
     }
 
     return null;
+  }
+
+  /**
+   * 规范化 app:// URL 中的文件路径，处理跨平台兼容性
+   * @param rawPath 从 app:// URL 中提取的原始路径
+   */
+  private normalizeAppUrlPath(rawPath: string): string {
+    // URL 解码
+    let normalizedPath = decodeURIComponent(rawPath);
+    
+    // 处理 Windows 路径的特殊情况
+    if (process.platform === 'win32') {
+      // 如果路径以 /D: 或 /C: 等格式开始，去掉开头的斜杠
+      if (/^\/[A-Za-z]:/.test(normalizedPath)) {
+        normalizedPath = normalizedPath.substring(1);
+      }
+      // 如果路径以 \D: 或 \C: 等格式开始，去掉开头的反斜杠
+      else if (/^\\[A-Za-z]:/.test(normalizedPath)) {
+        normalizedPath = normalizedPath.substring(1);
+      }
+      // 处理其他可能的异常情况，如路径以多个斜杠开头
+      else if (/^[\/\\]+[A-Za-z]:/.test(normalizedPath)) {
+        // 移除所有开头的斜杠和反斜杠，直到找到驱动器字母
+        normalizedPath = normalizedPath.replace(/^[\/\\]+/, '');
+      }
+    }
+    
+    // 规范化路径分隔符（在处理完开头字符后）
+    normalizedPath = path.normalize(normalizedPath);
+    
+    return normalizedPath;
   }
 
   /**
