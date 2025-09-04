@@ -43,6 +43,8 @@
 
 	// Advanced settings state
 	let showAdvancedSettings = false;
+	let googleAnalyticsId = '';
+	let disqusShortname = '';
 
 	let themesDir = ''; // Directory for themes
 
@@ -578,7 +580,7 @@
 	}
 
 	async function createConfigFile(previewDir: string) {
-		const config = {
+		const config: any = {
 			baseURL: sitePath, // Use site path as base URL
 			title: siteName,
 			contentDir: "content",
@@ -596,9 +598,29 @@
 				]
 			},
 			params: {
-				environment: "development"
+				branding: false
 			}
 		};
+
+		// Add services configuration if any values are provided
+		const services: any = {};
+		
+		if (googleAnalyticsId && googleAnalyticsId.trim()) {
+			services.googleAnalytics = {
+				id: googleAnalyticsId.trim()
+			};
+		}
+		
+		if (disqusShortname && disqusShortname.trim()) {
+			services.disqus = {
+				shortname: disqusShortname.trim()
+			};
+		}
+		
+		// Only add services to config if there are any services configured
+		if (Object.keys(services).length > 0) {
+			config.services = services;
+		}
 
 		const configPath = path.join(previewDir, 'config.json');
 		await app.vault.adapter.write(configPath, JSON.stringify(config, null, 2));
@@ -843,6 +865,34 @@
 						/>
 						<div class="field-hint">
 							{t('ui.site_path_hint')}
+						</div>
+					</div>
+
+					<div class="advanced-field">
+						<label class="section-label" for="google-analytics">{t('ui.google_analytics_id')}</label>
+						<input
+							type="text"
+							class="form-input"
+							bind:value={googleAnalyticsId}
+							placeholder={t('ui.google_analytics_placeholder')}
+							title={t('ui.google_analytics_hint')}
+						/>
+						<div class="field-hint">
+							{t('ui.google_analytics_hint')}
+						</div>
+					</div>
+
+					<div class="advanced-field">
+						<label class="section-label" for="disqus-shortname">{t('ui.disqus_shortname')}</label>
+						<input
+							type="text"
+							class="form-input"
+							bind:value={disqusShortname}
+							placeholder={t('ui.disqus_placeholder')}
+							title={t('ui.disqus_hint')}
+						/>
+						<div class="field-hint">
+							{t('ui.disqus_hint')}
 						</div>
 					</div>
 				</div>
@@ -1198,6 +1248,10 @@
 	}
 
 	.advanced-field {
+		margin-bottom: 16px;
+	}
+
+	.advanced-field:last-child {
 		margin-bottom: 0;
 	}
 

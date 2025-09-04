@@ -76,6 +76,12 @@ export const zhCn: TranslationNamespace = {
 		site_path: '站点路径',
 		site_path_placeholder: '/',
 		site_path_hint: '指定站点的基础路径。使用 "/" 表示根路径部署。',
+		google_analytics_id: 'Google Analytics ID',
+		google_analytics_placeholder: 'G-XXXXXXXXXX',
+		google_analytics_hint: '您的 Google Analytics 测量 ID（可选）',
+		disqus_shortname: 'Disqus 短名称',
+		disqus_placeholder: 'your-site-shortname',
+		disqus_hint: '您的 Disqus 短名称，用于评论功能（可选）',
 		theme: '主题',
 		change_theme: '更换主题',
 		

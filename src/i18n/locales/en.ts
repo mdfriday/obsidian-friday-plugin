@@ -76,6 +76,12 @@ export const en: TranslationNamespace = {
 		site_path: 'Site Path',
 		site_path_placeholder: '/',
 		site_path_hint: 'Specify the base path for your site. Use "/" for root deployment.',
+		google_analytics_id: 'Google Analytics ID',
+		google_analytics_placeholder: 'G-XXXXXXXXXX',
+		google_analytics_hint: 'Your Google Analytics measurement ID (optional)',
+		disqus_shortname: 'Disqus Shortname',
+		disqus_placeholder: 'your-site-shortname',
+		disqus_hint: 'Your Disqus shortname for comments (optional)',
 		theme: 'Theme',
 		change_theme: 'Change Theme',
 		
