@@ -8,6 +8,7 @@ import {Hugoverse} from "./hugoverse";
 import {NetlifyAPI} from "./netlify";
 import {I18nService} from "./i18n";
 import {FTPUploader} from "./ftp";
+import {Site} from "./site";
 
 interface FridaySettings {
 	username: string;
@@ -59,6 +60,7 @@ export default class FridayPlugin extends Plugin {
 	netlify: NetlifyAPI
 	i18n: I18nService
 	ftp: FTPUploader | null = null
+	site: Site
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
@@ -161,80 +163,8 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	async addMultiLanguageContent(folder: TFolder | null, file: TFile | null) {
-		const publishLeaf = this.getPublishLeaf();
-		console.log('addMultiLanguageContent called:', { 
-			hasPublishLeaf: !!publishLeaf, 
-			folder: folder?.name, 
-			file: file?.name 
-		});
-		
-		if (publishLeaf) {
-			const view = publishLeaf.view as ServerView;
-			console.log('View found:', !!view);
-			console.log('View type:', view?.getViewType());
-			console.log('View properties:', Object.keys(view || {}));
-			
-			// Debug the _app property
-			console.log('View._app exists:', !!(view as any)?._app);
-			console.log('View._app type:', typeof (view as any)?._app);
-			const serverApp = (view as any)?._app;
-			if (serverApp) {
-				console.log('View._app has getSiteComponent:', typeof serverApp.getSiteComponent);
-			}
-			
-			// Try different ways to access siteComponent
-			let siteComponent = view?.siteComponent;
-			console.log('Direct siteComponent access (through getter):', !!siteComponent);
-			
-			// Try accessing through _app directly
-			if (serverApp && serverApp.getSiteComponent) {
-				const directSiteComponent = serverApp.getSiteComponent();
-				console.log('Direct getSiteComponent() call:', !!directSiteComponent);
-				if (!siteComponent) {
-					siteComponent = directSiteComponent;
-				}
-			}
-			
-			if (!siteComponent) {
-				console.log('Site component not immediately available, waiting...');
-				await new Promise(resolve => setTimeout(resolve, 200));
-				
-				// Try again after wait
-				siteComponent = view?.siteComponent;
-				console.log('After wait - direct access:', !!siteComponent);
-				
-				if (!siteComponent && serverApp && serverApp.getSiteComponent) {
-					siteComponent = serverApp.getSiteComponent();
-					console.log('After wait - through getSiteComponent():', !!siteComponent);
-				}
-			}
-			
-			console.log('Final siteComponent found:', !!siteComponent);
-			
-			if (view && siteComponent) {
-				// Check if there's existing content
-				const hasExistingContent = siteComponent.hasContent();
-				console.log('Adding multilang content - has existing content:', hasExistingContent);
-				
-				if (hasExistingContent) {
-					console.log('Adding content:', { folder: folder?.name, file: file?.name });
-					siteComponent.addMultiLanguageContent(folder, file);
-					new Notice(this.i18n.t('messages.language_added_successfully'), 3000);
-				} else {
-					console.log('No existing content found, showing notice');
-					// No existing content, suggest using "Publish to Web" first
-					new Notice(this.i18n.t('messages.please_use_publish_first'), 4000);
-				}
-			} else {
-				console.log('Site component not found after all attempts');
-				console.log('Final state - view:', !!view, 'siteComponent:', !!siteComponent);
-				new Notice(this.i18n.t('messages.please_use_publish_first'), 4000);
-			}
-		} else {
-			console.log('No publish leaf found');
-			// No publish panel open, suggest using "Publish to Web" first
-			new Notice(this.i18n.t('messages.please_use_publish_first'), 4000);
-		}
+		// 直接使用 site 实例处理多语言内容
+		this.site.addLanguageContent(folder, file);
 	}
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
@@ -248,6 +178,8 @@ export default class FridayPlugin extends Plugin {
 		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
 		if (leaves.length > 0) {
 			const serverView = leaves[0].view as ServerView;
+			// Initialize site content
+			this.site.initializeContent(folder, file);
 			// Set selected folder or file and switch to site tab
 			if (folder) {
 				serverView.setSelectedFolder(folder);
@@ -288,6 +220,7 @@ export default class FridayPlugin extends Plugin {
 		this.user = new User(this);
 		this.hugoverse = new Hugoverse(this);
 		this.netlify = new NetlifyAPI(this);
+		this.site = new Site(this);
 	}
 
 	initLeaf(): void {

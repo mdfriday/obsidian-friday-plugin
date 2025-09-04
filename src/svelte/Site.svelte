@@ -10,6 +10,7 @@
 	import {GetBaseUrl} from "../main";
 	import {createStyleRenderer, OBStyleRenderer} from "../markdown";
 	import {themeApiService} from "../theme/themeApiService";
+	import type { LanguageContent } from "../site";
 
 	// Receive props
 	export let app: App;
@@ -17,55 +18,20 @@
 	export let selectedFolder: TFolder | null = null;
 	export let selectedFile: TFile | null = null;
 	
-	// Multi-language content interface
-	interface LanguageContent {
-		id: string;
-		folder: TFolder | null;
-		file: TFile | null;
-		languageCode: string;
-		weight: number;
-	}
+	// 获取 site 实例
+	$: site = plugin.site;
+	$: siteConfig = site?.config;
+	
 	
 	// Add function to handle adding multilingual content
 	export function addMultiLanguageContent(folder: TFolder | null, file: TFile | null) {
-		console.log('Site.addMultiLanguageContent called with:', { 
-			folder: folder?.name, 
-			file: file?.name, 
-			currentContents: languageContents.length 
-		});
-		
-		if (folder || file) {
-			// Find a language code that's not already used
-			const usedLanguages = new Set(languageContents.map(content => content.languageCode));
-			let defaultLanguage = 'en';
-			
-			// If English is already used, try other common languages
-			const fallbackLanguages = ['zh', 'es', 'fr', 'de', 'ja', 'ko', 'pt', 'ru', 'ar'];
-			if (usedLanguages.has('en')) {
-				defaultLanguage = fallbackLanguages.find(lang => !usedLanguages.has(lang)) || 'en';
-			}
-			
-			const newContent: LanguageContent = {
-				id: generateRandomId(),
-				folder,
-				file,
-				languageCode: defaultLanguage,
-				weight: languageContents.length + 1
-			};
-			
-			console.log('Adding new content:', newContent);
-			languageContents = [...languageContents, newContent];
-			console.log('Updated languageContents:', languageContents.length);
-		} else {
-			console.log('No folder or file provided');
-		}
+		// 直接调用 site 实例的方法
+		site.addLanguageContent(folder, file);
 	}
 	
 	// Export function to check if there are existing contents
 	export function hasContent(): boolean {
-		const hasContent = languageContents.length > 0;
-		console.log('hasContent check:', { length: languageContents.length, hasContent });
-		return hasContent;
+		return site.hasContent();
 	}
 	
 	// Reactive translation function
@@ -149,21 +115,20 @@
 	let absSelectedFolderPath = '';
 	let absProjContentPath = '';
 	let contentPath = '';
-	let siteName = '';
-	let sitePath = '/';
-	let selectedThemeDownloadUrl = BOOK_THEME_URL;
-	let selectedThemeName = BOOK_THEME_NAME;
-	let selectedThemeId = BOOK_THEME_ID; // Add theme ID tracking for Book theme
-	let isForSingleFile = false; // Track if we're working with a single file
-	
-	// Multi-language content state
-	let languageContents: LanguageContent[] = [];
-	let defaultContentLanguage = 'en';
+	// 从 site 实例获取响应式数据
+	$: siteName = $siteConfig?.siteName || '';
+	$: sitePath = $siteConfig?.sitePath || '/';
+	$: selectedThemeDownloadUrl = $siteConfig?.selectedThemeDownloadUrl || BOOK_THEME_URL;
+	$: selectedThemeName = $siteConfig?.selectedThemeName || BOOK_THEME_NAME;
+	$: selectedThemeId = $siteConfig?.selectedThemeId || BOOK_THEME_ID;
+	$: isForSingleFile = $siteConfig?.isForSingleFile || false;
+	$: languageContents = $siteConfig?.languageContents || [];
+	$: defaultContentLanguage = $siteConfig?.defaultContentLanguage || 'en';
+	$: googleAnalyticsId = $siteConfig?.googleAnalyticsId || '';
+	$: disqusShortname = $siteConfig?.disqusShortname || '';
 
-	// Advanced settings state
+	// Local UI state (不需要持久化的状态)
 	let showAdvancedSettings = false;
-	let googleAnalyticsId = '';
-	let disqusShortname = '';
 
 	let themesDir = ''; // Directory for themes
 
@@ -203,31 +168,7 @@
 	let serverHost = 'localhost';
 	let serverPort = 8090;
 
-	// Reactive statement to handle selectedFolder/selectedFile changes
-	$: {
-		if ((selectedFolder || selectedFile) && languageContents.length === 0) {
-			// Initialize with the first language content when folder or file is selected
-			const initialContent: LanguageContent = {
-				id: generateRandomId(),
-				folder: selectedFolder,
-				file: selectedFile,
-				languageCode: 'en', // Default to English
-				weight: 1
-			};
-			languageContents = [initialContent];
-		} else if (selectedFolder || selectedFile) {
-			// Update the first content if it exists
-			if (languageContents.length > 0) {
-				languageContents[0] = {
-					...languageContents[0],
-					folder: selectedFolder,
-					file: selectedFile
-				};
-				// Trigger reactivity
-				languageContents = [...languageContents];
-			}
-		}
-	}
+	// 注意：内容初始化现在由 main.ts 中的 site.initializeContent() 处理
 
 	onMount(async () => {
 		console.log('Site component mounting...');
@@ -251,37 +192,13 @@
 	});
 
 	// Reactive update: update related state when languageContents changes
-	$: if (languageContents.length > 0) {
-		const firstContent = languageContents[0];
-		const newContentPath = firstContent.folder ? firstContent.folder.name : firstContent.file ? firstContent.file.name : '';
-		const newSiteName = firstContent.folder ? firstContent.folder.name : firstContent.file ? firstContent.file.basename : '';
-		const newIsForSingleFile = !!firstContent.file;
-
-		if (contentPath !== newContentPath) {
-			contentPath = newContentPath;
-			siteName = newSiteName;
-			isForSingleFile = newIsForSingleFile;
-			
-			// Set default theme based on content type
-			if (newIsForSingleFile) {
-				selectedThemeDownloadUrl = NOTE_THEME_URL;
-				selectedThemeName = NOTE_THEME_NAME;
-				selectedThemeId = NOTE_THEME_ID;
-			} else {
-				selectedThemeDownloadUrl = BOOK_THEME_URL;
-				selectedThemeName = BOOK_THEME_NAME;
-				selectedThemeId = BOOK_THEME_ID;
-			}
-			
-			// Reset preview state
-			hasPreview = false;
-			previewUrl = '';
-			previewId = '';
-		}
-	} else {
-		// Reset state when no content
-		contentPath = '';
-		siteName = '';
+	// 内容路径和站点名称现在由 site 实例管理
+	$: contentPath = languageContents.length > 0 
+		? (languageContents[0].folder?.name || languageContents[0].file?.name || '') 
+		: '';
+	
+	// 预览状态重置逻辑
+	$: if (languageContents.length === 0) {
 		hasPreview = false;
 		previewUrl = '';
 		previewId = '';
@@ -290,10 +207,8 @@
 	function openThemeModal() {
 		// Call plugin method to show theme selection modal
 		plugin.showThemeSelectionModal(selectedThemeId, (themeUrl: string, themeName?: string, themeId?: string) => {
-			// Force reactive updates by reassigning all variables
-			selectedThemeDownloadUrl = themeUrl;
-			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Book");
-			selectedThemeId = themeId || selectedThemeId;
+			// 使用 site 实例更新主题
+			site.updateTheme(themeUrl, themeName, themeId);
 		}, isForSingleFile);
 	}
 
@@ -316,7 +231,8 @@
 	}
 
 	function handleSitePathChange() {
-		sitePath = normalizeSitePath(sitePath);
+		const normalizedPath = normalizeSitePath(sitePath);
+		site.updateSitePath(normalizedPath);
 	}
 
 	/**
@@ -667,31 +583,11 @@
 	}
 	
 	function updateLanguageCode(contentId: string, newLanguageCode: string) {
-		languageContents = languageContents.map(content => 
-			content.id === contentId 
-				? { ...content, languageCode: newLanguageCode }
-				: content
-		);
-		
-		// Update default content language if this is the first item
-		if (languageContents.length > 0 && languageContents[0].id === contentId) {
-			defaultContentLanguage = newLanguageCode;
-		}
+		site.updateLanguageCode(contentId, newLanguageCode);
 	}
 	
 	function removeLanguageContent(contentId: string) {
-		languageContents = languageContents.filter(content => content.id !== contentId);
-		
-		// Update weights
-		languageContents = languageContents.map((content, index) => ({
-			...content,
-			weight: index + 1
-		}));
-		
-		// Update default language if needed
-		if (languageContents.length > 0) {
-			defaultContentLanguage = languageContents[0].languageCode;
-		}
+		site.removeLanguageContent(contentId);
 	}
 	
 	function getLanguageName(code: string): string {
@@ -1075,6 +971,7 @@
 			type="text"
 			class="form-input"
 			bind:value={siteName}
+			on:blur={() => site.updateSiteName(siteName)}
 			placeholder={t('ui.site_name_placeholder')}
 		/>
 	</div>
@@ -1114,6 +1011,7 @@
 							type="text"
 							class="form-input"
 							bind:value={googleAnalyticsId}
+							on:blur={() => site.updateAdvancedSettings({ googleAnalyticsId })}
 							placeholder={t('ui.google_analytics_placeholder')}
 							title={t('ui.google_analytics_hint')}
 						/>
@@ -1128,6 +1026,7 @@
 							type="text"
 							class="form-input"
 							bind:value={disqusShortname}
+							on:blur={() => site.updateAdvancedSettings({ disqusShortname })}
 							placeholder={t('ui.disqus_placeholder')}
 							title={t('ui.disqus_hint')}
 						/>
@@ -1506,7 +1405,7 @@
 
 	.multilang-header {
 		display: grid;
-		grid-template-columns: 1fr auto;
+		grid-template-columns: 1fr 240px;
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
@@ -1546,7 +1445,7 @@
 
 	.multilang-row {
 		display: grid;
-		grid-template-columns: 1fr auto;
+		grid-template-columns: 1fr 240px;
 		border-bottom: 1px solid var(--background-modifier-border);
 		transition: background-color 0.2s;
 	}
@@ -1600,7 +1499,7 @@
 
 	.language-select {
 		flex: 1;
-		min-width: 150px;
+		max-width: 180px;
 		padding: 4px 8px;
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 3px;
