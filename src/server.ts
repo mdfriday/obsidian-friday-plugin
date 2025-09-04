@@ -9,6 +9,10 @@ export default class ServerView extends ItemView {
 	private _app: Server | null = null;
 	private selectedFolder: TFolder | null = null; // 存储选中的文件夹
 	private selectedFile: TFile | null = null; // 存储选中的文件
+	
+	get siteComponent() {
+		return this._app?.getSiteComponent?.();
+	}
 
 	constructor(leaf: WorkspaceLeaf, plugin: FridayPlugin) {
 		super(leaf);

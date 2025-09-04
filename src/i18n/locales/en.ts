@@ -69,7 +69,16 @@ export const en: TranslationNamespace = {
 		mobile_coming_soon: 'Mobile and Tablet is coming soon.\nThank you for your patience and understanding!',
 		
 		// Site builder
+		multilingual_content: 'Multilingual Content',
 		content_path: 'Content Path',
+		language: 'Language',
+		actions: 'Actions',
+		default: 'Default',
+		remove_language: 'Remove Language',
+		add_language: 'Add Language',
+		add_language_tooltip: 'Add another language content',
+		no_content_selected: 'No content selected',
+		no_content_selected_hint: 'Right-click a folder or file and select "Publish to Web" to get started',
 		site_name: 'Site Name',
 		site_name_placeholder: 'Enter site name',
 		advanced_settings: 'Advanced Settings',
@@ -116,6 +125,7 @@ export const en: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: 'Publish to Web',
+		add_multilingual: 'Add Language',
 	},
 
 	commands: {
@@ -182,6 +192,9 @@ export const en: TranslationNamespace = {
 		// General messages
 		failed_to_create_post: 'Failed to create post.',
 		failed_to_create_resource: 'Failed to create resource.',
+		please_use_publish_first: 'Please use "Publish to Web" first to create your initial content, then you can add additional languages.',
+		add_language_instruction: 'To add another language: Right-click a folder or file and select "Add Language" from the context menu.',
+		language_added_successfully: 'Language content added successfully!',
 	},
 
 	info: {

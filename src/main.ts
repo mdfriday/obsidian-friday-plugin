@@ -103,6 +103,16 @@ export default class FridayPlugin extends Plugin {
 								await this.openPublishPanel(file, null);
 							});
 					});
+					
+					// Always show add language option - let the function handle the logic
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.add_multilingual'))
+							.setIcon(FRIDAY_ICON)
+							.onClick(async () => {
+								await this.addMultiLanguageContent(file, null);
+							});
+					});
 				} else if (file instanceof TFile && file.extension === 'md') {
 					// Add publish option for markdown files (unified behavior)
 					menu.addItem(item => {
@@ -113,9 +123,118 @@ export default class FridayPlugin extends Plugin {
 								await this.openPublishPanel(null, file);
 							});
 					});
+					
+					// Always show add language option - let the function handle the logic
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.add_multilingual'))
+							.setIcon(FRIDAY_ICON)
+							.onClick(async () => {
+								await this.addMultiLanguageContent(null, file);
+							});
+					});
 				}
 			})
 		);
+	}
+
+	getPublishLeaf() {
+		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
+		return leaves.length > 0 ? leaves[0] : null;
+	}
+
+	hasExistingContent(publishLeaf: any): boolean {
+		const view = publishLeaf.view as ServerView;
+		if (view && view.siteComponent) {
+			// Use the exported hasContent method from Site component
+			try {
+				const hasContent = view.siteComponent.hasContent();
+				console.log('hasExistingContent check result:', hasContent);
+				return hasContent;
+			} catch (error) {
+				console.error('Error calling hasContent:', error);
+				return false;
+			}
+		}
+		console.log('No view or siteComponent found in hasExistingContent');
+		return false;
+	}
+
+	async addMultiLanguageContent(folder: TFolder | null, file: TFile | null) {
+		const publishLeaf = this.getPublishLeaf();
+		console.log('addMultiLanguageContent called:', { 
+			hasPublishLeaf: !!publishLeaf, 
+			folder: folder?.name, 
+			file: file?.name 
+		});
+		
+		if (publishLeaf) {
+			const view = publishLeaf.view as ServerView;
+			console.log('View found:', !!view);
+			console.log('View type:', view?.getViewType());
+			console.log('View properties:', Object.keys(view || {}));
+			
+			// Debug the _app property
+			console.log('View._app exists:', !!(view as any)?._app);
+			console.log('View._app type:', typeof (view as any)?._app);
+			const serverApp = (view as any)?._app;
+			if (serverApp) {
+				console.log('View._app has getSiteComponent:', typeof serverApp.getSiteComponent);
+			}
+			
+			// Try different ways to access siteComponent
+			let siteComponent = view?.siteComponent;
+			console.log('Direct siteComponent access (through getter):', !!siteComponent);
+			
+			// Try accessing through _app directly
+			if (serverApp && serverApp.getSiteComponent) {
+				const directSiteComponent = serverApp.getSiteComponent();
+				console.log('Direct getSiteComponent() call:', !!directSiteComponent);
+				if (!siteComponent) {
+					siteComponent = directSiteComponent;
+				}
+			}
+			
+			if (!siteComponent) {
+				console.log('Site component not immediately available, waiting...');
+				await new Promise(resolve => setTimeout(resolve, 200));
+				
+				// Try again after wait
+				siteComponent = view?.siteComponent;
+				console.log('After wait - direct access:', !!siteComponent);
+				
+				if (!siteComponent && serverApp && serverApp.getSiteComponent) {
+					siteComponent = serverApp.getSiteComponent();
+					console.log('After wait - through getSiteComponent():', !!siteComponent);
+				}
+			}
+			
+			console.log('Final siteComponent found:', !!siteComponent);
+			
+			if (view && siteComponent) {
+				// Check if there's existing content
+				const hasExistingContent = siteComponent.hasContent();
+				console.log('Adding multilang content - has existing content:', hasExistingContent);
+				
+				if (hasExistingContent) {
+					console.log('Adding content:', { folder: folder?.name, file: file?.name });
+					siteComponent.addMultiLanguageContent(folder, file);
+					new Notice(this.i18n.t('messages.language_added_successfully'), 3000);
+				} else {
+					console.log('No existing content found, showing notice');
+					// No existing content, suggest using "Publish to Web" first
+					new Notice(this.i18n.t('messages.please_use_publish_first'), 4000);
+				}
+			} else {
+				console.log('Site component not found after all attempts');
+				console.log('Final state - view:', !!view, 'siteComponent:', !!siteComponent);
+				new Notice(this.i18n.t('messages.please_use_publish_first'), 4000);
+			}
+		} else {
+			console.log('No publish leaf found');
+			// No publish panel open, suggest using "Publish to Web" first
+			new Notice(this.i18n.t('messages.please_use_publish_first'), 4000);
+		}
 	}
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {

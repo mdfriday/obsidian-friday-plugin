@@ -69,7 +69,16 @@ export const zhCn: TranslationNamespace = {
 		mobile_coming_soon: '移动端和平板端即将推出。\n感谢您的耐心等待和理解！',
 		
 		// Site builder
+		multilingual_content: '多语言内容',
 		content_path: '内容路径',
+		language: '语言',
+		actions: '操作',
+		default: '默认',
+		remove_language: '移除语言',
+		add_language: '添加语言',
+		add_language_tooltip: '添加另一种语言内容',
+		no_content_selected: '未选择内容',
+		no_content_selected_hint: '右键点击文件夹或文件，选择"发布到网络"开始使用',
 		site_name: '站点名称',
 		site_name_placeholder: '请输入站点名称',
 		advanced_settings: '高级设置',
@@ -116,6 +125,7 @@ export const zhCn: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: '发布到网络',
+		add_multilingual: '添加语言',
 	},
 
 	commands: {
@@ -182,6 +192,9 @@ export const zhCn: TranslationNamespace = {
 		// General messages
 		failed_to_create_post: '创建文章失败。',
 		failed_to_create_resource: '创建资源失败。',
+		please_use_publish_first: '请先使用"发布到网络"创建初始内容，然后再添加其他语言。',
+		add_language_instruction: '要添加另一种语言：右键点击文件夹或文件，从右键菜单中选择"添加语言"。',
+		language_added_successfully: '语言内容添加成功！',
 	},
 
 	info: {

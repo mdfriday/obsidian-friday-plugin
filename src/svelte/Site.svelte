@@ -17,6 +17,57 @@
 	export let selectedFolder: TFolder | null = null;
 	export let selectedFile: TFile | null = null;
 	
+	// Multi-language content interface
+	interface LanguageContent {
+		id: string;
+		folder: TFolder | null;
+		file: TFile | null;
+		languageCode: string;
+		weight: number;
+	}
+	
+	// Add function to handle adding multilingual content
+	export function addMultiLanguageContent(folder: TFolder | null, file: TFile | null) {
+		console.log('Site.addMultiLanguageContent called with:', { 
+			folder: folder?.name, 
+			file: file?.name, 
+			currentContents: languageContents.length 
+		});
+		
+		if (folder || file) {
+			// Find a language code that's not already used
+			const usedLanguages = new Set(languageContents.map(content => content.languageCode));
+			let defaultLanguage = 'en';
+			
+			// If English is already used, try other common languages
+			const fallbackLanguages = ['zh', 'es', 'fr', 'de', 'ja', 'ko', 'pt', 'ru', 'ar'];
+			if (usedLanguages.has('en')) {
+				defaultLanguage = fallbackLanguages.find(lang => !usedLanguages.has(lang)) || 'en';
+			}
+			
+			const newContent: LanguageContent = {
+				id: generateRandomId(),
+				folder,
+				file,
+				languageCode: defaultLanguage,
+				weight: languageContents.length + 1
+			};
+			
+			console.log('Adding new content:', newContent);
+			languageContents = [...languageContents, newContent];
+			console.log('Updated languageContents:', languageContents.length);
+		} else {
+			console.log('No folder or file provided');
+		}
+	}
+	
+	// Export function to check if there are existing contents
+	export function hasContent(): boolean {
+		const hasContent = languageContents.length > 0;
+		console.log('hasContent check:', { length: languageContents.length, hasContent });
+		return hasContent;
+	}
+	
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
 
@@ -26,6 +77,70 @@
 	const NOTE_THEME_URL = "https://gohugo.net/note.zip?version=1.0"
 	const NOTE_THEME_ID = "2"
 	const NOTE_THEME_NAME = "Note";
+
+	// Supported languages
+	const SUPPORTED_LANGUAGES = [
+		{
+			code: 'en',
+			name: 'English',
+			direction: 'ltr',
+			englishName: 'English'
+		},
+		{
+			code: 'zh',
+			name: '中文',
+			direction: 'ltr',
+			englishName: 'Chinese'
+		},
+		{
+			code: 'es',
+			name: 'Español',
+			direction: 'ltr',
+			englishName: 'Spanish'
+		},
+		{
+			code: 'fr',
+			name: 'Français',
+			direction: 'ltr',
+			englishName: 'French'
+		},
+		{
+			code: 'de',
+			name: 'Deutsch',
+			direction: 'ltr',
+			englishName: 'German'
+		},
+		{
+			code: 'ja',
+			name: '日本語',
+			direction: 'ltr',
+			englishName: 'Japanese'
+		},
+		{
+			code: 'ko',
+			name: '한국어',
+			direction: 'ltr',
+			englishName: 'Korean'
+		},
+		{
+			code: 'pt',
+			name: 'Português',
+			direction: 'ltr',
+			englishName: 'Portuguese'
+		},
+		{
+			code: 'ru',
+			name: 'Русский',
+			direction: 'ltr',
+			englishName: 'Russian'
+		},
+		{
+			code: 'ar',
+			name: 'العربية',
+			direction: 'rtl',
+			englishName: 'Arabic'
+		}
+	];
 
 	const isWindows = process.platform === 'win32';
 
@@ -40,6 +155,10 @@
 	let selectedThemeName = BOOK_THEME_NAME;
 	let selectedThemeId = BOOK_THEME_ID; // Add theme ID tracking for Book theme
 	let isForSingleFile = false; // Track if we're working with a single file
+	
+	// Multi-language content state
+	let languageContents: LanguageContent[] = [];
+	let defaultContentLanguage = 'en';
 
 	// Advanced settings state
 	let showAdvancedSettings = false;
@@ -84,26 +203,35 @@
 	let serverHost = 'localhost';
 	let serverPort = 8090;
 
-	onMount(async () => {
-		if (selectedFolder) {
-			contentPath = selectedFolder.name;
-			siteName = selectedFolder.name;
-			isForSingleFile = false;
-			// Set default theme for folder (Book)
-			selectedThemeDownloadUrl = BOOK_THEME_URL;
-			selectedThemeName = BOOK_THEME_NAME;
-			selectedThemeId = BOOK_THEME_ID;
-		} else if (selectedFile) {
-			contentPath = selectedFile.name;
-			siteName = selectedFile.basename; // Remove .md extension
-			isForSingleFile = true;
-			// Set default theme for single file (Note)
-			selectedThemeDownloadUrl = NOTE_THEME_URL;
-			selectedThemeName = NOTE_THEME_NAME;
-			// Find the actual Note theme ID by searching themes
-			selectedThemeId = NOTE_THEME_ID; // Default to Note theme ID
+	// Reactive statement to handle selectedFolder/selectedFile changes
+	$: {
+		if ((selectedFolder || selectedFile) && languageContents.length === 0) {
+			// Initialize with the first language content when folder or file is selected
+			const initialContent: LanguageContent = {
+				id: generateRandomId(),
+				folder: selectedFolder,
+				file: selectedFile,
+				languageCode: 'en', // Default to English
+				weight: 1
+			};
+			languageContents = [initialContent];
+		} else if (selectedFolder || selectedFile) {
+			// Update the first content if it exists
+			if (languageContents.length > 0) {
+				languageContents[0] = {
+					...languageContents[0],
+					folder: selectedFolder,
+					file: selectedFile
+				};
+				// Trigger reactivity
+				languageContents = [...languageContents];
+			}
 		}
+	}
 
+	onMount(async () => {
+		console.log('Site component mounting...');
+		
 		themesDir = path.join(plugin.pluginDir, 'themes')
 		await createThemesDirectory()
 
@@ -111,6 +239,8 @@
 		if (adapter instanceof FileSystemAdapter) {
 			basePath = adapter.getBasePath()
 		}
+		
+		console.log('Site component mounted successfully, languageContents:', languageContents.length);
 	});
 
 	onDestroy(() => {
@@ -120,44 +250,41 @@
 		}
 	});
 
-	// Reactive update: update related state when selectedFolder or selectedFile changes
-	$: if (selectedFolder) {
-		// Only reset state when folder actually changes
-		const newContentPath = selectedFolder.name;
-		const newSiteName = selectedFolder.name;
+	// Reactive update: update related state when languageContents changes
+	$: if (languageContents.length > 0) {
+		const firstContent = languageContents[0];
+		const newContentPath = firstContent.folder ? firstContent.folder.name : firstContent.file ? firstContent.file.name : '';
+		const newSiteName = firstContent.folder ? firstContent.folder.name : firstContent.file ? firstContent.file.basename : '';
+		const newIsForSingleFile = !!firstContent.file;
 
 		if (contentPath !== newContentPath) {
 			contentPath = newContentPath;
 			siteName = newSiteName;
-			isForSingleFile = false;
-			// Set default theme for folder
-			selectedThemeDownloadUrl = BOOK_THEME_URL;
-			selectedThemeName = BOOK_THEME_NAME;
-			selectedThemeId = BOOK_THEME_ID;
+			isForSingleFile = newIsForSingleFile;
+			
+			// Set default theme based on content type
+			if (newIsForSingleFile) {
+				selectedThemeDownloadUrl = NOTE_THEME_URL;
+				selectedThemeName = NOTE_THEME_NAME;
+				selectedThemeId = NOTE_THEME_ID;
+			} else {
+				selectedThemeDownloadUrl = BOOK_THEME_URL;
+				selectedThemeName = BOOK_THEME_NAME;
+				selectedThemeId = BOOK_THEME_ID;
+			}
+			
 			// Reset preview state
 			hasPreview = false;
 			previewUrl = '';
 			previewId = '';
 		}
-	} else if (selectedFile) {
-		// Only reset state when file actually changes
-		const newContentPath = selectedFile.name;
-		const newSiteName = selectedFile.basename;
-
-		if (contentPath !== newContentPath) {
-			contentPath = newContentPath;
-			siteName = newSiteName;
-			isForSingleFile = true;
-			// Set default theme for single file
-			selectedThemeDownloadUrl = NOTE_THEME_URL;
-			selectedThemeName = NOTE_THEME_NAME;
-			// Find the actual Note theme ID
-			selectedThemeId = NOTE_THEME_ID;
-			// Reset preview state
-			hasPreview = false;
-			previewUrl = '';
-			previewId = '';
-		}
+	} else {
+		// Reset state when no content
+		contentPath = '';
+		siteName = '';
+		hasPreview = false;
+		previewUrl = '';
+		previewId = '';
 	}
 
 	function openThemeModal() {
@@ -314,7 +441,7 @@
 	}
 
 	async function startPreview() {
-		if (!selectedFolder && !selectedFile) {
+		if (languageContents.length === 0) {
 			new Notice(t('messages.no_folder_or_file_selected'), 3000);
 			return;
 		}
@@ -344,12 +471,8 @@
 			await createConfigFile(previewDir);
 			buildProgress = 10;
 
-			// Create symbolic link to content files or copy single file
-			if (selectedFolder) {
-				await linkFolderContents(selectedFolder, path.join(previewDir, 'content'));
-			} else if (selectedFile) {
-				await linkSingleFileContent(selectedFile, path.join(previewDir, 'content'));
-			}
+			// Create symbolic links for all language contents
+			await linkMultiLanguageContents(previewDir);
 			buildProgress = 15;
 
 			// Build site (reserved for future implementation)
@@ -542,6 +665,44 @@
 	function generateRandomId(): string {
 		return Math.random().toString(36).substring(2, 8);
 	}
+	
+	function updateLanguageCode(contentId: string, newLanguageCode: string) {
+		languageContents = languageContents.map(content => 
+			content.id === contentId 
+				? { ...content, languageCode: newLanguageCode }
+				: content
+		);
+		
+		// Update default content language if this is the first item
+		if (languageContents.length > 0 && languageContents[0].id === contentId) {
+			defaultContentLanguage = newLanguageCode;
+		}
+	}
+	
+	function removeLanguageContent(contentId: string) {
+		languageContents = languageContents.filter(content => content.id !== contentId);
+		
+		// Update weights
+		languageContents = languageContents.map((content, index) => ({
+			...content,
+			weight: index + 1
+		}));
+		
+		// Update default language if needed
+		if (languageContents.length > 0) {
+			defaultContentLanguage = languageContents[0].languageCode;
+		}
+	}
+	
+	function getLanguageName(code: string): string {
+		const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
+		return lang ? lang.name : code;
+	}
+
+	function showAddLanguageDialog() {
+		// Show a simple notice asking user to right-click a folder/file
+		new Notice(t('messages.add_language_instruction'), 5000);
+	}
 
 	async function createPreviewDirectory(previewDir: string) {
 		// Create preview root directory
@@ -585,7 +746,7 @@
 			title: siteName,
 			contentDir: "content",
 			publishDir: "public",
-			defaultContentLanguage: "en",
+			defaultContentLanguage: defaultContentLanguage,
 			taxonomies: {
 				tag: "tags",
 				category: "categories"
@@ -622,8 +783,38 @@
 			config.services = services;
 		}
 
+		// Add languages configuration if multiple languages are configured
+		if (languageContents.length > 1) {
+			const languages: any = {};
+			
+			languageContents.forEach((content, index) => {
+				const contentDir = index === 0 ? "content" : `content.${content.languageCode}`;
+				languages[content.languageCode] = {
+					contentDir: contentDir,
+					weight: content.weight
+				};
+			});
+			
+			config.languages = languages;
+		}
+
 		const configPath = path.join(previewDir, 'config.json');
 		await app.vault.adapter.write(configPath, JSON.stringify(config, null, 2));
+	}
+
+	async function linkMultiLanguageContents(previewDir: string) {
+		// Link all language contents
+		for (let i = 0; i < languageContents.length; i++) {
+			const content = languageContents[i];
+			const contentDir = i === 0 ? "content" : `content.${content.languageCode}`;
+			const targetPath = path.join(previewDir, contentDir);
+			
+			if (content.folder) {
+				await linkFolderContents(content.folder, targetPath);
+			} else if (content.file) {
+				await linkSingleFileContent(content.file, targetPath);
+			}
+		}
 	}
 
 	async function linkFolderContents(folder: TFolder, targetPath: string) {
@@ -818,14 +1009,63 @@
 </script>
 
 <div class="site-builder">
+	<!-- Multi-language Content Section -->
 	<div class="section">
-		<label class="section-label" for="content-path">{t('ui.content_path')}</label>
-		<input
-			type="text"
-			class="form-input readonly"
-			value={contentPath}
-			readonly
-		/>
+		<div class="section-label">{t('ui.multilingual_content')}</div>
+		<div class="multilang-table">
+			<div class="multilang-header">
+				<div class="multilang-header-cell">{t('ui.content_path')}</div>
+				<div class="multilang-header-cell">
+					<span>{t('ui.language')}</span>
+					{#if languageContents.length > 0}
+						<button 
+							class="add-language-btn"
+							on:click={showAddLanguageDialog}
+							title={t('ui.add_language_tooltip')}
+						>
+							+ {t('ui.add_language')}
+						</button>
+					{/if}
+				</div>
+			</div>
+			{#each languageContents as content (content.id)}
+				<div class="multilang-row" class:removable={languageContents.length > 1}>
+					<div class="multilang-cell content-path-cell">
+						<span class="content-path">
+							{content.folder ? content.folder.name : content.file ? content.file.name : t('ui.no_content_selected')}
+						</span>
+						{#if content.weight === 1}
+							<span class="default-badge">{t('ui.default')}</span>
+						{/if}
+					</div>
+					<div class="multilang-cell language-cell">
+						<select 
+							class="language-select"
+							value={content.languageCode}
+							on:change={(e) => updateLanguageCode(content.id, e.currentTarget.value)}
+						>
+							{#each SUPPORTED_LANGUAGES as lang}
+								<option value={lang.code}>{lang.name} ({lang.englishName})</option>
+							{/each}
+						</select>
+						{#if languageContents.length > 1}
+							<button 
+								class="remove-btn"
+								on:click={() => removeLanguageContent(content.id)}
+								title={t('ui.remove_language')}
+							>
+								<span class="remove-icon">×</span>
+							</button>
+						{/if}
+					</div>
+				</div>
+			{/each}
+			{#if languageContents.length === 0}
+				<div class="multilang-empty">
+					<span class="empty-message">{t('ui.no_content_selected_hint')}</span>
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Site Name -->
@@ -926,7 +1166,7 @@
 				<button
 					class="action-button preview-button"
 					on:click={startPreview}
-					disabled={!selectedFolder && !selectedFile}
+					disabled={languageContents.length === 0}
 				>
 {hasPreview ? t('ui.regenerate_preview') : t('ui.generate_preview')}
 				</button>
@@ -1022,12 +1262,6 @@
 		line-height: 1.4;
 		box-sizing: border-box;
 		min-height: 38px;
-	}
-
-	.form-input.readonly {
-		background: var(--background-secondary);
-		color: var(--text-muted);
-		cursor: not-allowed;
 	}
 
 	.form-select {
@@ -1260,5 +1494,167 @@
 		color: var(--text-muted);
 		margin-top: 4px;
 		line-height: 1.4;
+	}
+
+	/* Multi-language table styles */
+	.multilang-table {
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		overflow: hidden;
+		background: var(--background-primary);
+	}
+
+	.multilang-header {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		background: var(--background-secondary);
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	.multilang-header-cell {
+		padding: 10px 12px;
+		font-weight: 500;
+		font-size: 14px;
+		color: var(--text-normal);
+		border-right: 1px solid var(--background-modifier-border);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.add-language-btn {
+		padding: 4px 8px;
+		border: 1px solid var(--interactive-accent);
+		border-radius: 3px;
+		background: transparent;
+		color: var(--interactive-accent);
+		font-size: 11px;
+		cursor: pointer;
+		transition: all 0.2s;
+		white-space: nowrap;
+		margin-left: 8px;
+	}
+
+	.add-language-btn:hover {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+	}
+
+	.multilang-header-cell:last-child {
+		border-right: none;
+	}
+
+	.multilang-row {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		border-bottom: 1px solid var(--background-modifier-border);
+		transition: background-color 0.2s;
+	}
+
+	.multilang-row:last-child {
+		border-bottom: none;
+	}
+
+	.multilang-row:hover {
+		background: var(--background-modifier-hover);
+	}
+
+	.multilang-cell {
+		padding: 10px 12px;
+		display: flex;
+		align-items: center;
+		border-right: 1px solid var(--background-modifier-border);
+		min-height: 38px;
+		box-sizing: border-box;
+	}
+
+	.multilang-cell:last-child {
+		border-right: none;
+	}
+
+	.content-path-cell {
+		gap: 8px;
+	}
+
+	.content-path {
+		color: var(--text-normal);
+		font-size: 14px;
+		flex: 1;
+	}
+
+	.default-badge {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+		padding: 2px 6px;
+		border-radius: 3px;
+		font-size: 11px;
+		font-weight: 500;
+		white-space: nowrap;
+	}
+
+	.language-cell {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.language-select {
+		flex: 1;
+		min-width: 150px;
+		padding: 4px 8px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 3px;
+		background: var(--background-primary);
+		color: var(--text-normal);
+		font-size: 13px;
+		appearance: none;
+		background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+		background-repeat: no-repeat;
+		background-position: right 6px center;
+		background-size: 12px;
+		padding-right: 24px;
+	}
+
+	.remove-btn {
+		width: 20px;
+		height: 20px;
+		border: none;
+		border-radius: 50%;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 14px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s;
+		opacity: 0;
+		margin-left: 4px;
+	}
+
+	.multilang-row:hover .remove-btn {
+		opacity: 1;
+	}
+
+	.remove-btn:hover {
+		background: var(--background-modifier-error);
+		color: var(--text-on-accent);
+		transform: scale(1.1);
+	}
+
+	.remove-icon {
+		line-height: 1;
+		font-weight: bold;
+	}
+
+	.multilang-empty {
+		padding: 20px;
+		text-align: center;
+		color: var(--text-muted);
+		font-style: italic;
+	}
+
+	.empty-message {
+		font-size: 14px;
 	}
 </style> 
