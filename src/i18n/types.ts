@@ -83,13 +83,27 @@ export interface TranslationNamespace {
 		mobile_coming_soon: string;
 		
 		// Site builder
+		multilingual_content: string;
 		content_path: string;
+		language: string;
+		clear: string;
+		clear_all_content: string;
+		default: string;
+		no_content_selected: string;
+		no_content_selected_hint: string;
+		remove_language: string;
 		site_name: string;
 		site_name_placeholder: string;
 		advanced_settings: string;
 		site_path: string;
 		site_path_placeholder: string;
 		site_path_hint: string;
+		google_analytics_id: string;
+		google_analytics_placeholder: string;
+		google_analytics_hint: string;
+		disqus_shortname: string;
+		disqus_placeholder: string;
+		disqus_hint: string;
 		theme: string;
 		change_theme: string;
 		
@@ -165,6 +179,12 @@ export interface TranslationNamespace {
 		// Preview messages
 		no_folder_selected: string;
 		no_folder_or_file_selected: string;
+		must_select_folder_type: string;
+		must_select_file_type: string;
+		all_content_cleared: string;
+		language_added_successfully: string;
+		please_use_publish_first: string;
+		add_language_instruction: string;
 		preview_generated_successfully: string;
 		preview_failed: string;
 		please_generate_preview_first: string;
