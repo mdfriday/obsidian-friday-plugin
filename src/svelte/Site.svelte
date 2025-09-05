@@ -10,29 +10,14 @@
 	import {GetBaseUrl} from "../main";
 	import {createStyleRenderer, OBStyleRenderer} from "../markdown";
 	import {themeApiService} from "../theme/themeApiService";
-	import type { LanguageContent } from "../site";
 
 	// Receive props
 	export let app: App;
 	export let plugin: FridayPlugin;
-	export let selectedFolder: TFolder | null = null;
-	export let selectedFile: TFile | null = null;
 	
 	// 获取 site 实例
 	$: site = plugin.site;
-	$: siteConfig = site?.config;
-	
-	
-	// Add function to handle adding multilingual content
-	export function addMultiLanguageContent(folder: TFolder | null, file: TFile | null) {
-		// 直接调用 site 实例的方法
-		site.addLanguageContent(folder, file);
-	}
-	
-	// Export function to check if there are existing contents
-	export function hasContent(): boolean {
-		return site.hasContent();
-	}
+	$: languageContents = site ? site.languageContents : null;
 	
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
@@ -44,7 +29,111 @@
 	const NOTE_THEME_ID = "2"
 	const NOTE_THEME_NAME = "Note";
 
-	// Supported languages
+	const isWindows = process.platform === 'win32';
+
+	// State variables
+	let basePath = plugin.pluginDir;
+	let absSelectedFolderPath = '';
+	let absProjContentPath = '';
+	let contentPath = '';
+	
+	// 从 site 实例获取响应式数据
+	$: currentContents = $languageContents || [];
+	$: isForSingleFile = site ? site.isForSingleFile() : false;
+	$: defaultContentLanguage = site ? site.getDefaultContentLanguage() : 'en';
+	
+	// 用户可编辑的站点名称
+	let siteName = '';
+	
+	// 其他配置保持在本地管理
+	let sitePath = '/';
+	let selectedThemeDownloadUrl = BOOK_THEME_URL;
+	let selectedThemeName = BOOK_THEME_NAME;
+	let selectedThemeId = BOOK_THEME_ID;
+	
+	// 响应式主题设置 - 根据内容类型自动设置
+	$: {
+		if (currentContents.length > 0) {
+			const firstContent = currentContents[0];
+			if (firstContent.file && !selectedThemeDownloadUrl.includes('note')) {
+				// 单文件 - 设置为 Note 主题
+				selectedThemeDownloadUrl = NOTE_THEME_URL;
+				selectedThemeName = NOTE_THEME_NAME;
+				selectedThemeId = NOTE_THEME_ID;
+			} else if (firstContent.folder && !selectedThemeDownloadUrl.includes('book')) {
+				// 文件夹 - 设置为 Book 主题
+				selectedThemeDownloadUrl = BOOK_THEME_URL;
+				selectedThemeName = BOOK_THEME_NAME;
+				selectedThemeId = BOOK_THEME_ID;
+			}
+		}
+	}
+
+	// Advanced settings state
+	let showAdvancedSettings = false;
+	let googleAnalyticsId = '';
+	let disqusShortname = '';
+
+	let themesDir = ''; // Directory for themes
+
+	// Preview related state
+	let isBuilding = false;
+	let buildProgress = 0;
+	let previewUrl = '';
+	let previewId = '';
+	let hasPreview = false;
+	let absPreviewDir = '';
+
+	// Publish related state
+	let isPublishing = false;
+	let publishProgress = 0;
+	let publishSuccess = false;
+	let publishUrl = '';
+	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-preview' = plugin.settings.publishMethod || 'netlify';
+
+	// Export related state
+	let isExporting = false;
+	
+	// Reactive publish options
+	$: publishOptions = [
+		{ value: 'netlify', label: t('ui.publish_option_netlify') },
+		{ value: 'ftp', label: t('ui.publish_option_ftp') },
+		...(sitePath.startsWith('/preview/') ? [{ value: 'mdf-preview', label: t('ui.publish_option_mdfriday') }] : []),
+	];
+
+	// Auto-switch to netlify if mdf-preview is not available when sitePath changes
+	$: if (!sitePath.startsWith('/preview/') && selectedPublishOption === 'mdf-preview') {
+		selectedPublishOption = plugin.settings.publishMethod || 'netlify';
+	}
+
+	// HTTP server related
+	let httpServer: IncrementalBuildCoordinator;
+	let serverRunning = false;
+	let serverHost = 'localhost';
+	let serverPort = 8090;
+
+	onMount(async () => {
+		console.log('Site component mounting...');
+		
+		themesDir = path.join(plugin.pluginDir, 'themes')
+		await createThemesDirectory()
+
+		const adapter = app.vault.adapter;
+		if (adapter instanceof FileSystemAdapter) {
+			basePath = adapter.getBasePath()
+		}
+		
+		console.log('Site component mounted successfully');
+	});
+
+	onDestroy(() => {
+		if (serverRunning) {
+			httpServer.stopWatching();
+			serverRunning = false;
+		}
+	});
+
+	// 支持的语言列表
 	const SUPPORTED_LANGUAGES = [
 		{
 			code: 'en',
@@ -87,128 +176,61 @@
 			name: '한국어',
 			direction: 'ltr',
 			englishName: 'Korean'
-		},
-		{
-			code: 'pt',
-			name: 'Português',
-			direction: 'ltr',
-			englishName: 'Portuguese'
-		},
-		{
-			code: 'ru',
-			name: 'Русский',
-			direction: 'ltr',
-			englishName: 'Russian'
-		},
-		{
-			code: 'ar',
-			name: 'العربية',
-			direction: 'rtl',
-			englishName: 'Arabic'
 		}
 	];
 
-	const isWindows = process.platform === 'win32';
-
-	// State variables
-	let basePath = plugin.pluginDir;
-	let absSelectedFolderPath = '';
-	let absProjContentPath = '';
-	let contentPath = '';
-	// 从 site 实例获取响应式数据
-	$: siteName = $siteConfig?.siteName || '';
-	$: sitePath = $siteConfig?.sitePath || '/';
-	$: selectedThemeDownloadUrl = $siteConfig?.selectedThemeDownloadUrl || BOOK_THEME_URL;
-	$: selectedThemeName = $siteConfig?.selectedThemeName || BOOK_THEME_NAME;
-	$: selectedThemeId = $siteConfig?.selectedThemeId || BOOK_THEME_ID;
-	$: isForSingleFile = $siteConfig?.isForSingleFile || false;
-	$: languageContents = $siteConfig?.languageContents || [];
-	$: defaultContentLanguage = $siteConfig?.defaultContentLanguage || 'en';
-	$: googleAnalyticsId = $siteConfig?.googleAnalyticsId || '';
-	$: disqusShortname = $siteConfig?.disqusShortname || '';
-
-	// Local UI state (不需要持久化的状态)
-	let showAdvancedSettings = false;
-
-	let themesDir = ''; // Directory for themes
-
-	// Preview related state
-	let isBuilding = false;
-	let buildProgress = 0;
-	let previewUrl = '';
-	let previewId = '';
-	let hasPreview = false;
-	let absPreviewDir = '';
-
-	// Publish related state
-	let isPublishing = false;
-	let publishProgress = 0;
-	let publishSuccess = false;
-	let publishUrl = '';
-	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-preview' = plugin.settings.publishMethod || 'netlify';
-
-	// Export related state
-	let isExporting = false;
-	
-	// Reactive publish options
-	$: publishOptions = [
-		{ value: 'netlify', label: t('ui.publish_option_netlify') },
-		{ value: 'ftp', label: t('ui.publish_option_ftp') },
-		...(sitePath.startsWith('/preview/') ? [{ value: 'mdf-preview', label: t('ui.publish_option_mdfriday') }] : []),
-	];
-
-	// Auto-switch to netlify if mdf-preview is not available when sitePath changes
-	$: if (!sitePath.startsWith('/preview/') && selectedPublishOption === 'mdf-preview') {
-		selectedPublishOption = plugin.settings.publishMethod || 'netlify';
-	}
-
-	// HTTP server related
-	let httpServer: IncrementalBuildCoordinator;
-	let serverRunning = false;
-	let serverHost = 'localhost';
-	let serverPort = 8090;
-
-	// 注意：内容初始化现在由 main.ts 中的 site.initializeContent() 处理
-
-	onMount(async () => {
-		console.log('Site component mounting...');
-		
-		themesDir = path.join(plugin.pluginDir, 'themes')
-		await createThemesDirectory()
-
-		const adapter = app.vault.adapter;
-		if (adapter instanceof FileSystemAdapter) {
-			basePath = adapter.getBasePath()
-		}
-		
-		console.log('Site component mounted successfully, languageContents:', languageContents.length);
-	});
-
-	onDestroy(() => {
-		if (serverRunning) {
-			httpServer.stopWatching();
-			serverRunning = false;
-		}
-	});
-
-	// Reactive update: update related state when languageContents changes
-	// 内容路径和站点名称现在由 site 实例管理
-	$: contentPath = languageContents.length > 0 
-		? (languageContents[0].folder?.name || languageContents[0].file?.name || '') 
+	// Reactive update: update related state when content changes
+	$: contentPath = currentContents.length > 0 
+		? (currentContents[0].folder?.name || currentContents[0].file?.name || '') 
 		: '';
 	
+	// 只在首次添加内容且站点名称为空时设置默认名称
+	$: {
+		if (currentContents.length > 0 && !siteName) {
+			const firstContent = currentContents[0];
+			siteName = firstContent.folder?.name || firstContent.file?.basename || '';
+		}
+	}
+	
 	// 预览状态重置逻辑
-	$: if (languageContents.length === 0) {
+	$: if (currentContents.length === 0) {
 		hasPreview = false;
 		previewUrl = '';
 		previewId = '';
+		siteName = ''; // 清空内容时也清空站点名称
+	}
+
+
+	// 多语言相关函数
+	function updateLanguageCode(contentId: string, newLanguageCode: string) {
+		site.updateLanguageCode(contentId, newLanguageCode);
+	}
+	
+	function removeLanguageContent(contentId: string) {
+		site.removeLanguageContent(contentId);
+	}
+	
+	function clearAllContent() {
+		site.clearAllContent();
+	}
+	
+	function getLanguageName(code: string): string {
+		const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
+		return lang ? lang.name : code;
+	}
+
+	function showAddLanguageDialog() {
+		// Show a simple notice asking user to right-click a folder/file
+		new Notice(t('messages.add_language_instruction'), 5000);
 	}
 
 	function openThemeModal() {
 		// Call plugin method to show theme selection modal
 		plugin.showThemeSelectionModal(selectedThemeId, (themeUrl: string, themeName?: string, themeId?: string) => {
-			// 使用 site 实例更新主题
-			site.updateTheme(themeUrl, themeName, themeId);
+			// Force reactive updates by reassigning all variables
+			selectedThemeDownloadUrl = themeUrl;
+			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Book");
+			selectedThemeId = themeId || selectedThemeId;
 		}, isForSingleFile);
 	}
 
@@ -231,8 +253,7 @@
 	}
 
 	function handleSitePathChange() {
-		const normalizedPath = normalizeSitePath(sitePath);
-		site.updateSitePath(normalizedPath);
+		sitePath = normalizeSitePath(sitePath);
 	}
 
 	/**
@@ -264,7 +285,7 @@
 				});
 				
 				// Configure resource processor for app:// URLs
-				renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, selectedFolder?.name);
+				renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, currentContents[0]?.folder?.name);
 				return renderer;
 			} else {
 				// Use lightweight StyleRenderer for other themes
@@ -276,7 +297,7 @@
 				
 				// Configure resource processor for internal links
 				if (renderer.getResourceProcessor) {
-					renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, selectedFolder?.name);
+					renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, currentContents[0]?.folder?.name);
 				}
 				
 				return renderer;
@@ -292,7 +313,7 @@
 			
 			// Configure resource processor for internal links
 			if (renderer.getResourceProcessor) {
-				renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, selectedFolder?.name);
+				renderer.getResourceProcessor().configureImageOutput(obImagesDir, sitePath, currentContents[0]?.folder?.name);
 			}
 			
 			return renderer;
@@ -357,7 +378,7 @@
 	}
 
 	async function startPreview() {
-		if (languageContents.length === 0) {
+		if (currentContents.length === 0) {
 			new Notice(t('messages.no_folder_or_file_selected'), 3000);
 			return;
 		}
@@ -581,24 +602,6 @@
 	function generateRandomId(): string {
 		return Math.random().toString(36).substring(2, 8);
 	}
-	
-	function updateLanguageCode(contentId: string, newLanguageCode: string) {
-		site.updateLanguageCode(contentId, newLanguageCode);
-	}
-	
-	function removeLanguageContent(contentId: string) {
-		site.removeLanguageContent(contentId);
-	}
-	
-	function getLanguageName(code: string): string {
-		const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
-		return lang ? lang.name : code;
-	}
-
-	function showAddLanguageDialog() {
-		// Show a simple notice asking user to right-click a folder/file
-		new Notice(t('messages.add_language_instruction'), 5000);
-	}
 
 	async function createPreviewDirectory(previewDir: string) {
 		// Create preview root directory
@@ -680,10 +683,10 @@
 		}
 
 		// Add languages configuration if multiple languages are configured
-		if (languageContents.length > 1) {
+		if (currentContents.length > 1) {
 			const languages: any = {};
 			
-			languageContents.forEach((content, index) => {
+			currentContents.forEach((content, index) => {
 				const contentDir = index === 0 ? "content" : `content.${content.languageCode}`;
 				languages[content.languageCode] = {
 					contentDir: contentDir,
@@ -698,10 +701,48 @@
 		await app.vault.adapter.write(configPath, JSON.stringify(config, null, 2));
 	}
 
+	async function exportSite() {
+		if (!hasPreview || !absPreviewDir) {
+			new Notice(t('messages.please_generate_preview_first'), 3000);
+			return;
+		}
+
+		isExporting = true;
+
+		try {
+			// Create ZIP from public directory
+			const publicDir = path.join(absPreviewDir, 'public');
+			const zipContent = await createZipFromDirectory(publicDir);
+
+			// Use Electron's dialog API to show save dialog
+			const { dialog } = require('@electron/remote') || require('electron').remote;
+			const { canceled, filePath } = await dialog.showSaveDialog({
+				title: t('ui.export_site_dialog_title'),
+				defaultPath: 'mdfriday-site.zip',
+				filters: [
+					{ name: 'ZIP Files', extensions: ['zip'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+
+			if (!canceled && filePath) {
+				// Save the ZIP file to the selected path
+				await fs.promises.writeFile(filePath, zipContent);
+				new Notice(t('messages.site_exported_successfully', { path: filePath }), 3000);
+			}
+
+		} catch (error) {
+			console.error('Export failed:', error);
+			new Notice(t('messages.export_failed', { error: error.message }), 5000);
+		} finally {
+			isExporting = false;
+		}
+	}
+
 	async function linkMultiLanguageContents(previewDir: string) {
 		// Link all language contents
-		for (let i = 0; i < languageContents.length; i++) {
-			const content = languageContents[i];
+		for (let i = 0; i < currentContents.length; i++) {
+			const content = currentContents[i];
 			const contentDir = i === 0 ? "content" : `content.${content.languageCode}`;
 			const targetPath = path.join(previewDir, contentDir);
 			
@@ -837,44 +878,6 @@
 		}
 	}
 
-	async function exportSite() {
-		if (!hasPreview || !absPreviewDir) {
-			new Notice(t('messages.please_generate_preview_first'), 3000);
-			return;
-		}
-
-		isExporting = true;
-
-		try {
-			// Create ZIP from public directory
-			const publicDir = path.join(absPreviewDir, 'public');
-			const zipContent = await createZipFromDirectory(publicDir);
-
-			// Use Electron's dialog API to show save dialog
-			const { dialog } = require('@electron/remote') || require('electron').remote;
-			const { canceled, filePath } = await dialog.showSaveDialog({
-				title: t('ui.export_site_dialog_title'),
-				defaultPath: 'mdfriday-site.zip',
-				filters: [
-					{ name: 'ZIP Files', extensions: ['zip'] },
-					{ name: 'All Files', extensions: ['*'] }
-				]
-			});
-
-			if (!canceled && filePath) {
-				// Save the ZIP file to the selected path
-				await fs.promises.writeFile(filePath, zipContent);
-				new Notice(t('messages.site_exported_successfully', { path: filePath }), 3000);
-			}
-
-		} catch (error) {
-			console.error('Export failed:', error);
-			new Notice(t('messages.export_failed', { error: error.message }), 5000);
-		} finally {
-			isExporting = false;
-		}
-	}
-
 	async function createZipFromDirectory(sourceDir: string): Promise<Uint8Array> {
 		const zip = new JSZip();
 		
@@ -913,19 +916,19 @@
 				<div class="multilang-header-cell">{t('ui.content_path')}</div>
 				<div class="multilang-header-cell">
 					<span>{t('ui.language')}</span>
-					{#if languageContents.length > 0}
+					{#if currentContents.length > 0}
 						<button 
 							class="add-language-btn"
-							on:click={showAddLanguageDialog}
-							title={t('ui.add_language_tooltip')}
+							on:click={clearAllContent}
+							title={t('ui.clear_all_content')}
 						>
-							+ {t('ui.add_language')}
+							{t('ui.clear')}
 						</button>
 					{/if}
 				</div>
 			</div>
-			{#each languageContents as content (content.id)}
-				<div class="multilang-row" class:removable={languageContents.length > 1}>
+			{#each currentContents as content (content.id)}
+				<div class="multilang-row" class:removable={currentContents.length > 1}>
 					<div class="multilang-cell content-path-cell">
 						<span class="content-path">
 							{content.folder ? content.folder.name : content.file ? content.file.name : t('ui.no_content_selected')}
@@ -944,7 +947,7 @@
 								<option value={lang.code}>{lang.name} ({lang.englishName})</option>
 							{/each}
 						</select>
-						{#if languageContents.length > 1}
+						{#if currentContents.length > 1}
 							<button 
 								class="remove-btn"
 								on:click={() => removeLanguageContent(content.id)}
@@ -956,13 +959,14 @@
 					</div>
 				</div>
 			{/each}
-			{#if languageContents.length === 0}
+			{#if currentContents.length === 0}
 				<div class="multilang-empty">
 					<span class="empty-message">{t('ui.no_content_selected_hint')}</span>
 				</div>
 			{/if}
 		</div>
 	</div>
+
 
 	<!-- Site Name -->
 	<div class="section">
@@ -971,7 +975,6 @@
 			type="text"
 			class="form-input"
 			bind:value={siteName}
-			on:blur={() => site.updateSiteName(siteName)}
 			placeholder={t('ui.site_name_placeholder')}
 		/>
 	</div>
@@ -1011,7 +1014,6 @@
 							type="text"
 							class="form-input"
 							bind:value={googleAnalyticsId}
-							on:blur={() => site.updateAdvancedSettings({ googleAnalyticsId })}
 							placeholder={t('ui.google_analytics_placeholder')}
 							title={t('ui.google_analytics_hint')}
 						/>
@@ -1026,7 +1028,6 @@
 							type="text"
 							class="form-input"
 							bind:value={disqusShortname}
-							on:blur={() => site.updateAdvancedSettings({ disqusShortname })}
 							placeholder={t('ui.disqus_placeholder')}
 							title={t('ui.disqus_hint')}
 						/>
@@ -1065,7 +1066,7 @@
 				<button
 					class="action-button preview-button"
 					on:click={startPreview}
-					disabled={languageContents.length === 0}
+					disabled={currentContents.length === 0}
 				>
 {hasPreview ? t('ui.regenerate_preview') : t('ui.generate_preview')}
 				</button>
@@ -1405,7 +1406,7 @@
 
 	.multilang-header {
 		display: grid;
-		grid-template-columns: 1fr 240px;
+		grid-template-columns: 1fr 2fr;
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
@@ -1419,6 +1420,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		overflow: hidden;
+		min-width: 0;
 	}
 
 	.add-language-btn {
@@ -1445,7 +1448,7 @@
 
 	.multilang-row {
 		display: grid;
-		grid-template-columns: 1fr 240px;
+		grid-template-columns: 1fr 2fr;
 		border-bottom: 1px solid var(--background-modifier-border);
 		transition: background-color 0.2s;
 	}
@@ -1465,6 +1468,8 @@
 		border-right: 1px solid var(--background-modifier-border);
 		min-height: 38px;
 		box-sizing: border-box;
+		overflow: hidden;
+		min-width: 0;
 	}
 
 	.multilang-cell:last-child {
@@ -1479,6 +1484,10 @@
 		color: var(--text-normal);
 		font-size: 14px;
 		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
 	}
 
 	.default-badge {

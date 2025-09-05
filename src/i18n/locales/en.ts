@@ -72,13 +72,12 @@ export const en: TranslationNamespace = {
 		multilingual_content: 'Multilingual Content',
 		content_path: 'Content Path',
 		language: 'Language',
-		actions: 'Actions',
+		clear: 'Clear',
+		clear_all_content: 'Clear all content',
 		default: 'Default',
-		remove_language: 'Remove Language',
-		add_language: 'Add Language',
-		add_language_tooltip: 'Add another language content',
 		no_content_selected: 'No content selected',
-		no_content_selected_hint: 'Right-click a folder or file and select "Publish to Web" to get started',
+		no_content_selected_hint: 'Right-click on a folder or file and select "Publish to Web" to get started',
+		remove_language: 'Remove language',
 		site_name: 'Site Name',
 		site_name_placeholder: 'Enter site name',
 		advanced_settings: 'Advanced Settings',
@@ -125,7 +124,6 @@ export const en: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: 'Publish to Web',
-		add_multilingual: 'Add Language',
 	},
 
 	commands: {
@@ -163,6 +161,12 @@ export const en: TranslationNamespace = {
 		// Preview messages
 		no_folder_selected: 'No folder selected',
 		no_folder_or_file_selected: 'No folder or file selected',
+		must_select_folder_type: 'All content must be folders. Please select a folder instead of a file.',
+		must_select_file_type: 'All content must be files. Please select a file instead of a folder.',
+		all_content_cleared: 'All content cleared successfully',
+		language_added_successfully: 'Language content added successfully',
+		please_use_publish_first: 'Please use "Publish to Web" on a folder or file first to get started',
+		add_language_instruction: 'Right-click on a folder or file and select "Publish to Web" to add more languages',
 		preview_generated_successfully: 'Preview generated successfully!',
 		preview_failed: 'Preview failed: {{error}}',
 		please_generate_preview_first: 'Please generate preview first',
@@ -192,9 +196,6 @@ export const en: TranslationNamespace = {
 		// General messages
 		failed_to_create_post: 'Failed to create post.',
 		failed_to_create_resource: 'Failed to create resource.',
-		please_use_publish_first: 'Please use "Publish to Web" first to create your initial content, then you can add additional languages.',
-		add_language_instruction: 'To add another language: Right-click a folder or file and select "Add Language" from the context menu.',
-		language_added_successfully: 'Language content added successfully!',
 	},
 
 	info: {

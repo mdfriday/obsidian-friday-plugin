@@ -8,16 +8,8 @@
 	// 接收 props
 	export let app: App;
 	export let plugin: FridayPlugin;
-	export let selectedFolder: TFolder | null = null; // 选中的文件夹
-	export let selectedFile: TFile | null = null; // 选中的文件
 
 	let isClientSupported = false;
-	let siteComponent: Site;
-	
-	// Function to get siteComponent for external access
-	export function getSiteComponent() {
-		return siteComponent;
-	}
 	
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
@@ -29,24 +21,6 @@
 			new Notice(t('messages.desktop_only_notice'), 5000);
 			return;
 		}
-		
-		// Debug component binding
-		console.log('Server component mounted, siteComponent:', !!siteComponent);
-		console.log('getSiteComponent function available:', typeof getSiteComponent);
-		
-		// Check siteComponent after a delay
-		setTimeout(() => {
-			console.log('After 100ms - siteComponent:', !!siteComponent);
-			console.log('After 100ms - getSiteComponent():', !!getSiteComponent());
-			if (siteComponent) {
-				console.log('Site component methods available:', Object.getOwnPropertyNames(Object.getPrototypeOf(siteComponent)));
-			}
-		}, 100);
-		
-		setTimeout(() => {
-			console.log('After 500ms - siteComponent:', !!siteComponent);
-			console.log('After 500ms - getSiteComponent():', !!getSiteComponent());
-		}, 500);
 	});
 
 	onDestroy(() => {
@@ -74,7 +48,7 @@
 						aria-labelledby="tab-site" 
 						tabindex="0"
 					>
-						<Site bind:this={siteComponent} {app} {plugin} {selectedFolder} {selectedFile} />
+						<Site {app} {plugin} />
 						
 						<hr class="centered-line">
 						<Info {plugin}/>

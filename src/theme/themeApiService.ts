@@ -83,7 +83,9 @@ async function fetchAllThemes(): Promise<ThemeItem[]> {
             throw new Error('Invalid themes data format');
         }
         
-        return rawThemes.map(mapRawThemeToThemeItem);
+        return rawThemes
+            .map(mapRawThemeToThemeItem)
+            .filter(theme => theme.name !== 'Base'); // 过滤掉 Base 主题
     } catch (error) {
         console.error('Error fetching themes:', error);
         throw error;

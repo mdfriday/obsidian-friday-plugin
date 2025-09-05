@@ -72,13 +72,12 @@ export const zhCn: TranslationNamespace = {
 		multilingual_content: '多语言内容',
 		content_path: '内容路径',
 		language: '语言',
-		actions: '操作',
+		clear: '清空',
+		clear_all_content: '清空所有内容',
 		default: '默认',
-		remove_language: '移除语言',
-		add_language: '添加语言',
-		add_language_tooltip: '添加另一种语言内容',
 		no_content_selected: '未选择内容',
-		no_content_selected_hint: '右键点击文件夹或文件，选择"发布到网络"开始使用',
+		no_content_selected_hint: '右键点击文件夹或文件并选择"发布到网站"开始',
+		remove_language: '移除语言',
 		site_name: '站点名称',
 		site_name_placeholder: '请输入站点名称',
 		advanced_settings: '高级设置',
@@ -125,7 +124,6 @@ export const zhCn: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: '发布到网络',
-		add_multilingual: '添加语言',
 	},
 
 	commands: {
@@ -163,6 +161,12 @@ export const zhCn: TranslationNamespace = {
 		// Preview messages
 		no_folder_selected: '未选择文件夹',
 		no_folder_or_file_selected: '未选择文件夹或文件',
+		must_select_folder_type: '所有内容必须是文件夹。请选择文件夹而不是文件。',
+		must_select_file_type: '所有内容必须是文件。请选择文件而不是文件夹。',
+		all_content_cleared: '所有内容已成功清空',
+		language_added_successfully: '语言内容添加成功',
+		please_use_publish_first: '请先在文件夹或文件上使用"发布到网站"功能',
+		add_language_instruction: '右键点击文件夹或文件并选择"发布到网站"以添加更多语言',
 		preview_generated_successfully: '预览生成成功！',
 		preview_failed: '预览失败：{{error}}',
 		please_generate_preview_first: '请先生成预览',
@@ -192,9 +196,6 @@ export const zhCn: TranslationNamespace = {
 		// General messages
 		failed_to_create_post: '创建文章失败。',
 		failed_to_create_resource: '创建资源失败。',
-		please_use_publish_first: '请先使用"发布到网络"创建初始内容，然后再添加其他语言。',
-		add_language_instruction: '要添加另一种语言：右键点击文件夹或文件，从右键菜单中选择"添加语言"。',
-		language_added_successfully: '语言内容添加成功！',
 	},
 
 	info: {

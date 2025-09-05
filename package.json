@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-friday-plugin",
-	"version": "0.9.2",
+	"version": "0.10.0",
 	"description": "Friday is an Obsidian plugin that empowers users to focus on content creation by writing Markdown files, while we handle the distribution. From creating websites to content deployment, Friday serves as a creative output assistant, helping users turn their work into publishable sites with ease.",
 	"main": "main.js",
 	"scripts": {
@@ -41,7 +41,7 @@
 		}
 	},
 	"dependencies": {
-		"@mdfriday/foundry": "^25.8.11",
+		"@mdfriday/foundry": "^25.9.3",
 		"@tsconfig/svelte": "^1.0.10",
 		"basic-ftp": "^5.0.5",
 		"esbuild-svelte": "^0.7.1",

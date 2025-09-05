@@ -105,16 +105,6 @@ export default class FridayPlugin extends Plugin {
 								await this.openPublishPanel(file, null);
 							});
 					});
-					
-					// Always show add language option - let the function handle the logic
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.add_multilingual'))
-							.setIcon(FRIDAY_ICON)
-							.onClick(async () => {
-								await this.addMultiLanguageContent(file, null);
-							});
-					});
 				} else if (file instanceof TFile && file.extension === 'md') {
 					// Add publish option for markdown files (unified behavior)
 					menu.addItem(item => {
@@ -125,46 +115,9 @@ export default class FridayPlugin extends Plugin {
 								await this.openPublishPanel(null, file);
 							});
 					});
-					
-					// Always show add language option - let the function handle the logic
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.add_multilingual'))
-							.setIcon(FRIDAY_ICON)
-							.onClick(async () => {
-								await this.addMultiLanguageContent(null, file);
-							});
-					});
 				}
 			})
 		);
-	}
-
-	getPublishLeaf() {
-		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
-		return leaves.length > 0 ? leaves[0] : null;
-	}
-
-	hasExistingContent(publishLeaf: any): boolean {
-		const view = publishLeaf.view as ServerView;
-		if (view && view.siteComponent) {
-			// Use the exported hasContent method from Site component
-			try {
-				const hasContent = view.siteComponent.hasContent();
-				console.log('hasExistingContent check result:', hasContent);
-				return hasContent;
-			} catch (error) {
-				console.error('Error calling hasContent:', error);
-				return false;
-			}
-		}
-		console.log('No view or siteComponent found in hasExistingContent');
-		return false;
-	}
-
-	async addMultiLanguageContent(folder: TFolder | null, file: TFile | null) {
-		// 直接使用 site 实例处理多语言内容
-		this.site.addLanguageContent(folder, file);
 	}
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
@@ -175,17 +128,21 @@ export default class FridayPlugin extends Plugin {
 		if (rightSplit.collapsed) {
 			rightSplit.expand();
 		}
+
+		// Handle multilingual content selection
+		if (this.site.hasContent()) {
+			// Add to existing multilingual content
+			const success = this.site.addLanguageContent(folder, file);
+			if (!success) {
+				return; // Error message already shown by addLanguageContent
+			}
+		} else {
+			// Initialize first content
+			this.site.initializeContent(folder, file);
+		}
+
 		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
 		if (leaves.length > 0) {
-			const serverView = leaves[0].view as ServerView;
-			// Initialize site content
-			this.site.initializeContent(folder, file);
-			// Set selected folder or file and switch to site tab
-			if (folder) {
-				serverView.setSelectedFolder(folder);
-			} else if (file) {
-				(serverView as any).setSelectedFile(file);
-			}
 			await this.app.workspace.revealLeaf(leaves[0]);
 		} else {
 			// If no existing view, create a new one
@@ -195,12 +152,6 @@ export default class FridayPlugin extends Plugin {
 					type: FRIDAY_SERVER_VIEW_TYPE,
 					active: true,
 				});
-				const serverView = leaf.view as ServerView;
-				if (folder) {
-					serverView.setSelectedFolder(folder);
-				} else if (file) {
-					(serverView as any).setSelectedFile(file);
-				}
 			}
 		}
 	}

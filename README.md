@@ -8,6 +8,9 @@ Publish individual notes or entire folders, preview locally with real-time updat
 
 ## Demo
 
+### Multi-Language Support
+![Multi-language support demonstration](demo/multiple-languages.gif)
+
 ### Complete Workflow: Build to Publish
 ![Complete workflow from build to publish](demo/demo.gif)
 
@@ -57,12 +60,18 @@ Publish individual notes or entire folders, preview locally with real-time updat
 - **[Help Documentation](https://help.mdfriday.com)**
 - **[Theme Gallery](https://gallery.mdfriday.com)**
 
-## Getting Support
+## Join Us
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/mdfriday/obsidian-friday-plugin/issues)
-- **Email**: [support@mdfriday.com](mailto:support@mdfriday.com)
-- **WeChat**: wayde191
-- **X (Twitter)**: [@szm_tech](https://x.com/szm_tech)
+- **Discord**: [Join our community](https://discord.gg/hzRZDVeD)
+- **Wechat**: 
+
+![Wechat QR Code](demo/mdfriday-wechat.jpg)
+
+
+## Acknowledgement
+
+Friday Plugin is fully reimplemented in TypeScript, inspired by [Hugo](https://gohugo.io/)’s philosophy. 
+Huge thanks to the Hugo community for the inspiration!
 
 ## Support Development
 
