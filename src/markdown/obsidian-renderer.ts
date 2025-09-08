@@ -1,46 +1,43 @@
-import { MarkdownRenderer as ObsidianMarkdownRenderer, Plugin, TFile, Notice } from "obsidian";
-import type { MarkdownRenderer, ParsingResult } from "@mdfriday/foundry";
+import type { Plugin, TFile } from "obsidian";
 import type { ObsidianRendererOptions, RenderContext } from "./types";
 import { ObsidianCSSCollector } from "./css-collector";
-import { ObsidianResourceProcessor } from "./resource-processor";
-import { ObsidianParsingResult } from "./obsidian-parser-result";
-import { 
-  createRenderContainer, 
-  cleanupContainer, 
-  waitForDomStable, 
-  waitForResourcesLoaded,
-  getCurrentTheme 
-} from "./dom-utils";
+import { BaseRenderer } from "./base-renderer";
+import { waitForResourcesLoaded, getCurrentTheme } from "./dom-utils";
 
 /**
  * 基于 Obsidian 的 MarkdownRenderer 实现
  * 重命名为 OBStyleRenderer 以区分Hugo风格渲染器
  */
-export class OBStyleRenderer implements MarkdownRenderer {
+export class OBStyleRenderer extends BaseRenderer {
   // 保持向后兼容的别名
   static ObsidianRenderer = OBStyleRenderer;
   private cssCollector: ObsidianCSSCollector;
-  private resourceProcessor: ObsidianResourceProcessor;
   private context: RenderContext;
 
   constructor(
     plugin: Plugin,
     options: ObsidianRendererOptions = {}
   ) {
+    // 设置OBStyleRenderer的默认配置，包括自动标题ID
+    const defaultOptions: ObsidianRendererOptions = {
+      autoHeadingID: true,        // 默认启用自动标题ID
+      includeCSS: true,
+      waitForPlugins: true,
+      waitForStable: true,        // OB渲染器需要等待插件
+      timeout: 500,
+      containerWidth: "1000px",
+      includeTheme: true,
+      ...options
+    };
+
+    super(plugin, defaultOptions);
+
     this.context = {
       plugin,
-      options: {
-        includeCSS: true,
-        waitForPlugins: true,
-        timeout: 500,
-        containerWidth: "1000px",
-        includeTheme: true,
-        ...options
-      }
+      options: defaultOptions
     };
 
     this.cssCollector = new ObsidianCSSCollector(plugin);
-    this.resourceProcessor = new ObsidianResourceProcessor(plugin);
   }
 
   /**
@@ -50,43 +47,28 @@ export class OBStyleRenderer implements MarkdownRenderer {
   async render(source: string): Promise<string> {
     try {
       // 创建临时文件用于渲染上下文
-      const tempFile = this.createTempFile(source);
+      const tempFile = this.createVirtualFile(source);
       
-      // 创建渲染容器
-      const theme = this.context.options.includeTheme ? getCurrentTheme() : undefined;
-      const container = createRenderContainer(theme, this.context.options.containerWidth);
-      
-      try {
-        // 使用 Obsidian 的 MarkdownRenderer 进行渲染
-        await ObsidianMarkdownRenderer.render(
-          this.context.plugin.app,
-          source,
-          container,
-          tempFile?.path || "",
-          this.context.plugin
-        );
+      // 使用基类的渲染方法，包含主题，并根据需要等待资源加载
+      let html = await this.renderWithObsidian(
+        source, 
+        this.context.options.includeTheme,
+        this.context.options.containerWidth,
+        this.context.options.waitForPlugins  // 传递是否等待插件加载
+      );
 
-        if (this.context.options.waitForPlugins) {
-          await waitForDomStable(container, this.context.options.timeout, source);
-          await waitForResourcesLoaded(container, 3000);
-        }
+      // 处理自动标题ID（基类会根据配置自动处理）
+      html = this.ensureHeadingIDs(html);
 
-        // 处理资源路径
-        let html = await this.resourceProcessor.processAllResources(
-          container.innerHTML, 
-          this.context.options.baseFile || tempFile
-        );
+      // 处理资源路径
+      html = await this.processResources(html, tempFile);
 
-        // 如果需要包含 CSS，则生成完整的 HTML 文档
-        if (this.context.options.includeCSS) {
-          html = await this.wrapWithCSS(html, tempFile?.basename || "Document");
-        }
-
-        return html;
-        
-      } finally {
-        cleanupContainer(container);
+      // 如果需要包含 CSS，则生成完整的 HTML 文档
+      if (this.context.options.includeCSS) {
+        html = await this.wrapWithCSS(html, tempFile.basename || "Document");
       }
+
+      return html;
       
     } catch (error) {
       console.error("渲染 Markdown 时出错:", error);
@@ -94,111 +76,6 @@ export class OBStyleRenderer implements MarkdownRenderer {
     }
   }
 
-  /**
-   * 解析 Markdown 源码，返回解析结果
-   * @param source Markdown 源码
-   */
-  async parse(source: string): Promise<ParsingResult> {
-    try {
-      // 创建临时文件用于解析上下文
-      const tempFile = this.createTempFile(source);
-      
-      if (tempFile) {
-        // 使用文件创建解析结果
-        return new ObsidianParsingResult(this.context.plugin, tempFile, source);
-      } else {
-        // 如果无法创建任何文件上下文，创建一个基本的虚拟文件
-        console.warn("无法找到合适的文件上下文，使用虚拟文件进行解析");
-        
-        // 创建一个最小的虚拟文件对象
-        const vault = this.context.plugin.app.vault;
-        const virtualFile = {
-          path: 'virtual.md',
-          name: 'virtual.md',
-          basename: 'virtual',
-          extension: 'md',
-          parent: null,
-          vault: vault,
-          stat: {
-            ctime: Date.now(),
-            mtime: Date.now(),
-            size: source.length
-          }
-        } as TFile;
-        
-        return new ObsidianParsingResult(this.context.plugin, virtualFile, source);
-      }
-    } catch (error) {
-      console.error("解析 Markdown 时出错:", error);
-      // 最后的回退：直接从源码解析
-      console.warn("尝试直接从源码解析标题结构");
-      
-      try {
-        const vault = this.context.plugin.app.vault;
-        const fallbackFile = {
-          path: 'fallback.md',
-          name: 'fallback.md',
-          basename: 'fallback',
-          extension: 'md',
-          parent: null,
-          vault: vault,
-          stat: {
-            ctime: Date.now(),
-            mtime: Date.now(),
-            size: source.length
-          }
-        } as TFile;
-        
-        return new ObsidianParsingResult(this.context.plugin, fallbackFile, source);
-      } catch (fallbackError) {
-        console.error("回退解析也失败:", fallbackError);
-        throw new Error(`解析失败: ${error.message}`);
-      }
-    }
-  }
-
-  /**
-   * 创建临时文件用于渲染上下文
-   * @param source Markdown 源码
-   */
-  private createTempFile(source: string): TFile | null {
-    try {
-      // 如果有基准文件，直接使用
-      if (this.context.options.baseFile) {
-        return this.context.options.baseFile;
-      }
-      
-      // 创建一个虚拟的文件对象用于解析上下文
-      // 为了避免TOC冲突，每次都创建唯一的虚拟文件
-      const vault = this.context.plugin.app.vault;
-      
-      // 生成唯一的文件名，避免缓存冲突
-      const timestamp = Date.now();
-      const randomId = Math.random().toString(36).substring(2, 8);
-      const uniqueFileName = `temp_${timestamp}_${randomId}.md`;
-      
-      // 创建一个唯一的虚拟文件对象
-      // 这样每次解析都会有独立的上下文，避免TOC重复
-      const virtualFile = {
-        path: uniqueFileName,
-        name: uniqueFileName,
-        basename: `temp_${timestamp}_${randomId}`,
-        extension: 'md',
-        parent: null,
-        vault: vault,
-        stat: {
-          ctime: timestamp,
-          mtime: timestamp,
-          size: source.length
-        }
-      } as TFile;
-      
-      return virtualFile;
-    } catch (error) {
-      console.warn("创建临时文件失败:", error);
-      return null;
-    }
-  }
 
   /**
    * 将 HTML 内容包装成完整的文档（包含 CSS）
@@ -242,26 +119,26 @@ ${css}
   }
 
   /**
-   * 设置基准文件
-   * @param file 基准文件
+   * 设置基准文件（重写基类方法以同时更新context）
    */
   setBaseFile(file: TFile): void {
+    super.setBaseFile(file);
     this.context.options.baseFile = file;
     this.context.file = file;
   }
 
   /**
-   * 获取当前配置
+   * 获取当前配置（重写基类方法以返回正确的类型）
    */
   getOptions(): ObsidianRendererOptions {
     return { ...this.context.options };
   }
 
   /**
-   * 更新配置
-   * @param options 新的配置选项
+   * 更新配置（重写基类方法以同时更新context）
    */
   updateOptions(options: Partial<ObsidianRendererOptions>): void {
+    super.updateOptions(options);
     this.context.options = {
       ...this.context.options,
       ...options
@@ -276,10 +153,10 @@ ${css}
   }
 
   /**
-   * 获取资源处理器
+   * 获取资源处理器（重写基类方法以保持接口一致性）
    */
-  getResourceProcessor(): ObsidianResourceProcessor {
-    return this.resourceProcessor;
+  getResourceProcessor() {
+    return super.getResourceProcessor();
   }
 
   /**

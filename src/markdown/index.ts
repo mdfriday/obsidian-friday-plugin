@@ -6,6 +6,7 @@
  */
 
 // 主要类导出
+export { BaseRenderer } from "./base-renderer";
 export { StyleRenderer } from "./style-renderer";
 export { OBStyleRenderer } from "./obsidian-renderer";
 export { ObsidianCSSCollector } from "./css-collector";
@@ -21,7 +22,9 @@ export { OBStyleRenderer as ObsidianRenderer } from "./obsidian-renderer";
 
 // 类型定义导出
 export type {
+  BaseRendererOptions,
   ObsidianRendererOptions,
+  StyleRendererOptions,
   CSSCollectionOptions,
   CSSCollectionResult,
   ResourceProcessingOptions,
@@ -30,10 +33,6 @@ export type {
   HeaderInfo,
   TOCItem
 } from "./types";
-
-export type {
-  StyleRendererOptions
-} from "./style-renderer";
 
 // 工具函数导出
 export {
@@ -48,9 +47,9 @@ export {
 
 // 主要工厂函数
 import type { Plugin } from "obsidian";
-import { StyleRenderer, StyleRendererOptions } from "./style-renderer";
+import { StyleRenderer } from "./style-renderer";
 import { OBStyleRenderer } from "./obsidian-renderer";
-import type { ObsidianRendererOptions } from "./types";
+import type { ObsidianRendererOptions, StyleRendererOptions } from "./types";
 
 /**
  * 创建默认的 StyleRenderer 实例（Hugo风格，轻量级）
@@ -100,8 +99,10 @@ export function createOBStyleRenderer(
   options: ObsidianRendererOptions = {}
 ): OBStyleRenderer {
   const defaultOptions: ObsidianRendererOptions = {
+    autoHeadingID: true,        // 默认启用自动标题ID
     includeCSS: true,
     waitForPlugins: true,
+    waitForStable: true,        // OB渲染器需要等待插件
     timeout: 500,
     containerWidth: "1000px",
     includeTheme: true,

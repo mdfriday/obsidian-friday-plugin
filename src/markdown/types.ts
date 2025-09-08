@@ -1,23 +1,34 @@
 import type { Plugin, TFile } from "obsidian";
 
 /**
+ * 基础渲染器配置选项（通用选项）
+ */
+export interface BaseRendererOptions {
+  /** 是否自动生成标题ID */
+  autoHeadingID?: boolean;
+  
+  /** 渲染容器宽度 */
+  containerWidth?: string;
+  
+  /** 是否等待DOM稳定 */
+  waitForStable?: boolean;
+  
+  /** DOM稳定等待超时时间（毫秒） */
+  timeout?: number;
+  
+  /** 用于解析相对路径的基准文件 */
+  baseFile?: TFile;
+}
+
+/**
  * Obsidian MarkdownRenderer 的配置选项
  */
-export interface ObsidianRendererOptions {
+export interface ObsidianRendererOptions extends BaseRendererOptions {
   /** 是否包含 CSS 样式 */
   includeCSS?: boolean;
   
   /** 是否等待插件异步渲染完成 */
   waitForPlugins?: boolean;
-  
-  /** 用于解析相对路径的基准文件 */
-  baseFile?: TFile;
-  
-  /** DOM 稳定等待超时时间（毫秒） */
-  timeout?: number;
-  
-  /** 渲染容器宽度 */
-  containerWidth?: string;
   
   /** 是否包含主题类 */
   includeTheme?: boolean;
@@ -27,6 +38,13 @@ export interface ObsidianRendererOptions {
   
   /** 样式隔离的容器选择器 */
   isolationSelector?: string;
+}
+
+/**
+ * Hugo风格渲染器配置选项
+ */
+export interface StyleRendererOptions extends BaseRendererOptions {
+  // StyleRenderer 特有的选项可以在这里添加
 }
 
 /**
