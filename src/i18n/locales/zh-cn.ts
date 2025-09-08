@@ -161,8 +161,8 @@ export const zhCn: TranslationNamespace = {
 		// Preview messages
 		no_folder_selected: '未选择文件夹',
 		no_folder_or_file_selected: '未选择文件夹或文件',
-		must_select_folder_type: '所有内容必须是文件夹。请选择文件夹而不是文件。',
-		must_select_file_type: '所有内容必须是文件。请选择文件而不是文件夹。',
+		must_select_folder_type: '内容类型不匹配：您之前选择了文件夹，现在选择了文件。要发布文件，请点击右上角的"清空"按钮移除之前的选择，然后只选择文件。',
+		must_select_file_type: '内容类型不匹配：您之前选择了文件，现在选择了文件夹。要发布文件夹，请点击右上角的"清空"按钮移除之前的选择，然后只选择文件夹。',
 		all_content_cleared: '所有内容已成功清空',
 		language_added_successfully: '语言内容添加成功',
 		please_use_publish_first: '请先在文件夹或文件上使用"发布到网站"功能',

@@ -161,8 +161,8 @@ export const en: TranslationNamespace = {
 		// Preview messages
 		no_folder_selected: 'No folder selected',
 		no_folder_or_file_selected: 'No folder or file selected',
-		must_select_folder_type: 'All content must be folders. Please select a folder instead of a file.',
-		must_select_file_type: 'All content must be files. Please select a file instead of a folder.',
+		must_select_folder_type: 'Content type mismatch: You previously selected a folder, but now selected a file. To publish files, click the "Clear" button in the top-right to remove previous selections, then select files only.',
+		must_select_file_type: 'Content type mismatch: You previously selected a file, but now selected a folder. To publish folders, click the "Clear" button in the top-right to remove previous selections, then select folders only.',
 		all_content_cleared: 'All content cleared successfully',
 		language_added_successfully: 'Language content added successfully',
 		please_use_publish_first: 'Please use "Publish to Web" on a folder or file first to get started',
