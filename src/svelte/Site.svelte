@@ -275,7 +275,6 @@
 			if (hasOBTag) {
 				// Use OBStyleRenderer for themes with "Book" tag
 				// This includes full CSS collection, plugin rendering, and theme styles
-				console.log(`Theme "${selectedThemeName}" has Book tag, using OBStyleRenderer with plugin rendering`);
 				const renderer = new OBStyleRenderer(plugin, {
 					includeCSS: true, // Include CSS in HTML for complete styling
 					waitForPlugins: true, // Wait for plugin rendering callbacks
@@ -289,7 +288,6 @@
 				return renderer;
 			} else {
 				// Use lightweight StyleRenderer for other themes
-				console.log(`Theme "${selectedThemeName}" doesn't have Book tag, using lightweight StyleRenderer`);
 				const renderer = createStyleRenderer(plugin, {
 					autoHeadingID: true,
 					waitForStable: false, // Don't wait for DOM stable for better performance
