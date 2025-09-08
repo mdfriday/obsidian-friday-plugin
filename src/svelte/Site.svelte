@@ -22,10 +22,10 @@
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
 
-	const BOOK_THEME_URL = "https://gohugo.net/book-ob.zip?version=1.0"
+	const BOOK_THEME_URL = "https://gohugo.net/book-ob.zip?version=1.1"
 	const BOOK_THEME_ID = "3"
 	const BOOK_THEME_NAME = "Obsidian Book"
-	const NOTE_THEME_URL = "https://gohugo.net/note.zip?version=1.0"
+	const NOTE_THEME_URL = "https://gohugo.net/note.zip?version=1.2"
 	const NOTE_THEME_ID = "2"
 	const NOTE_THEME_NAME = "Note";
 
