@@ -465,6 +465,11 @@
 
 			new Notice(t('messages.preview_generated_successfully'), 3000);
 
+			// Send counter for preview (don't wait for result)
+			plugin.hugoverse.sendCounter('preview').catch(error => {
+				console.warn('Counter request failed (non-critical):', error);
+			});
+
 		} catch (error) {
 			console.error('Preview generation failed:', error);
 			new Notice(t('messages.preview_failed', { error: error.message }), 5000);
@@ -536,6 +541,11 @@
 				publishSuccess = true;
 
 				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-preview').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
 			}
 
 		} catch (error) {
@@ -553,6 +563,11 @@
 			});
 			publishSuccess = true;
 			new Notice(t('messages.netlify_deploy_success'), 3000);
+
+			// Send counter for netlify publish (don't wait for result)
+			plugin.hugoverse.sendCounter('netlify').catch(error => {
+				console.warn('Counter request failed (non-critical):', error);
+			});
 		} catch (error) {
 			console.error('Netlify deployment failed:', error);
 			throw new Error(t('messages.netlify_deploy_failed', { error: error.message }));
@@ -587,6 +602,11 @@
 					new Notice(t('messages.ftp_fallback_to_plain'), 4000);
 				}
 				new Notice(t('messages.ftp_upload_success'), 3000);
+
+				// Send counter for ftp publish (don't wait for result)
+				plugin.hugoverse.sendCounter('ftp').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
 			} else {
 				throw new Error(result.error || 'Unknown FTP error');
 			}

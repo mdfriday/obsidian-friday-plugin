@@ -4,6 +4,7 @@ import type FridayPlugin from "./main";
 import * as path from "path";
 
 const NEW_ID = "-1"
+const COUNTER_REQUEST_ID_KEY = "friday_counter_request_id"
 
 export class Hugoverse {
 	basePath: string;
@@ -28,6 +29,29 @@ export class Hugoverse {
 
 	generateDownloadUrl(filename: string): string {
 		return `${this.apiUrl}/api/uploads/themes/${filename}`;
+	}
+
+	/**
+	 * 生成简单的 UUID（不使用第三方库）
+	 */
+	private generateUUID(): string {
+		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+			const r = Math.random() * 16 | 0;
+			const v = c == 'x' ? r : (r & 0x3 | 0x8);
+			return v.toString(16);
+		});
+	}
+
+	/**
+	 * 从浏览器缓存获取或生成 request_id
+	 */
+	private getOrCreateRequestId(): string {
+		let requestId = localStorage.getItem(COUNTER_REQUEST_ID_KEY);
+		if (!requestId) {
+			requestId = this.generateUUID();
+			localStorage.setItem(COUNTER_REQUEST_ID_KEY, requestId);
+		}
+		return requestId;
 	}
 
 	projectDirPath(filepath: string): string {
@@ -172,6 +196,43 @@ export class Hugoverse {
 		}
 
 		return combinedArray.buffer;
+	}
+
+	async sendCounter(kind: string = "preview"): Promise<boolean> {
+		try {
+			const requestId = this.getOrCreateRequestId();
+			const counterUrl = `${this.apiUrl}/api/counter?type=Counter`;
+
+			// 创建 FormData 并添加字段
+			let body: FormData = new FormData();
+			body.append("id", NEW_ID);
+			body.append("kind", kind);
+			body.append("request_id", requestId);
+
+			// 将 FormData 转换为 ArrayBuffer
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+
+			const response: RequestUrlResponse = await requestUrl({
+				url: counterUrl,
+				method: "POST",
+				headers: {
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+				},
+				body: arrayBufferBody,
+			});
+
+			// 检查响应状态
+			if (response.status !== 200) {
+				console.warn(`Counter request failed: ${response.text}`);
+				return false;
+			}
+
+			return true;
+		} catch (error) {
+			console.warn("Failed to send counter:", error.toString());
+			return false;
+		}
 	}
 
 }
