@@ -1,4 +1,4 @@
-import {App, Plugin, PluginSettingTab, Setting, TFolder, TFile} from 'obsidian';
+import {App, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice} from 'obsidian';
 import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
 import {User} from "./user";
 import './styles/theme-modal.css';
@@ -105,6 +105,16 @@ export default class FridayPlugin extends Plugin {
 								await this.openPublishPanel(file, null);
 							});
 					});
+					
+					// Add site assets menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.set_as_site_assets'))
+							.setIcon('folder-plus')
+							.onClick(async () => {
+								await this.setSiteAssets(file);
+							});
+					});
 				} else if (file instanceof TFile && file.extension === 'md') {
 					// Add publish option for markdown files (unified behavior)
 					menu.addItem(item => {
@@ -137,8 +147,14 @@ export default class FridayPlugin extends Plugin {
 				return; // Error message already shown by addLanguageContent
 			}
 		} else {
-			// Initialize first content
-			this.site.initializeContent(folder, file);
+			// Smart detection for structured folders when no content exists
+			if (folder && await this.detectStructuredFolder(folder)) {
+				// Structured folder detected, process it automatically
+				await this.processStructuredFolder(folder);
+			} else {
+				// Initialize first content normally
+				this.site.initializeContent(folder, file);
+			}
 		}
 
 		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
@@ -152,6 +168,173 @@ export default class FridayPlugin extends Plugin {
 					type: FRIDAY_SERVER_VIEW_TYPE,
 					active: true,
 				});
+			}
+		}
+	}
+
+	/**
+	 * Detect if a folder has structured content (content directories and static folder)
+	 */
+	async detectStructuredFolder(folder: TFolder): Promise<boolean> {
+		try {
+			const children = folder.children;
+			const childNames = children.map(child => child.name.toLowerCase());
+			
+			// Check for content directories (content, content.en, content.zh, etc.)
+			const hasContentDirs = childNames.some(name => 
+				name === 'content' || name.startsWith('content.')
+			);
+			
+			// Check for static directory
+			const hasStaticDir = childNames.includes('static');
+			
+			// Consider it structured if it has at least content directories
+			return hasContentDirs;
+		} catch (error) {
+			console.warn('Error detecting structured folder:', error);
+			return false;
+		}
+	}
+
+	/**
+	 * Process a structured folder by automatically adding content directories and static folder
+	 */
+	async processStructuredFolder(folder: TFolder) {
+		try {
+			const children = folder.children;
+			const contentFolders: { folder: TFolder; languageCode: string; weight: number }[] = [];
+			let staticFolder: TFolder | null = null;
+
+			// Analyze child directories
+			for (const child of children) {
+				if (!(child instanceof TFolder)) continue;
+				
+				const childName = child.name.toLowerCase();
+				
+				// Check for content directories
+				if (childName === 'content') {
+					contentFolders.push({
+						folder: child,
+						languageCode: 'en', // Default language for 'content'
+						weight: 0 // Highest priority for default content
+					});
+				} else if (childName.startsWith('content.')) {
+					const langCode = childName.split('.')[1];
+					const mappedLangCode = this.mapLanguageCode(langCode);
+					contentFolders.push({
+						folder: child,
+						languageCode: mappedLangCode,
+						weight: 1 // Lower priority for language-specific content
+					});
+				}
+				
+				// Check for static directory
+				if (childName === 'static') {
+					staticFolder = child;
+				}
+			}
+
+			// Sort content folders: 'content' first, then others by folder name
+			contentFolders.sort((a, b) => {
+				// 'content' (weight 0) always comes first
+				if (a.weight !== b.weight) {
+					return a.weight - b.weight;
+				}
+				// For language-specific folders, sort by folder name alphabetically
+				return a.folder.name.localeCompare(b.folder.name);
+			});
+
+			// Add content folders to multilingual content
+			if (contentFolders.length > 0) {
+				// Initialize with first content folder (should be 'content' due to sorting)
+				this.site.initializeContentWithLanguage(
+					contentFolders[0].folder, 
+					null, 
+					contentFolders[0].languageCode
+				);
+
+				// Add remaining content folders with proper weight assignment
+				for (let i = 1; i < contentFolders.length; i++) {
+					this.site.addLanguageContentWithCode(
+						contentFolders[i].folder,
+						null,
+						contentFolders[i].languageCode
+					);
+				}
+			}
+
+			// Set static folder as site assets
+			if (staticFolder) {
+				this.site.setSiteAssets(staticFolder);
+			}
+
+			// Show success message
+			const contentCount = contentFolders.length;
+			const hasStatic = staticFolder !== null;
+			
+			let message = this.i18n.t('messages.structured_folder_processed', {
+				contentCount,
+				folderName: folder.name
+			});
+			
+			if (hasStatic) {
+				message += ' ' + this.i18n.t('messages.static_folder_detected');
+			}
+			
+			new Notice(message, 5000);
+
+		} catch (error) {
+			console.error('Error processing structured folder:', error);
+			// Fallback to normal folder processing
+			this.site.initializeContent(folder, null);
+		}
+	}
+
+	/**
+	 * Map language codes to supported language codes
+	 */
+	private mapLanguageCode(code: string): string {
+		const languageMap: { [key: string]: string } = {
+			'en': 'en',
+			'zh': 'zh',
+			'zh-cn': 'zh',
+			'zh-hans': 'zh',
+			'es': 'es',
+			'fr': 'fr',
+			'de': 'de',
+			'ja': 'ja',
+			'ko': 'ko'
+		};
+		
+		return languageMap[code.toLowerCase()] || 'en';
+	}
+
+	async setSiteAssets(folder: TFolder) {
+		// Set the site assets folder
+		const success = this.site.setSiteAssets(folder);
+		
+		if (success) {
+			// Open the publish panel to show the updated assets
+			const rightSplit = this.app.workspace.rightSplit;
+			if (!rightSplit) {
+				return;
+			}
+			if (rightSplit.collapsed) {
+				rightSplit.expand();
+			}
+
+			const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
+			if (leaves.length > 0) {
+				await this.app.workspace.revealLeaf(leaves[0]);
+			} else {
+				// If no existing view, create a new one
+				const leaf = this.app.workspace.getRightLeaf(false);
+				if (leaf) {
+					await leaf.setViewState({
+						type: FRIDAY_SERVER_VIEW_TYPE,
+						active: true,
+					});
+				}
 			}
 		}
 	}

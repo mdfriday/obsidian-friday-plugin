@@ -80,6 +80,10 @@ export const zhCn: TranslationNamespace = {
 		remove_language: '移除语言',
 		site_name: '站点名称',
 		site_name_placeholder: '请输入站点名称',
+		site_assets: '站点资源',
+		site_assets_placeholder: '未设置资源文件夹',
+		site_assets_hint: '右键点击文件夹并选择"设为站点资源"来设置',
+		clear_assets: '清除',
 		advanced_settings: '高级设置',
 		site_path: '站点路径',
 		site_path_placeholder: '/',
@@ -92,6 +96,8 @@ export const zhCn: TranslationNamespace = {
 		disqus_hint: '您的 Disqus 短名称，用于评论功能（可选）',
 		theme: '主题',
 		change_theme: '更换主题',
+		download_sample: '下载样例',
+		downloading_sample: '下载中...',
 		
 		// Preview section
 		preview: '预览',
@@ -124,6 +130,7 @@ export const zhCn: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: '发布到网络',
+		set_as_site_assets: '设为站点资源',
 	},
 
 	commands: {
@@ -192,6 +199,19 @@ export const zhCn: TranslationNamespace = {
 		enter_valid_email: '请输入有效的邮箱地址',
 		login_failed: '登录失败',
 		register_failed: '注册用户失败',
+		
+		// Site assets messages
+		invalid_assets_folder: '无效的资源文件夹',
+		site_assets_set_successfully: '站点资源设置成功',
+		site_assets_cleared: '站点资源已清除',
+		
+		// Sample download messages
+		sample_downloaded_successfully: '主题样例 "{{themeName}}" 下载成功！已保存到文件夹：{{folderName}}',
+		sample_download_failed: '样例下载失败：{{error}}',
+		
+		// Structured folder messages
+		structured_folder_processed: '检测到结构化文件夹 "{{folderName}}"，已自动添加 {{contentCount}} 个语言内容',
+		static_folder_detected: '并检测到静态资源文件夹',
 		
 		// General messages
 		failed_to_create_post: '创建文章失败。',

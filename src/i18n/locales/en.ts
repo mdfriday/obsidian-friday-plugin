@@ -80,6 +80,10 @@ export const en: TranslationNamespace = {
 		remove_language: 'Remove language',
 		site_name: 'Site Name',
 		site_name_placeholder: 'Enter site name',
+		site_assets: 'Site Assets',
+		site_assets_placeholder: 'No assets folder set',
+		site_assets_hint: 'Right-click on a folder and select "Set as Site Assets" to configure',
+		clear_assets: 'Clear',
 		advanced_settings: 'Advanced Settings',
 		site_path: 'Site Path',
 		site_path_placeholder: '/',
@@ -92,6 +96,8 @@ export const en: TranslationNamespace = {
 		disqus_hint: 'Your Disqus shortname for comments (optional)',
 		theme: 'Theme',
 		change_theme: 'Change Theme',
+		download_sample: 'Download Sample',
+		downloading_sample: 'Downloading...',
 		
 		// Preview section
 		preview: 'Preview',
@@ -124,6 +130,7 @@ export const en: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: 'Publish to Web',
+		set_as_site_assets: 'Set as Site Assets',
 	},
 
 	commands: {
@@ -192,6 +199,19 @@ export const en: TranslationNamespace = {
 		enter_valid_email: 'Please enter a valid email address',
 		login_failed: 'Failed to login',
 		register_failed: 'Failed to register user',
+		
+		// Site assets messages
+		invalid_assets_folder: 'Invalid assets folder',
+		site_assets_set_successfully: 'Site assets set successfully',
+		site_assets_cleared: 'Site assets cleared',
+		
+		// Sample download messages
+		sample_downloaded_successfully: 'Theme sample "{{themeName}}" downloaded successfully! Saved to folder: {{folderName}}',
+		sample_download_failed: 'Sample download failed: {{error}}',
+		
+		// Structured folder messages
+		structured_folder_processed: 'Structured folder "{{folderName}}" detected, automatically added {{contentCount}} language contents',
+		static_folder_detected: 'and detected static assets folder',
 		
 		// General messages
 		failed_to_create_post: 'Failed to create post.',

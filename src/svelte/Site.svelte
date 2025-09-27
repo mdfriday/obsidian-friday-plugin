@@ -1,5 +1,5 @@
 <script lang="ts">
-	import {App, Notice, TFolder, TFile, FileSystemAdapter} from "obsidian";
+	import {App, Notice, TFolder, TFile, FileSystemAdapter, requestUrl} from "obsidian";
 	import FridayPlugin from "../main";
 	import ProgressBar from "./ProgressBar.svelte";
 	import {onMount, onDestroy} from "svelte";
@@ -18,6 +18,7 @@
 	// 获取 site 实例
 	$: site = plugin.site;
 	$: languageContents = site ? site.languageContents : null;
+	$: siteAssets = site ? site.siteAssets : null;
 	
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
@@ -30,6 +31,7 @@
 	const NOTE_THEME_NAME = "Note";
 
 	const isWindows = process.platform === 'win32';
+	const FRIDAY_ROOT_FOLDER = 'MDFriday';
 
 	// State variables
 	let basePath = plugin.pluginDir;
@@ -39,6 +41,7 @@
 	
 	// 从 site 实例获取响应式数据
 	$: currentContents = $languageContents || [];
+	$: currentAssets = $siteAssets || null;
 	$: isForSingleFile = site ? site.isForSingleFile() : false;
 	$: defaultContentLanguage = site ? site.getDefaultContentLanguage() : 'en';
 	
@@ -93,6 +96,11 @@
 
 	// Export related state
 	let isExporting = false;
+	
+	// Sample download related state
+	let isDownloadingSample = false;
+	let sampleDownloadProgress = 0;
+	let currentThemeWithSample: any = null;
 	
 	// Reactive publish options
 	$: publishOptions = [
@@ -214,6 +222,10 @@
 		site.clearAllContent();
 	}
 	
+	function clearSiteAssets() {
+		site.clearSiteAssets();
+	}
+	
 	function getLanguageName(code: string): string {
 		const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
 		return lang ? lang.name : code;
@@ -226,12 +238,62 @@
 
 	function openThemeModal() {
 		// Call plugin method to show theme selection modal
-		plugin.showThemeSelectionModal(selectedThemeId, (themeUrl: string, themeName?: string, themeId?: string) => {
+		plugin.showThemeSelectionModal(selectedThemeId, async (themeUrl: string, themeName?: string, themeId?: string) => {
 			// Force reactive updates by reassigning all variables
 			selectedThemeDownloadUrl = themeUrl;
 			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Book");
 			selectedThemeId = themeId || selectedThemeId;
+			
+			// Get theme info to check for sample availability
+			if (themeId) {
+				try {
+					currentThemeWithSample = await themeApiService.getThemeById(themeId);
+				} catch (error) {
+					console.warn('Failed to get theme info:', error);
+					currentThemeWithSample = null;
+				}
+			}
 		}, isForSingleFile);
+	}
+
+	async function downloadThemeSample() {
+		if (!currentThemeWithSample || !currentThemeWithSample.demo_notes_url) {
+			return;
+		}
+
+		isDownloadingSample = true;
+		sampleDownloadProgress = 0;
+
+		try {
+			// Ensure MDFriday root folder exists
+			await ensureRootFolderExists();
+
+			// Generate unique folder name
+			const baseName = currentThemeWithSample.name.toLowerCase().replace(/\s+/g, '-');
+			const targetFolderName = await generateUniqueFolderName(baseName);
+			const targetFolderPath = path.join(FRIDAY_ROOT_FOLDER, targetFolderName);
+
+			// Download and unzip sample
+			await downloadAndUnzipSample(
+				currentThemeWithSample.demo_notes_url,
+				targetFolderPath,
+				(progress) => {
+					sampleDownloadProgress = progress;
+				}
+			);
+
+			new Notice(t('messages.sample_downloaded_successfully', { 
+				themeName: currentThemeWithSample.name, 
+				folderName: targetFolderName 
+			}), 5000);
+
+		} catch (error) {
+			console.error('Sample download failed:', error);
+			new Notice(t('messages.sample_download_failed', { error: error.message }), 5000);
+		} finally {
+			isDownloadingSample = false;
+			sampleDownloadProgress = 0;
+		}
 	}
 
 	// Reactive statement to ensure theme name updates
@@ -409,6 +471,12 @@
 			// Create symbolic links for all language contents
 			await linkMultiLanguageContents(previewDir);
 			buildProgress = 15;
+
+			// Copy site assets if configured
+			if (currentAssets && currentAssets.folder) {
+				await copySiteAssetsToPreview(previewDir);
+				buildProgress = 18;
+			}
 
 			// Build site (reserved for future implementation)
 			absPreviewDir = path.join(basePath, previewDir);
@@ -648,6 +716,14 @@
 		const obImagesDir = path.join(publicDir, 'ob-images');
 		if (!await app.vault.adapter.exists(obImagesDir)) {
 			await app.vault.adapter.mkdir(obImagesDir);
+		}
+
+		// Create static subdirectory if site assets are configured
+		if (currentAssets && currentAssets.folder) {
+			const staticDir = path.join(previewDir, 'static');
+			if (!await app.vault.adapter.exists(staticDir)) {
+				await app.vault.adapter.mkdir(staticDir);
+			}
 		}
 	}
 
@@ -896,6 +972,144 @@
 		}
 	}
 
+	async function copySiteAssetsToPreview(previewDir: string) {
+		if (!currentAssets || !currentAssets.folder) {
+			return;
+		}
+
+		const assetsSourceFolder = currentAssets.folder;
+		const staticTargetDir = path.join(previewDir, 'static');
+
+		console.log(`Copying site assets from ${assetsSourceFolder.path} to static directory`);
+
+		try {
+			// Get absolute paths
+			const adapter = app.vault.adapter;
+			if (adapter instanceof FileSystemAdapter) {
+				const absSourcePath = path.join(adapter.getBasePath(), assetsSourceFolder.path);
+				const absTargetPath = path.join(adapter.getBasePath(), staticTargetDir);
+
+				// Use Node.js fs to copy the directory recursively
+				await fs.promises.cp(absSourcePath, absTargetPath, { 
+					recursive: true,
+					force: true // Overwrite existing files
+				});
+
+				console.log(`Site assets copied successfully to ${staticTargetDir}`);
+			} else {
+				// Fallback: use Obsidian's API to copy files
+				await copyAssetsUsingObsidianAPI(assetsSourceFolder, staticTargetDir);
+			}
+		} catch (error) {
+			console.error('Failed to copy site assets:', error);
+			// Don't throw error, just log it - assets are optional
+		}
+	}
+
+	async function copyAssetsUsingObsidianAPI(sourceFolder: TFolder, targetDir: string) {
+		// Recursively copy folder contents using Obsidian's API
+		const copyRecursive = async (sourceFolder: TFolder, destPath: string) => {
+			for (const child of sourceFolder.children) {
+				if (child instanceof TFolder) {
+					const childDestPath = path.join(destPath, child.name);
+					if (!await app.vault.adapter.exists(childDestPath)) {
+						await app.vault.adapter.mkdir(childDestPath);
+					}
+					await copyRecursive(child, childDestPath);
+				} else if (child instanceof TFile) {
+					const childDestPath = path.join(destPath, child.name);
+					try {
+						const content = await app.vault.readBinary(child);
+						await app.vault.adapter.writeBinary(childDestPath, content);
+					} catch (error) {
+						console.warn(`Failed to copy asset file ${child.path}:`, error);
+					}
+				}
+			}
+		};
+
+		await copyRecursive(sourceFolder, targetDir);
+	}
+
+	async function ensureRootFolderExists() {
+		if (!(await app.vault.adapter.exists(FRIDAY_ROOT_FOLDER))) {
+			await app.vault.createFolder(FRIDAY_ROOT_FOLDER);
+		}
+	}
+
+	async function generateUniqueFolderName(baseName: string): Promise<string> {
+		let folderName = baseName;
+		let counter = 0;
+
+		while (await app.vault.adapter.exists(path.join(FRIDAY_ROOT_FOLDER, folderName))) {
+			counter++;
+			folderName = `${baseName} ${counter}`;
+		}
+
+		return folderName;
+	}
+
+	async function downloadAndUnzipSample(
+		downloadUrl: string,
+		targetFolderPath: string,
+		progressCallback: (progress: number) => void
+	) {
+		try {
+			// Download the zip file
+			progressCallback(10);
+			const response = await requestUrl({
+				url: downloadUrl,
+				method: 'GET'
+			});
+
+			if (response.status !== 200) {
+				throw new Error(`Download failed with status: ${response.status}`);
+			}
+
+			progressCallback(50);
+
+			// Parse the zip file
+			const zip = new JSZip();
+			const zipData = await zip.loadAsync(response.arrayBuffer);
+
+			progressCallback(70);
+
+			// Create target folder
+			await app.vault.createFolder(targetFolderPath);
+
+			// Extract files
+			const files = Object.keys(zipData.files);
+			let processedFiles = 0;
+
+			for (const fileName of files) {
+				const file = zipData.files[fileName];
+				
+				if (file.dir) {
+					// Create directory
+					const dirPath = path.join(targetFolderPath, fileName);
+					if (!(await app.vault.adapter.exists(dirPath))) {
+						await app.vault.createFolder(dirPath);
+					}
+				} else {
+					// Extract file
+					const filePath = path.join(targetFolderPath, fileName);
+					const fileContent = await file.async('uint8array');
+					await app.vault.adapter.writeBinary(filePath, fileContent.buffer as ArrayBuffer);
+				}
+
+				processedFiles++;
+				const extractProgress = 70 + (processedFiles / files.length) * 30;
+				progressCallback(Math.round(extractProgress));
+			}
+
+			progressCallback(100);
+
+		} catch (error) {
+			console.error('Download and unzip failed:', error);
+			throw error;
+		}
+	}
+
 	async function createZipFromDirectory(sourceDir: string): Promise<Uint8Array> {
 		const zip = new JSZip();
 		
@@ -997,6 +1211,30 @@
 		/>
 	</div>
 
+	<!-- Site Assets -->
+	<div class="section">
+		<div class="section-label">{t('ui.site_assets')}</div>
+		<div class="site-assets-container">
+			<div class="assets-display">
+				{#if currentAssets}
+					<span class="assets-path">{currentAssets.folder?.name || currentAssets.path}</span>
+					<button 
+						class="clear-assets-btn"
+						on:click={clearSiteAssets}
+						title={t('ui.clear_assets')}
+					>
+						{t('ui.clear_assets')}
+					</button>
+				{:else}
+					<span class="assets-placeholder">{t('ui.site_assets_placeholder')}</span>
+				{/if}
+			</div>
+			<div class="assets-hint">
+				{t('ui.site_assets_hint')}
+			</div>
+		</div>
+	</div>
+
 	<!-- Advanced Settings -->
 	<div class="section">
 		<div class="advanced-settings">
@@ -1064,9 +1302,23 @@
 		<div class="theme-selector">
 			<div class="current-theme">
 				<span class="theme-name">{displayThemeName}</span>
-				<button class="change-theme-btn" on:click={openThemeModal}>
-					{t('ui.change_theme')}
-				</button>
+				<div class="theme-actions">
+					<button class="change-theme-btn" on:click={openThemeModal}>
+						{t('ui.change_theme')}
+					</button>
+					{#if currentThemeWithSample && currentThemeWithSample.demo_notes_url}
+						{#if isDownloadingSample}
+							<div class="sample-download-progress">
+								<span class="progress-text">{t('ui.downloading_sample')}</span>
+								<ProgressBar progress={sampleDownloadProgress} />
+							</div>
+						{:else}
+							<button class="download-sample-btn" on:click={downloadThemeSample}>
+								{t('ui.download_sample')}
+							</button>
+						{/if}
+					{/if}
+				</div>
 			</div>
 		</div>
 	</div>
@@ -1219,6 +1471,13 @@
 	.theme-name {
 		color: var(--text-normal);
 		font-size: 14px;
+		flex: 1;
+	}
+
+	.theme-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.change-theme-btn {
@@ -1236,6 +1495,36 @@
 	.change-theme-btn:hover {
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
+	}
+
+	.download-sample-btn {
+		padding: 6px 12px;
+		border: 1px solid var(--text-accent);
+		border-radius: 3px;
+		background: transparent;
+		color: var(--text-accent);
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.2s;
+		white-space: nowrap;
+	}
+
+	.download-sample-btn:hover {
+		background: var(--text-accent);
+		color: var(--text-on-accent);
+	}
+
+	.sample-download-progress {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 120px;
+	}
+
+	.progress-text {
+		font-size: 11px;
+		color: var(--text-muted);
+		text-align: center;
 	}
 
 	.section-title {
@@ -1582,5 +1871,65 @@
 
 	.empty-message {
 		font-size: 14px;
+	}
+
+	/* Site Assets styles */
+	.site-assets-container {
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-primary);
+	}
+
+	.assets-display {
+		padding: 10px 12px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-height: 38px;
+		box-sizing: border-box;
+	}
+
+	.assets-path {
+		color: var(--text-normal);
+		font-size: 14px;
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
+	.assets-placeholder {
+		color: var(--text-muted);
+		font-size: 14px;
+		font-style: italic;
+		flex: 1;
+	}
+
+	.clear-assets-btn {
+		padding: 4px 8px;
+		border: 1px solid var(--interactive-accent);
+		border-radius: 3px;
+		background: transparent;
+		color: var(--interactive-accent);
+		font-size: 11px;
+		cursor: pointer;
+		transition: all 0.2s;
+		white-space: nowrap;
+		margin-left: 8px;
+	}
+
+	.clear-assets-btn:hover {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+	}
+
+	.assets-hint {
+		padding: 8px 12px;
+		background: var(--background-secondary);
+		border-top: 1px solid var(--background-modifier-border);
+		font-size: 12px;
+		color: var(--text-muted);
+		line-height: 1.4;
 	}
 </style> 
