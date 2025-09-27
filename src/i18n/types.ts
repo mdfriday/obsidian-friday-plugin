@@ -94,6 +94,10 @@ export interface TranslationNamespace {
 		remove_language: string;
 		site_name: string;
 		site_name_placeholder: string;
+		site_assets: string;
+		site_assets_placeholder: string;
+		site_assets_hint: string;
+		clear_assets: string;
 		advanced_settings: string;
 		site_path: string;
 		site_path_placeholder: string;
@@ -106,6 +110,8 @@ export interface TranslationNamespace {
 		disqus_hint: string;
 		theme: string;
 		change_theme: string;
+		download_sample: string;
+		downloading_sample: string;
 		
 		// Preview section
 		preview: string;
@@ -139,6 +145,7 @@ export interface TranslationNamespace {
 	// Menu and actions
 	menu: {
 		publish_to_web: string;
+		set_as_site_assets: string;
 	};
 
 	// Commands
@@ -203,6 +210,19 @@ export interface TranslationNamespace {
 		// General messages
 		failed_to_create_post: string;
 		failed_to_create_resource: string;
+		
+		// Site assets messages
+		invalid_assets_folder: string;
+		site_assets_set_successfully: string;
+		site_assets_cleared: string;
+		
+		// Sample download messages
+		sample_downloaded_successfully: string;
+		sample_download_failed: string;
+		
+		// Structured folder messages
+		structured_folder_processed: string;
+		static_folder_detected: string;
 		
 		// Netlify messages
 		netlify_settings_missing: string;
