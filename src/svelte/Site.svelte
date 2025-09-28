@@ -121,8 +121,6 @@
 	let serverPort = 8090;
 
 	onMount(async () => {
-		console.log('Site component mounting...');
-		
 		themesDir = path.join(plugin.pluginDir, 'themes')
 		await createThemesDirectory()
 
@@ -130,8 +128,6 @@
 		if (adapter instanceof FileSystemAdapter) {
 			basePath = adapter.getBasePath()
 		}
-		
-		console.log('Site component mounted successfully');
 	});
 
 	onDestroy(() => {
@@ -271,7 +267,24 @@
 			// Generate unique folder name
 			const baseName = currentThemeWithSample.name.toLowerCase().replace(/\s+/g, '-');
 			const targetFolderName = await generateUniqueFolderName(baseName);
-			const targetFolderPath = path.join(FRIDAY_ROOT_FOLDER, targetFolderName);
+			
+			// Construct absolute path using adapter.getBasePath()
+			const adapter = app.vault.adapter;
+			let targetFolderPath: string;
+			
+			if (adapter instanceof FileSystemAdapter) {
+				// Use absolute path to avoid vault root interpretation issues
+				const vaultBasePath = adapter.getBasePath();
+				targetFolderPath = path.join(vaultBasePath, FRIDAY_ROOT_FOLDER, targetFolderName);
+			} else {
+				// Fallback for non-FileSystemAdapter
+				targetFolderPath = path.join(FRIDAY_ROOT_FOLDER, targetFolderName);
+			}
+			
+			// Normalize path for Windows
+			if (isWindows) {
+				targetFolderPath = path.normalize(targetFolderPath);
+			}
 
 			// Download and unzip sample
 			await downloadAndUnzipSample(
@@ -282,13 +295,19 @@
 				}
 			);
 
-			new Notice(t('messages.sample_downloaded_successfully', { 
+			new Notice(t('messages.sample_downloaded_successfully', {
 				themeName: currentThemeWithSample.name, 
 				folderName: targetFolderName 
 			}), 5000);
 
 		} catch (error) {
 			console.error('Sample download failed:', error);
+			console.error('Error details:', {
+				themeName: currentThemeWithSample?.name,
+				downloadUrl: currentThemeWithSample?.demo_notes_url,
+				platform: process.platform,
+				error: error.message
+			});
 			new Notice(t('messages.sample_download_failed', { error: error.message }), 5000);
 		} finally {
 			isDownloadingSample = false;
@@ -651,8 +670,6 @@
 				throw new Error('FTP uploader not initialized - please check FTP settings');
 			}
 
-			console.log('Starting FTP upload from:', publicDir);
-
 			// Set up progress callback
 			plugin.ftp.setProgressCallback((progress) => {
 				publishProgress = Math.round(progress.percentage);
@@ -980,8 +997,6 @@
 		const assetsSourceFolder = currentAssets.folder;
 		const staticTargetDir = path.join(previewDir, 'static');
 
-		console.log(`Copying site assets from ${assetsSourceFolder.path} to static directory`);
-
 		try {
 			// Get absolute paths
 			const adapter = app.vault.adapter;
@@ -995,7 +1010,6 @@
 					force: true // Overwrite existing files
 				});
 
-				console.log(`Site assets copied successfully to ${staticTargetDir}`);
 			} else {
 				// Fallback: use Obsidian's API to copy files
 				await copyAssetsUsingObsidianAPI(assetsSourceFolder, staticTargetDir);
@@ -1032,21 +1046,79 @@
 	}
 
 	async function ensureRootFolderExists() {
-		if (!(await app.vault.adapter.exists(FRIDAY_ROOT_FOLDER))) {
-			await app.vault.createFolder(FRIDAY_ROOT_FOLDER);
+		// Ensure we're working with the vault root for the MDFriday folder
+		const adapter = app.vault.adapter;
+		let rootFolderPath: string;
+		
+		if (adapter instanceof FileSystemAdapter) {
+			// Use absolute path
+			const vaultBasePath = adapter.getBasePath();
+			rootFolderPath = path.join(vaultBasePath, FRIDAY_ROOT_FOLDER);
+		} else {
+			// Fallback for non-FileSystemAdapter
+			rootFolderPath = FRIDAY_ROOT_FOLDER;
+		}
+		
+		// For additional safety on Windows, ensure the path is properly normalized
+		if (isWindows) {
+			rootFolderPath = path.normalize(rootFolderPath);
+		}
+
+		if (!(await adapter.exists(rootFolderPath))) {
+			// Use Node.js fs for absolute paths, adapter for relative paths
+			if (adapter instanceof FileSystemAdapter && path.isAbsolute(rootFolderPath)) {
+				await fs.promises.mkdir(rootFolderPath, { recursive: true });
+			} else {
+				await adapter.mkdir(rootFolderPath);
+			}
 		}
 	}
 
 	async function generateUniqueFolderName(baseName: string): Promise<string> {
 		let folderName = baseName;
 		let counter = 0;
+		
+		// Get the correct root folder path
+		const adapter = app.vault.adapter;
+		let rootFolderPath: string;
+		
+		if (adapter instanceof FileSystemAdapter) {
+			// Use absolute path
+			const vaultBasePath = adapter.getBasePath();
+			rootFolderPath = path.join(vaultBasePath, FRIDAY_ROOT_FOLDER);
+		} else {
+			// Fallback for non-FileSystemAdapter
+			rootFolderPath = FRIDAY_ROOT_FOLDER;
+		}
+		
+		// Normalize the base folder path for consistency
+		if (isWindows) {
+			rootFolderPath = path.normalize(rootFolderPath);
+		}
 
-		while (await app.vault.adapter.exists(path.join(FRIDAY_ROOT_FOLDER, folderName))) {
+		while (await checkFolderExists(path.join(rootFolderPath, folderName))) {
 			counter++;
 			folderName = `${baseName} ${counter}`;
 		}
 
 		return folderName;
+	}
+	
+	async function checkFolderExists(folderPath: string): Promise<boolean> {
+		const adapter = app.vault.adapter;
+		
+		if (adapter instanceof FileSystemAdapter && path.isAbsolute(folderPath)) {
+			// Use Node.js fs for absolute paths
+			try {
+				await fs.promises.access(folderPath);
+				return true;
+			} catch {
+				return false;
+			}
+		} else {
+			// Use adapter for relative paths
+			return await adapter.exists(folderPath);
+		}
 	}
 
 	async function downloadAndUnzipSample(
@@ -1074,8 +1146,14 @@
 
 			progressCallback(70);
 
-			// Create target folder
-			await app.vault.createFolder(targetFolderPath);
+			// Create target folder using appropriate method based on path type
+			if (!(await checkFolderExists(targetFolderPath))) {
+				if (path.isAbsolute(targetFolderPath)) {
+					await fs.promises.mkdir(targetFolderPath, { recursive: true });
+				} else {
+					await app.vault.adapter.mkdir(targetFolderPath);
+				}
+			}
 
 			// Extract files
 			const files = Object.keys(zipData.files);
@@ -1084,17 +1162,47 @@
 			for (const fileName of files) {
 				const file = zipData.files[fileName];
 				
+				// Normalize the file path for cross-platform compatibility
+				let normalizedFileName = fileName;
+				if (isWindows) {
+					// Replace forward slashes with backslashes for Windows
+					normalizedFileName = fileName.replace(/\//g, path.sep);
+				}
+				// Always normalize the path to handle any remaining issues
+				normalizedFileName = path.normalize(normalizedFileName);
+				
 				if (file.dir) {
 					// Create directory
-					const dirPath = path.join(targetFolderPath, fileName);
-					if (!(await app.vault.adapter.exists(dirPath))) {
-						await app.vault.createFolder(dirPath);
+					const dirPath = path.join(targetFolderPath, normalizedFileName);
+					if (!(await checkFolderExists(dirPath))) {
+						if (path.isAbsolute(dirPath)) {
+							await fs.promises.mkdir(dirPath, { recursive: true });
+						} else {
+							await app.vault.adapter.mkdir(dirPath);
+						}
 					}
 				} else {
 					// Extract file
-					const filePath = path.join(targetFolderPath, fileName);
+					const filePath = path.join(targetFolderPath, normalizedFileName);
+					
+					// Ensure the parent directory exists before creating the file
+					const parentDir = path.dirname(filePath);
+					if (parentDir !== targetFolderPath && !(await checkFolderExists(parentDir))) {
+						if (path.isAbsolute(parentDir)) {
+							await fs.promises.mkdir(parentDir, { recursive: true });
+						} else {
+							await app.vault.adapter.mkdir(parentDir);
+						}
+					}
+					
 					const fileContent = await file.async('uint8array');
-					await app.vault.adapter.writeBinary(filePath, fileContent.buffer as ArrayBuffer);
+					
+					// Write file using appropriate method
+					if (path.isAbsolute(filePath)) {
+						await fs.promises.writeFile(filePath, fileContent);
+					} else {
+						await app.vault.adapter.writeBinary(filePath, fileContent.buffer as ArrayBuffer);
+					}
 				}
 
 				processedFiles++;
