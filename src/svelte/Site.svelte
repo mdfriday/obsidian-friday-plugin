@@ -54,9 +54,12 @@
 	let selectedThemeName = BOOK_THEME_NAME;
 	let selectedThemeId = BOOK_THEME_ID;
 	
-	// 响应式主题设置 - 根据内容类型自动设置
+	// 标志用户是否手动选择过主题
+	let userHasSelectedTheme = false;
+	
+	// 响应式主题设置 - 只在用户未手动选择主题时根据内容类型自动设置
 	$: {
-		if (currentContents.length > 0) {
+		if (currentContents.length > 0 && !userHasSelectedTheme) {
 			const firstContent = currentContents[0];
 			if (firstContent.file && !selectedThemeDownloadUrl.includes('note')) {
 				// 单文件 - 设置为 Note 主题
@@ -202,6 +205,7 @@
 		previewUrl = '';
 		previewId = '';
 		siteName = ''; // 清空内容时也清空站点名称
+		userHasSelectedTheme = false; // 重置主题选择标志，允许重新自动选择
 	}
 
 
@@ -239,6 +243,9 @@
 			selectedThemeDownloadUrl = themeUrl;
 			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Book");
 			selectedThemeId = themeId || selectedThemeId;
+			
+			// 标记用户已手动选择主题，防止后续自动重置
+			userHasSelectedTheme = true;
 			
 			// Get theme info to check for sample availability
 			if (themeId) {
