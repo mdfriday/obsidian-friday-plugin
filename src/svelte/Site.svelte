@@ -48,6 +48,9 @@
 	// 用户可编辑的站点名称
 	let siteName = '';
 	
+	// 跟踪之前的内容长度，用于检测首次添加内容
+	let previousContentLength = 0;
+	
 	// 其他配置保持在本地管理
 	let sitePath = '/';
 	let selectedThemeDownloadUrl = BOOK_THEME_URL;
@@ -191,12 +194,13 @@
 		? (currentContents[0].folder?.name || currentContents[0].file?.name || '') 
 		: '';
 	
-	// 只在首次添加内容且站点名称为空时设置默认名称
+	// 只在首次添加内容时设置站点名称（从0变为有内容）
 	$: {
-		if (currentContents.length > 0 && !siteName) {
+		if (previousContentLength === 0 && currentContents.length > 0 && !siteName) {
 			const firstContent = currentContents[0];
 			siteName = firstContent.folder?.name || firstContent.file?.basename || '';
 		}
+		previousContentLength = currentContents.length;
 	}
 	
 	// 预览状态重置逻辑
@@ -206,6 +210,7 @@
 		previewId = '';
 		siteName = ''; // 清空内容时也清空站点名称
 		userHasSelectedTheme = false; // 重置主题选择标志，允许重新自动选择
+		previousContentLength = 0; // 重置内容长度跟踪，允许下次首次添加时设置站点名称
 	}
 
 
