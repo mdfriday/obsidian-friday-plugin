@@ -186,6 +186,12 @@
 			name: '한국어',
 			direction: 'ltr',
 			englishName: 'Korean'
+		},
+		{
+			code: 'pt',
+			name: 'Português',
+			direction: 'ltr',
+			englishName: 'Portuguese'
 		}
 	];
 

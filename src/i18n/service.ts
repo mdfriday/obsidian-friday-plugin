@@ -21,6 +21,13 @@ export class I18nService implements II18nService {
 	private translations: Record<LanguageCode, TranslationNamespace> = {
 		'en': en,
 		'zh-cn': zhCn,
+		// For languages without translations, fallback to English
+		'es': en,
+		'fr': en,
+		'de': en,
+		'ja': en,
+		'ko': en,
+		'pt': en,
 	};
 	private ready: boolean = false;
 

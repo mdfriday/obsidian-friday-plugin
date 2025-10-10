@@ -15,6 +15,36 @@ export const AVAILABLE_LANGUAGES: LanguageInfo[] = [
 		name: 'Chinese (Simplified)',
 		nativeName: '简体中文',
 	},
+	{
+		code: 'es',
+		name: 'Spanish',
+		nativeName: 'Español',
+	},
+	{
+		code: 'fr',
+		name: 'French',
+		nativeName: 'Français',
+	},
+	{
+		code: 'de',
+		name: 'German',
+		nativeName: 'Deutsch',
+	},
+	{
+		code: 'ja',
+		name: 'Japanese',
+		nativeName: '日本語',
+	},
+	{
+		code: 'ko',
+		name: 'Korean',
+		nativeName: '한국어',
+	},
+	{
+		code: 'pt',
+		name: 'Portuguese',
+		nativeName: 'Português',
+	},
 ];
 
 /**
@@ -107,6 +137,42 @@ export function normalizeLanguageCode(langCode: string): string | null {
 		'en-au': 'en',
 		'en-ca': 'en',
 		'english': 'en',
+		
+		// Spanish variants
+		'es': 'es',
+		'es-es': 'es',
+		'es-mx': 'es',
+		'es-ar': 'es',
+		'spanish': 'es',
+		
+		// French variants
+		'fr': 'fr',
+		'fr-fr': 'fr',
+		'fr-ca': 'fr',
+		'french': 'fr',
+		
+		// German variants
+		'de': 'de',
+		'de-de': 'de',
+		'de-at': 'de',
+		'de-ch': 'de',
+		'german': 'de',
+		
+		// Japanese variants
+		'ja': 'ja',
+		'ja-jp': 'ja',
+		'japanese': 'ja',
+		
+		// Korean variants
+		'ko': 'ko',
+		'ko-kr': 'ko',
+		'korean': 'ko',
+		
+		// Portuguese variants
+		'pt': 'pt',
+		'pt-pt': 'pt',
+		'pt-br': 'pt',
+		'portuguese': 'pt',
 	};
 
 	// Check exact match first

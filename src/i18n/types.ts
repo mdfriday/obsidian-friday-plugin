@@ -1,7 +1,7 @@
 /**
  * Supported language codes
  */
-export type LanguageCode = 'en' | 'zh-cn';
+export type LanguageCode = 'en' | 'zh-cn' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt';
 
 /**
  * Language information for display

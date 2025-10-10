@@ -303,7 +303,8 @@ export default class FridayPlugin extends Plugin {
 			'fr': 'fr',
 			'de': 'de',
 			'ja': 'ja',
-			'ko': 'ko'
+			'ko': 'ko',
+			'pt': 'pt'
 		};
 		
 		return languageMap[code.toLowerCase()] || 'en';
