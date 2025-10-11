@@ -57,7 +57,7 @@ You can:
 
 ## Join Us
 
-- **Discord**: [Join our community](https://discord.gg/hzRZDVeD)
+- **Discord**: [Join our community](https://discord.gg/t7FHJ6qNzT)
 - **Wechat**: 
 
 ![Wechat QR Code](demo/mdfriday-wechat.jpg)
