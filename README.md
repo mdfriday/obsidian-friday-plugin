@@ -1,24 +1,44 @@
 # Friday
 
-**You own it — your notes, your themes, your cloud.**  
-MDFriday lets you build and publish with full control.
+**Just Write. MDFriday brings it to life.** MDFriday lets you build and publish professional websites with full control.
 
-Transform your Markdown documents into professional websites in minutes. 
-Publish individual notes or entire folders, preview locally with real-time updates, then deploy to your choice of hosting platform — or export everything to host anywhere you want.
+## Themes Demo
+
+- Docs: [Book](https://theme-book.mdfriday.com/), [Note](https://theme-note.mdfriday.com/)
+- Blog: [Beautiful](https://theme-beautiful.mdfriday.com/), [Awesome](https://theme-awesome.mdfriday.com/)
+- Project: [Notebook Navigator](https://theme-ob-plugin.mdfriday.com/)
+- Resumes and CVs
+- Landing pages
+- Portfolios
+- Ecommerce
+- Business, SaaS, Startups and Companies
 
 ## Demo
 
-### Multi-Language Support
-![Multi-language support demonstration](demo/multiple-languages.gif)
-
-### Complete Workflow: Build to Publish
-![Complete workflow from build to publish](demo/demo.gif)
+### Preview & Publish
+![Preview & Publish](demo/full.gif)
 
 ### Real-time Preview: What You See Is What You Get
 ![Real-time preview demonstration](demo/see-get.gif)
 
 ### YouTube Demo
 [![YouTube Demo](demo/ob+friday.png)](https://youtu.be/2maPgW5uDCI?si=VfRf9kapGSZLHYzG)
+
+## How it Works
+
+1. Open **Obsidian’s Community Plugins**
+2. Search for **Friday** and install
+3. Choose a theme from the MDFriday panel
+4. Download the theme’s sample notes
+5. Right-click a note → **Publish to Web**
+6. Click **Preview** to see it live locally
+
+Once previewed, edit the sample notes with your own content —  
+and you’ve got your personal site!
+
+You can:
+- Export the static site and upload it anywhere
+- Or configure cloud settings to **publish directly** with one click
 
 ## Why Friday?
 
@@ -31,34 +51,9 @@ Publish individual notes or entire folders, preview locally with real-time updat
 - **🔒 Complete Ownership**: Your content, your data, your control — no vendor lock-in
 - **🛡️ Privacy First**: All processing happens locally, your content stays private
 
-## Quick Start
-
-1. **Install the Plugin**
-   - Search for **Friday** (by sunwei) in Obsidian's community plugins
-   - Enable the plugin in your settings
-   - Configure your preferred hosting platform - Netlify or FTP
-
-2. **Register Your Account** (Not required for local use)
-   - Open Friday settings in Obsidian
-   - Create your free account to unlock deployment features
-
-3. **Create & Preview**
-   - Write your content in Markdown
-   - Choose to publish individual notes or entire folders
-   - Choose a theme and preview instantly (Themes are coming soon...)
-   - Make changes and watch them update in real-time
-
-4. **Deploy**
-   - One-click deployment to Netlify or FTP hosting
-   - Or export your complete site source code for custom hosting
-   - Your site goes live in minutes
-
 ## More Resources
 
 - **[Official Website](https://mdfriday.com)** - Completely redesigned and upgraded
-- **[中文官网](https://sunwei.xyz/mdfriday)** - 全新升级的中文版本
-- **[Help Documentation](https://help.mdfriday.com)**
-- **[Theme Gallery](https://gallery.mdfriday.com)**
 
 ## Join Us
 
