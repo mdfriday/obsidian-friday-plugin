@@ -261,7 +261,7 @@
 			// Get theme info to check for sample availability
 			if (themeId) {
 				try {
-					currentThemeWithSample = await themeApiService.getThemeById(themeId);
+					currentThemeWithSample = await themeApiService.getThemeById(themeId, plugin);
 				} catch (error) {
 					console.warn('Failed to get theme info:', error);
 					currentThemeWithSample = null;
@@ -363,7 +363,7 @@
 	async function createRendererBasedOnTheme() {
 		try {
 			// Get theme information by ID
-			const themeInfo = await themeApiService.getThemeById(selectedThemeId);
+			const themeInfo = await themeApiService.getThemeById(selectedThemeId, plugin);
 			const obImagesDir = path.join(absPreviewDir, 'public', 'ob-images');
 			
 			// Check if theme has "Book" tag (case-insensitive)
@@ -528,6 +528,94 @@
 			// Create renderer based on theme tags
 			const styleRenderer = await createRendererBasedOnTheme();
 
+			// Create httpClient instance for the build config
+			const httpClient = {
+				async download(url: string, targetPath: string, options?: {
+					onProgress?: (progress: { percentage: number; loaded: number; total?: number }) => void;
+					headers?: Record<string, string>;
+					timeout?: number;
+				}): Promise<void> {
+					try {
+						// Call progress callback at start
+						if (options?.onProgress) {
+							options.onProgress({ percentage: 0, loaded: 0 });
+						}
+
+						const response = await requestUrl({
+							url: url,
+							method: 'GET',
+							headers: options?.headers
+						});
+
+						if (response.status !== 200) {
+							throw new Error(`Download failed with status: ${response.status}`);
+						}
+
+						// Call progress callback at 50%
+						if (options?.onProgress) {
+							const arrayBuffer = response.arrayBuffer;
+							const total = arrayBuffer.byteLength;
+							options.onProgress({ percentage: 50, loaded: total / 2, total });
+						}
+
+						// Ensure target directory exists
+						const targetDir = path.dirname(targetPath);
+						if (!(await checkFolderExists(targetDir))) {
+							if (path.isAbsolute(targetDir)) {
+								await fs.promises.mkdir(targetDir, { recursive: true });
+							} else {
+								await app.vault.adapter.mkdir(targetDir);
+							}
+						}
+
+						// Write file using appropriate method
+						const fileContent = new Uint8Array(response.arrayBuffer);
+						if (path.isAbsolute(targetPath)) {
+							await fs.promises.writeFile(targetPath, fileContent);
+						} else {
+							await app.vault.adapter.writeBinary(targetPath, fileContent.buffer);
+						}
+
+						// Call progress callback at completion
+						if (options?.onProgress) {
+							const total = fileContent.length;
+							options.onProgress({ percentage: 100, loaded: total, total });
+						}
+
+					} catch (error) {
+						console.error('HTTP download failed:', error);
+						throw error;
+					}
+				},
+
+				async get(url: string, options?: {
+					headers?: Record<string, string>;
+					timeout?: number;
+				}): Promise<{
+					data: ArrayBuffer;
+					headers: Record<string, string>;
+					status: number;
+				}> {
+					try {
+						const response = await requestUrl({
+							url: url,
+							method: 'GET',
+							headers: options?.headers
+						});
+
+						return {
+							data: response.arrayBuffer,
+							headers: response.headers || {},
+							status: response.status
+						};
+
+					} catch (error) {
+						console.error('HTTP get failed:', error);
+						throw error;
+					}
+				}
+			};
+
 			httpServer = await startIncrementalBuild({
 				projDir: absPreviewDir,
 				modulesDir: absThemesDir,
@@ -540,6 +628,7 @@
 					buildProgress = 15 + (progress.percentage / 100 * 85); // Start from 15%, up to 100%
 				},
 				markdown: styleRenderer,
+				httpClient: httpClient,
 
 				// Live Reload 配置
 				liveReload: {

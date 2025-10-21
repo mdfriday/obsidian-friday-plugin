@@ -9,11 +9,14 @@ import {NetlifyAPI} from "./netlify";
 import {I18nService} from "./i18n";
 import {FTPUploader} from "./ftp";
 import {Site} from "./site";
+import {themeApiService} from "./theme/themeApiService";
 
 interface FridaySettings {
 	username: string;
 	password: string;
 	userToken: string;
+	// General Settings
+	downloadServer: 'global' | 'east';
 	// Publish Settings
 	publishMethod: 'netlify' | 'ftp';
 	netlifyAccessToken: string;
@@ -30,6 +33,8 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	username: '',
 	password: '',
 	userToken: '',
+	// General Settings defaults
+	downloadServer: 'global',
 	// Publish Settings defaults
 	publishMethod: 'netlify',
 	netlifyAccessToken: '',
@@ -61,12 +66,13 @@ export default class FridayPlugin extends Plugin {
 	i18n: I18nService
 	ftp: FTPUploader | null = null
 	site: Site
+	private previousDownloadServer: 'global' | 'east' = 'global'
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
 		await this.loadSettings();
 		await this.initFriday()
-		
+
 		// Initialize FTP uploader
 		this.initializeFTP();
 
@@ -372,10 +378,21 @@ export default class FridayPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.previousDownloadServer = this.settings.downloadServer;
 	}
 
 	async saveSettings() {
+		// Check if download server changed
+		const downloadServerChanged = this.previousDownloadServer !== this.settings.downloadServer;
+		
 		await this.saveData(this.settings);
+		
+		// Clear theme cache if download server changed
+		if (downloadServerChanged) {
+			themeApiService.clearCache();
+			this.previousDownloadServer = this.settings.downloadServer;
+		}
+		
 		// Reinitialize FTP uploader when settings change
 		this.initializeFTP();
 	}
@@ -450,9 +467,25 @@ class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		const {username, password, userToken, publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
+		const {username, password, userToken, downloadServer, publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
 
-
+		// General Settings Section
+		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.general_settings')});
+		
+		// Download Server Setting
+		new Setting(containerEl)
+			.setName(this.plugin.i18n.t('settings.download_server'))
+			.setDesc(this.plugin.i18n.t('settings.download_server_desc'))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption('global', this.plugin.i18n.t('settings.download_server_global'))
+					.addOption('east', this.plugin.i18n.t('settings.download_server_east'))
+					.setValue(downloadServer || 'global')
+					.onChange(async (value: 'global' | 'east') => {
+						this.plugin.settings.downloadServer = value;
+						await this.plugin.saveSettings();
+					});
+			});
 
 		// Publish Settings Section
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.publish_settings')});

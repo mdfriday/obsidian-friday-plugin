@@ -70,6 +70,13 @@ export interface TranslationNamespace {
 		ftp_test_connection_success: string;
 		ftp_test_connection_failed: string;
 		
+		// General settings
+		general_settings: string;
+		download_server: string;
+		download_server_desc: string;
+		download_server_global: string;
+		download_server_east: string;
+		
 		// MDFriday Account
 		mdfriday_account: string;
 		mdfriday_account_desc: string;

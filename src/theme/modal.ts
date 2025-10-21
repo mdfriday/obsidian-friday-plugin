@@ -63,7 +63,7 @@ export class ThemeSelectionModal extends Modal {
 		this.loadingState = 'tags';
 		try {
 			// Get all themes first
-			this.allThemes = await themeApiService.getAllThemes();
+			this.allThemes = await themeApiService.getAllThemes(this.plugin);
 			
 			// Filter themes for single file mode
 			if (this.isForSingleFile) {

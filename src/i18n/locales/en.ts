@@ -57,6 +57,13 @@ export const en: TranslationNamespace = {
 		ftp_test_connection_success: 'Connection Successful',
 		ftp_test_connection_failed: 'Connection Failed',
 		
+		// General settings
+		general_settings: 'General Settings',
+		download_server: 'Download Server',
+		download_server_desc: 'Choose the server for downloading themes and resources',
+		download_server_global: 'Global',
+		download_server_east: 'East',
+		
 		// MDFriday Account
 		mdfriday_account: 'MDFriday Account (Optional)',
 		mdfriday_account_desc: 'Sign in to access advanced features like theme marketplace and cloud publishing.',

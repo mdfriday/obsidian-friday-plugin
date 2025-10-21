@@ -4,14 +4,18 @@
 
 import {requestUrl} from 'obsidian';
 import type {ThemeItem, ThemeSearchResult} from './types';
+import type FridayPlugin from '../main';
 
-// Define the themes JSON URL
-const THEMES_JSON_URL = 'https://gohugo.net/themes.json';
+// Define the themes JSON URLs
+const THEMES_JSON_URLS = {
+    global: 'https://gohugo.net/themes.json',
+    east: 'https://sunwei.xyz/mdf/themes-zh.json'
+};
 
-// Cache for themes data
-let themesCache: ThemeItem[] | null = null;
-let allTagsCache: string[] | null = null;
-let cacheTimestamp: number | null = null;
+// Cache for themes data (separate cache for each server)
+let themesCache: { [key: string]: ThemeItem[] } = {};
+let allTagsCache: { [key: string]: string[] } = {};
+let cacheTimestamp: { [key: string]: number } = {};
 
 // Cache expiration time: 2 hours in milliseconds
 const CACHE_EXPIRY_MS = 2 * 60 * 60 * 1000;
@@ -57,13 +61,13 @@ function mapRawThemeToThemeItem(rawTheme: RawThemeData): ThemeItem {
 }
 
 /**
- * Fetches all themes from the JSON URL
+ * Fetches all themes from the specified JSON URL
  */
-async function fetchAllThemes(): Promise<ThemeItem[]> {
+async function fetchAllThemes(themesUrl: string): Promise<ThemeItem[]> {
     try {
         // Add timestamp to URL to bypass Obsidian's cache
         const timestamp = Date.now();
-        const urlWithTimestamp = `${THEMES_JSON_URL}?_t=${timestamp}`;
+        const urlWithTimestamp = `${themesUrl}?_t=${timestamp}`;
         
         const response = await requestUrl({
             url: urlWithTimestamp,
@@ -134,29 +138,43 @@ function filterThemes(
 }
 
 /**
+ * Get the current themes URL based on plugin settings
+ */
+function getThemesUrl(plugin?: FridayPlugin): string {
+    if (!plugin) {
+        return THEMES_JSON_URLS.global; // Default fallback
+    }
+    const downloadServer = plugin.settings.downloadServer || 'global';
+    return THEMES_JSON_URLS[downloadServer];
+}
+
+/**
  * Simplified API service for fetching themes from JSON
  */
 export const themeApiService = {
     /**
      * Initialize and cache all themes data
      */
-    async initializeThemes(): Promise<void> {
+    async initializeThemes(plugin?: FridayPlugin): Promise<void> {
+        const themesUrl = getThemesUrl(plugin);
+        const serverKey = plugin?.settings.downloadServer || 'global';
         const now = Date.now();
-        const isCacheExpired = cacheTimestamp === null || (now - cacheTimestamp) > CACHE_EXPIRY_MS;
+        const isCacheExpired = !cacheTimestamp[serverKey] || (now - cacheTimestamp[serverKey]) > CACHE_EXPIRY_MS;
         
-        if (themesCache === null || isCacheExpired) {
-            themesCache = await fetchAllThemes();
-            allTagsCache = extractAllTags(themesCache);
-            cacheTimestamp = now;
+        if (!themesCache[serverKey] || isCacheExpired) {
+            themesCache[serverKey] = await fetchAllThemes(themesUrl);
+            allTagsCache[serverKey] = extractAllTags(themesCache[serverKey]);
+            cacheTimestamp[serverKey] = now;
         }
     },
 
     /**
      * Get all themes, initializing cache if needed
      */
-    async getAllThemes(): Promise<ThemeItem[]> {
-        await this.initializeThemes();
-        return themesCache || [];
+    async getAllThemes(plugin?: FridayPlugin): Promise<ThemeItem[]> {
+        await this.initializeThemes(plugin);
+        const serverKey = plugin?.settings.downloadServer || 'global';
+        return themesCache[serverKey] || [];
     },
 
     /**
@@ -166,9 +184,10 @@ export const themeApiService = {
         page = 1,
         limit = 20,
         selectedTags: string[] = [],
-        searchTerm = ''
+        searchTerm = '',
+        plugin?: FridayPlugin
     ): Promise<ThemeSearchResult> {
-        return this.searchThemes(page, limit, searchTerm, selectedTags);
+        return this.searchThemes(page, limit, searchTerm, selectedTags, plugin);
     },
     
     /**
@@ -178,11 +197,13 @@ export const themeApiService = {
         page = 1,
         limit = 20,
         searchTerm = '',
-        selectedTags: string[] = []
+        selectedTags: string[] = [],
+        plugin?: FridayPlugin
     ): Promise<ThemeSearchResult> {
         try {
-            await this.initializeThemes();
-            const allThemes = themesCache || [];
+            await this.initializeThemes(plugin);
+            const serverKey = plugin?.settings.downloadServer || 'global';
+            const allThemes = themesCache[serverKey] || [];
             
             // Filter themes based on search criteria
             const filteredThemes = filterThemes(allThemes, searchTerm, selectedTags);
@@ -205,10 +226,11 @@ export const themeApiService = {
     /**
      * Fetch all theme tags
      */
-    async fetchAllTags(): Promise<string[]> {
+    async fetchAllTags(plugin?: FridayPlugin): Promise<string[]> {
         try {
-            await this.initializeThemes();
-            return allTagsCache || [];
+            await this.initializeThemes(plugin);
+            const serverKey = plugin?.settings.downloadServer || 'global';
+            return allTagsCache[serverKey] || [];
         } catch (error) {
             console.error('Error fetching theme tags:', error);
             return [];
@@ -233,10 +255,11 @@ export const themeApiService = {
      * @param themeId The ID of the theme to fetch
      * @returns The theme item, or null if not found
      */
-    async getThemeById(themeId: string): Promise<ThemeItem | null> {
+    async getThemeById(themeId: string, plugin?: FridayPlugin): Promise<ThemeItem | null> {
         try {
-            await this.initializeThemes();
-            const themes = themesCache || [];
+            await this.initializeThemes(plugin);
+            const serverKey = plugin?.settings.downloadServer || 'global';
+            const themes = themesCache[serverKey] || [];
             return themes.find(theme => theme.id === themeId) || null;
         } catch (error) {
             console.error('Error getting theme by ID:', error);
@@ -249,10 +272,11 @@ export const themeApiService = {
      * @param name The name of the theme to fetch
      * @returns The theme item, or null if not found
      */
-    async fetchThemeByName(name: string): Promise<ThemeItem | null> {
+    async fetchThemeByName(name: string, plugin?: FridayPlugin): Promise<ThemeItem | null> {
         try {
-            await this.initializeThemes();
-            const allThemes = themesCache || [];
+            await this.initializeThemes(plugin);
+            const serverKey = plugin?.settings.downloadServer || 'global';
+            const allThemes = themesCache[serverKey] || [];
             
             // Find theme by name (case-insensitive)
             const theme = allThemes.find(t => 
@@ -269,9 +293,17 @@ export const themeApiService = {
     /**
      * Clear the themes cache (useful for testing or refreshing data)
      */
-    clearCache(): void {
-        themesCache = null;
-        allTagsCache = null;
-        cacheTimestamp = null;
+    clearCache(serverKey?: string): void {
+        if (serverKey) {
+            // Clear cache for specific server
+            delete themesCache[serverKey];
+            delete allTagsCache[serverKey];
+            delete cacheTimestamp[serverKey];
+        } else {
+            // Clear all caches
+            themesCache = {};
+            allTagsCache = {};
+            cacheTimestamp = {};
+        }
     }
 }; 

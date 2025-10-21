@@ -57,6 +57,13 @@ export const zhCn: TranslationNamespace = {
 		ftp_test_connection_success: '连接成功',
 		ftp_test_connection_failed: '连接失败',
 		
+		// General settings
+		general_settings: '通用设置',
+		download_server: '下载服务器',
+		download_server_desc: '选择下载主题和资源的服务器',
+		download_server_global: '全球',
+		download_server_east: '东区',
+		
 		// MDFriday Account
 		mdfriday_account: 'MDFriday 账户（可选）',
 		mdfriday_account_desc: '登录以使用高级功能，如主题市场和云端发布。',
