@@ -901,7 +901,7 @@
 		}
 
 		// Add languages configuration if multiple languages are configured
-		if (currentContents.length > 1) {
+		if (currentContents.length > 0) {
 			const languages: any = {};
 			
 			currentContents.forEach((content, index) => {
