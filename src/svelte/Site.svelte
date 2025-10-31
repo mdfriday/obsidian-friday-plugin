@@ -35,8 +35,8 @@
 
 	// State variables
 	let basePath = plugin.pluginDir;
-	let absSelectedFolderPath = '';
-	let absProjContentPath = '';
+	let absSelectedFolderPath = [];
+	let absProjContentPath = [];
 	let contentPath = '';
 	
 	// 从 site 实例获取响应式数据
@@ -619,8 +619,8 @@
 			httpServer = await startIncrementalBuild({
 				projDir: absPreviewDir,
 				modulesDir: absThemesDir,
-				contentDir: absSelectedFolderPath,
-				projContentDir: absProjContentPath,
+				contentDirs: absSelectedFolderPath,
+				projContentDirs: absProjContentPath,
 				publicDir: path.join(basePath, serverRootDir),
 				enableWatching: true, // 启用完整的文件监控和增量构建
 				batchDelay: 500,
@@ -982,8 +982,8 @@
 			sourcePath = path.join(adapter.getBasePath(), folder.path);
 			absTargetPath = path.join(adapter.getBasePath(), targetPath);
 
-			absSelectedFolderPath = sourcePath;
-			absProjContentPath = absTargetPath;
+			absSelectedFolderPath.push(sourcePath);
+			absProjContentPath.push(absTargetPath);
 		} else {
 			// If not FileSystemAdapter, fall back to copying files
 			console.warn('Not using FileSystemAdapter, falling back to copying files');
@@ -1046,8 +1046,8 @@
 			absContentDir = path.join(adapter.getBasePath(), targetPath);
 			absTargetPath = path.join(absContentDir, 'index.md');
 
-			absSelectedFolderPath = path.dirname(sourcePath);
-			absProjContentPath = absContentDir;
+			absSelectedFolderPath.push(path.dirname(sourcePath));
+			absProjContentPath.push(absContentDir);
 		} else {
 			// If not FileSystemAdapter, fall back to copying file
 			console.warn('Not using FileSystemAdapter, falling back to copying file');
