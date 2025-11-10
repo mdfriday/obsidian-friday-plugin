@@ -7,11 +7,10 @@
 - Docs: [Book](https://theme-book.mdfriday.com/), [Note](https://theme-note.mdfriday.com/)
 - Blog: [Beautiful](https://theme-beautiful.mdfriday.com/), [Awesome](https://theme-awesome.mdfriday.com/)
 - Project: [Notebook Navigator](https://theme-ob-plugin.mdfriday.com/)
-- Resumes and CVs
-- Landing pages
-- Portfolios
-- Ecommerce
-- Business, SaaS, Startups and Companies
+- Resumes and CVs: [Resume](https://theme-resume.mdfriday.com/)
+- Landing pages: [Landing](https://theme-landing.mdfriday.com/)
+- Portfolios: [Portfolio](https://theme-portfolio.mdfriday.com/)
+- Company
 
 ## Demo
 
