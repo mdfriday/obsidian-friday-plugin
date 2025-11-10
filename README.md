@@ -9,6 +9,7 @@
 - Project: [Notebook Navigator](https://theme-ob-plugin.mdfriday.com/)
 - Resumes and CVs: [Resume](https://theme-resume.mdfriday.com/)
 - Landing pages: [Landing](https://theme-landing.mdfriday.com/)
+- Slides: [Slides](https://theme-slides.mdfriday.com/)
 - Portfolios: [Portfolio](https://theme-portfolio.mdfriday.com/)
 - Company
 
