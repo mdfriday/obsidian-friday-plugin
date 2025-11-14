@@ -172,8 +172,10 @@ export interface TranslationNamespace {
 		loading_error: string;
 		no_themes_found: string;
 		view_demo: string;
+		live_demo: string;
 		use_it: string;
 		current: string;
+		free: string;
 		by_author: string;
 		retry: string;
 	};
