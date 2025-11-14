@@ -233,9 +233,10 @@ export class ThemeSelectionModal extends Modal {
 		this.themes.forEach(theme => {
 			const themeCard = themesGrid.createDiv(`theme-card ${theme.id === this.selectedTheme ? 'selected' : ''}`);
 			
-			// Set background image
+			// Theme image section (top)
+			const imageSection = themeCard.createDiv('theme-image-section');
 			if (theme.thumbnail) {
-				themeCard.style.backgroundImage = `url("${theme.thumbnail}")`;
+				imageSection.style.backgroundImage = `url("${theme.thumbnail}")`;
 			} else {
 				// Fallback gradient background based on theme name hash
 				const gradients = [
@@ -253,51 +254,63 @@ export class ThemeSelectionModal extends Modal {
 					return a & a;
 				}, 0);
 				const gradientIndex = Math.abs(hash) % gradients.length;
-				themeCard.style.background = gradients[gradientIndex];
+				imageSection.style.background = gradients[gradientIndex];
 			}
 
-			// Theme overlay with all info
-			const overlay = themeCard.createDiv('theme-overlay');
+			// Live Demo button (shown on hover)
+			if (theme.demo) {
+				const liveDemoBtn = imageSection.createEl('a', {
+					text: this.t('theme.live_demo'),
+					cls: 'live-demo-btn'
+				});
+				liveDemoBtn.href = theme.demo;
+				liveDemoBtn.target = '_blank';
+				liveDemoBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+				});
+			}
+
+			// Theme info section (bottom)
+			const infoSection = themeCard.createDiv('theme-info-section');
 			
-			overlay.createEl('h3', {text: theme.name, cls: 'theme-title'});
+			// Left side: name and description
+			const leftInfo = infoSection.createDiv('theme-info-left');
+			
+			leftInfo.createEl('h3', {text: theme.name, cls: 'theme-title'});
 			
 			// Author and version info
 			if (theme.author || theme.version) {
-				const authorInfo = overlay.createDiv('theme-author-info');
+				const metaInfo = leftInfo.createDiv('theme-meta-info');
 				if (theme.author) {
-					authorInfo.createEl('span', {text: this.t('theme.by_author', { author: theme.author }), cls: 'theme-author'});
+					metaInfo.createEl('span', {text: this.t('theme.by_author', { author: theme.author }), cls: 'theme-author'});
 				}
 				if (theme.version) {
 					if (theme.author) {
-						authorInfo.createEl('span', {text: ' • ', cls: 'separator'});
+						metaInfo.createEl('span', {text: ' • ', cls: 'separator'});
 					}
-					authorInfo.createEl('span', {text: `v${theme.version}`, cls: 'theme-version'});
+					metaInfo.createEl('span', {text: `v${theme.version}`, cls: 'theme-version'});
 				}
 			}
 			
-			overlay.createEl('p', {text: theme.description || '', cls: 'theme-description'});
+			leftInfo.createEl('p', {text: theme.description || '', cls: 'theme-description'});
 
+			// Right side: price
+			const rightInfo = infoSection.createDiv('theme-info-right');
+			rightInfo.createEl('div', {text: this.t('theme.free'), cls: 'theme-price'});
+
+			// Bottom actions: tags and use button
+			const bottomSection = themeCard.createDiv('theme-bottom-section');
+			
 			// Theme tags
 			if (theme.tags && theme.tags.length > 0) {
-				const tags = overlay.createDiv('theme-tags');
+				const tags = bottomSection.createDiv('theme-tags');
 				theme.tags.forEach(tag => {
 					tags.createEl('span', {text: tag, cls: 'tag'});
 				});
 			}
 
-			// Theme actions
-			const actions = overlay.createDiv('theme-actions');
-			if (theme.demo) {
-				const demoLink = actions.createEl('a', {text: this.t('theme.view_demo'), cls: 'demo-link'});
-				demoLink.href = theme.demo;
-				demoLink.target = '_blank';
-				// Prevent event bubbling to card click
-				demoLink.addEventListener('click', (e) => {
-					e.stopPropagation();
-				});
-			}
-
-			const useBtn = actions.createEl('button', {
+			// Use button
+			const useBtn = bottomSection.createEl('button', {
 				text: theme.id === this.selectedTheme ? this.t('theme.current') : this.t('theme.use_it'),
 				cls: `use-theme-btn ${theme.id === this.selectedTheme ? 'current' : ''}`
 			});
