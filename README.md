@@ -11,7 +11,7 @@
 - Landing pages: [Landing](https://theme-landing.mdfriday.com/)
 - Slides: [Slides](https://theme-slides.mdfriday.com/)
 - Portfolios: [Portfolio](https://theme-portfolio.mdfriday.com/)
-- Company
+- Company: [Company](https://theme-company.mdfriday.com/)
 
 ## Demo
 
