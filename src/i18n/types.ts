@@ -1,7 +1,15 @@
 /**
  * Supported language codes
  */
-export type LanguageCode = 'en' | 'zh-cn' | 'es' | 'fr' | 'de' | 'ja' | 'ko' | 'pt';
+export type LanguageCode =
+	| "en"
+	| "zh-cn"
+	| "es"
+	| "fr"
+	| "de"
+	| "ja"
+	| "ko"
+	| "pt";
 
 /**
  * Language information for display
@@ -31,14 +39,14 @@ export interface TranslationNamespace {
 		register: string;
 		login: string;
 		logout: string;
-		
+
 		// Publish settings
 		publish_settings: string;
 		publish_method: string;
 		publish_method_desc: string;
 		publish_method_netlify: string;
 		publish_method_ftp: string;
-		
+
 		// Netlify settings
 		netlify_settings: string;
 		netlify_access_token: string;
@@ -47,7 +55,7 @@ export interface TranslationNamespace {
 		netlify_project_id: string;
 		netlify_project_id_desc: string;
 		netlify_project_id_placeholder: string;
-		
+
 		// FTP settings
 		ftp_settings: string;
 		ftp_server: string;
@@ -69,14 +77,14 @@ export interface TranslationNamespace {
 		ftp_test_connection_testing: string;
 		ftp_test_connection_success: string;
 		ftp_test_connection_failed: string;
-		
+
 		// General settings
 		general_settings: string;
 		download_server: string;
 		download_server_desc: string;
 		download_server_global: string;
 		download_server_east: string;
-		
+
 		// MDFriday Account
 		mdfriday_account: string;
 		mdfriday_account_desc: string;
@@ -88,7 +96,7 @@ export interface TranslationNamespace {
 		desktop_only_title: string;
 		desktop_only_message: string;
 		mobile_coming_soon: string;
-		
+
 		// Site builder
 		multilingual_content: string;
 		content_path: string;
@@ -109,6 +117,9 @@ export interface TranslationNamespace {
 		site_path: string;
 		site_path_placeholder: string;
 		site_path_hint: string;
+		site_password: string;
+		site_password_placeholder: string;
+		site_password_hint: string;
 		google_analytics_id: string;
 		google_analytics_placeholder: string;
 		google_analytics_hint: string;
@@ -119,7 +130,7 @@ export interface TranslationNamespace {
 		change_theme: string;
 		download_sample: string;
 		downloading_sample: string;
-		
+
 		// Preview section
 		preview: string;
 		preview_building: string;
@@ -131,7 +142,7 @@ export interface TranslationNamespace {
 		export_site: string;
 		exporting: string;
 		export_site_dialog_title: string;
-		
+
 		// Publish section
 		publish: string;
 		publish_option_mdfriday: string;
@@ -141,7 +152,7 @@ export interface TranslationNamespace {
 		publish_success: string;
 		publish_failed: string;
 		published_successfully: string;
-		
+
 		// Server section
 		server_start: string;
 		server_stop: string;
@@ -156,8 +167,7 @@ export interface TranslationNamespace {
 	};
 
 	// Commands
-	commands: {
-	};
+	commands: {};
 
 	// Theme selection
 	theme: {
@@ -191,7 +201,7 @@ export interface TranslationNamespace {
 		publish_started: string;
 		publish_completed: string;
 		publish_failed: string;
-		
+
 		// Preview messages
 		no_folder_selected: string;
 		no_folder_or_file_selected: string;
@@ -209,35 +219,35 @@ export interface TranslationNamespace {
 		publishing_failed: string;
 		site_exported_successfully: string;
 		export_failed: string;
-		
+
 		// User messages
 		enter_email_password: string;
 		enter_valid_email: string;
 		login_failed: string;
 		register_failed: string;
-		
+
 		// General messages
 		failed_to_create_post: string;
 		failed_to_create_resource: string;
-		
+
 		// Site assets messages
 		invalid_assets_folder: string;
 		site_assets_set_successfully: string;
 		site_assets_cleared: string;
-		
+
 		// Sample download messages
 		sample_downloaded_successfully: string;
 		sample_download_failed: string;
-		
+
 		// Structured folder messages
 		structured_folder_processed: string;
 		static_folder_detected: string;
-		
+
 		// Netlify messages
 		netlify_settings_missing: string;
 		netlify_deploy_failed: string;
 		netlify_deploy_success: string;
-		
+
 		// FTP messages
 		ftp_settings_missing: string;
 		ftp_upload_failed: string;
@@ -268,7 +278,10 @@ export interface TranslationNamespace {
 /**
  * Translation function type with parameter support
  */
-export type TranslationFunction = (key: string, params?: Record<string, any>) => string;
+export type TranslationFunction = (
+	key: string,
+	params?: Record<string, any>
+) => string;
 
 /**
  * I18n service interface

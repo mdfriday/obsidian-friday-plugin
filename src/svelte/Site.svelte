@@ -82,6 +82,7 @@
 	let showAdvancedSettings = false;
 	let googleAnalyticsId = '';
 	let disqusShortname = '';
+	let sitePassword = '';
 
 	let themesDir = ''; // Directory for themes
 
@@ -876,7 +877,8 @@
 				]
 			},
 			params: {
-				branding: false
+				branding: false,
+				...(sitePassword && sitePassword.trim() ? { password: sitePassword.trim() } : {})
 			}
 		};
 
@@ -1476,6 +1478,20 @@
 						/>
 						<div class="field-hint">
 							{t('ui.site_path_hint')}
+						</div>
+					</div>
+
+					<div class="advanced-field">
+						<label class="section-label" for="site-password">{t('ui.site_password')}</label>
+						<input
+							type="password"
+							class="form-input"
+							bind:value={sitePassword}
+							placeholder={t('ui.site_password_placeholder')}
+							title={t('ui.site_password_hint')}
+						/>
+						<div class="field-hint">
+							{t('ui.site_password_hint')}
 						</div>
 					</div>
 
