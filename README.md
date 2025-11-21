@@ -9,7 +9,7 @@
 - Project: [Notebook Navigator](https://theme-ob-plugin.mdfriday.com/)
 - Resumes and CVs: [Resume](https://theme-resume.mdfriday.com/)
 - Landing pages: [Landing](https://theme-landing.mdfriday.com/)
-- Slides: [Slides](https://theme-slides.mdfriday.com/)
+- Slides: [Slides](https://theme-slides.mdfriday.com/), [Slides Focus](https://theme-slides-focus.mdfriday.com/)
 - Portfolios: [Portfolio](https://theme-portfolio.mdfriday.com/)
 - Company: [Company](https://theme-company.mdfriday.com/)
 
@@ -60,7 +60,7 @@ You can:
 - **Discord**: [Join our community](https://discord.gg/t7FHJ6qNzT)
 - **Wechat**: 
 
-![Wechat QR Code](demo/mdfriday-wechat.jpg)
+![Wechat QR Code](demo/mdf-qrcode.jpg)
 
 
 ## Acknowledgement
