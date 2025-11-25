@@ -101,6 +101,7 @@ export interface TranslationNamespace {
 		multilingual_content: string;
 		content_path: string;
 		language: string;
+		default_language: string;
 		clear: string;
 		clear_all_content: string;
 		default: string;
@@ -145,9 +146,11 @@ export interface TranslationNamespace {
 
 		// Publish section
 		publish: string;
+		publish_method: string;
 		publish_option_mdfriday: string;
 		publish_option_netlify: string;
 		publish_option_ftp: string;
+		mdfriday_preview_hint: string;
 		publish_building: string;
 		publish_success: string;
 		publish_failed: string;
@@ -188,6 +191,40 @@ export interface TranslationNamespace {
 		free: string;
 		by_author: string;
 		retry: string;
+	};
+
+	// Project management
+	projects: {
+		manage_projects: string;
+		project_list: string;
+		no_projects: string;
+		select_project_to_view: string;
+		configuration: string;
+		build_history: string;
+		no_build_history: string;
+		apply_to_panel: string;
+		delete_project: string;
+		delete_project_permanent: string;
+		danger_zone: string;
+		clear_history_title: string;
+		clear_history_message: string;
+		clear_preview_history: string;
+		confirm_clear_history: string;
+		preview_history_cleared: string;
+		no_preview_files: string;
+		delete_warning_title: string;
+		delete_warning_message: string;
+		confirm_delete: string;
+		project_applied: string;
+		project_applied_no_content: string;
+		project_deleted: string;
+		view_site: string;
+		export_build: string;
+		preview_not_found: string;
+		just_now: string;
+		minutes_ago: string;
+		hours_ago: string;
+		days_ago: string;
 	};
 
 	// Notifications and messages

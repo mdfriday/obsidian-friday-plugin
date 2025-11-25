@@ -3,6 +3,7 @@ import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
 import {User} from "./user";
 import './styles/theme-modal.css';
 import './styles/publish-settings.css';
+import './styles/project-modal.css';
 import {ThemeSelectionModal} from "./theme/modal";
 import {Hugoverse} from "./hugoverse";
 import {NetlifyAPI} from "./netlify";
@@ -10,6 +11,9 @@ import {I18nService} from "./i18n";
 import {FTPUploader} from "./ftp";
 import {Site} from "./site";
 import {themeApiService} from "./theme/themeApiService";
+import {ProjectManagementModal} from "./projects/modal";
+import {ProjectService} from "./projects/service";
+import type {ProjectConfig} from "./projects/types";
 
 interface FridaySettings {
 	username: string;
@@ -66,6 +70,8 @@ export default class FridayPlugin extends Plugin {
 	i18n: I18nService
 	ftp: FTPUploader | null = null
 	site: Site
+	projectService: ProjectService
+	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
 	private previousDownloadServer: 'global' | 'east' = 'global'
 
 	async onload() {
@@ -145,6 +151,20 @@ export default class FridayPlugin extends Plugin {
 			rightSplit.expand();
 		}
 
+		// Check if project configuration exists for this folder/file
+		// If yes, apply the entire project configuration (like clicking "Apply to Panel")
+		const projectId = await this.tryGetProjectId(folder, file);
+		if (projectId) {
+			const existingProject = this.projectService.getProject(projectId);
+			if (existingProject) {
+				console.log('Found existing project configuration, applying to panel:', projectId);
+				// Apply the entire project configuration
+				await this.applyExistingProjectToPanel(existingProject);
+				return;
+			}
+		}
+
+		// No existing project found, continue with normal logic
 		// Handle multilingual content selection
 		if (this.site.hasContent()) {
 			// Add to existing multilingual content
@@ -175,6 +195,49 @@ export default class FridayPlugin extends Plugin {
 					active: true,
 				});
 			}
+		}
+	}
+
+	/**
+	 * Try to get project ID from folder or file
+	 * Returns the project ID if it can be determined
+	 */
+	async tryGetProjectId(folder: TFolder | null, file: TFile | null): Promise<string | null> {
+		if (!folder && !file) {
+			return null;
+		}
+
+		let projectId = folder?.path || file?.path || '';
+		
+		// Try to get parent folder for better project identification
+		const contentFolder = folder || (file ? file.parent : null);
+		if (contentFolder && contentFolder.parent) {
+			// Check if this looks like a content subfolder (content, content.en, etc.)
+			const folderName = contentFolder.name.toLowerCase();
+			if (folderName === 'content' || folderName.startsWith('content.')) {
+				// Use parent folder path as project ID
+				projectId = contentFolder.parent.path;
+			}
+		}
+		
+		return projectId || null;
+	}
+
+	/**
+	 * Apply existing project configuration to panel
+	 * This mimics clicking "Apply to Panel" button
+	 */
+	async applyExistingProjectToPanel(project: ProjectConfig) {
+		try {
+			// Use the registered method from Site.svelte to apply complete project configuration
+			if (this.applyProjectConfigurationToPanel) {
+				this.applyProjectConfigurationToPanel(project);
+				console.log('Project configuration applied successfully:', project.name);
+			} else {
+				console.error('applyProjectConfigurationToPanel method not registered yet');
+			}
+		} catch (error) {
+			console.error('Failed to apply project configuration:', error);
 		}
 	}
 
@@ -351,6 +414,15 @@ export default class FridayPlugin extends Plugin {
 		modal.open();
 	}
 
+	showProjectManagementModal(
+		onApply: (project: ProjectConfig) => void, 
+		onExport: (previewId: string) => Promise<void>,
+		onClearHistory: (projectId: string) => Promise<void>
+	) {
+		const modal = new ProjectManagementModal(this.app, this, this.projectService, onApply, onExport, onClearHistory);
+		modal.open();
+	}
+
 	async initFriday(): Promise<void> {
 		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
 		
@@ -362,6 +434,10 @@ export default class FridayPlugin extends Plugin {
 		this.hugoverse = new Hugoverse(this);
 		this.netlify = new NetlifyAPI(this);
 		this.site = new Site(this);
+		
+		// Initialize project service
+		this.projectService = new ProjectService(this);
+		await this.projectService.initialize();
 	}
 
 	initLeaf(): void {

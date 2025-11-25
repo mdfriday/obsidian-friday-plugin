@@ -100,6 +100,21 @@
 	let publishSuccess = false;
 	let publishUrl = '';
 	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-preview' = plugin.settings.publishMethod || 'netlify';
+	
+	// Netlify configuration (project-specific)
+	let netlifyAccessToken = '';
+	let netlifyProjectId = '';
+	
+	// FTP configuration (project-specific)
+	let ftpServer = '';
+	let ftpUsername = '';
+	let ftpPassword = '';
+	let ftpRemoteDir = '';
+	let ftpIgnoreCert = true;
+	
+	// FTP test connection state
+	let ftpTestState: 'idle' | 'testing' | 'success' | 'error' = 'idle';
+	let ftpTestMessage = '';
 
 	// Export related state
 	let isExporting = false;
@@ -135,6 +150,9 @@
 		if (adapter instanceof FileSystemAdapter) {
 			basePath = adapter.getBasePath()
 		}
+		
+		// Register applyProjectConfiguration method so it can be called from main.ts
+		plugin.applyProjectConfigurationToPanel = applyProjectConfiguration;
 	});
 
 	onDestroy(() => {
@@ -201,11 +219,24 @@
 		? (currentContents[0].folder?.name || currentContents[0].file?.name || '') 
 		: '';
 	
-	// 只在首次添加内容时设置站点名称（从0变为有内容）
+	// 只在首次添加内容时设置站点名称和加载默认发布配置（从0变为有内容）
 	$: {
 		if (previousContentLength === 0 && currentContents.length > 0 && !siteName) {
 			const firstContent = currentContents[0];
-			siteName = firstContent.folder?.name || firstContent.file?.basename || '';
+			let defaultName = firstContent.folder?.name || firstContent.file?.basename || '';
+			
+			// If this is a content subfolder, use parent folder name as site name
+			if (firstContent.folder) {
+				const folderName = firstContent.folder.name.toLowerCase();
+				if ((folderName === 'content' || folderName.startsWith('content.')) && firstContent.folder.parent) {
+					defaultName = firstContent.folder.parent.name;
+				}
+			}
+			
+			siteName = defaultName;
+			
+			// Load default publish config from settings if project doesn't have one
+			loadDefaultPublishConfigIfNeeded();
 		}
 		previousContentLength = currentContents.length;
 	}
@@ -218,6 +249,17 @@
 		siteName = ''; // 清空内容时也清空站点名称
 		userHasSelectedTheme = false; // 重置主题选择标志，允许重新自动选择
 		previousContentLength = 0; // 重置内容长度跟踪，允许下次首次添加时设置站点名称
+		
+		// 清空发布配置
+		netlifyAccessToken = '';
+		netlifyProjectId = '';
+		ftpServer = '';
+		ftpUsername = '';
+		ftpPassword = '';
+		ftpRemoteDir = '';
+		ftpIgnoreCert = true;
+		ftpTestState = 'idle';
+		ftpTestMessage = '';
 	}
 
 
@@ -248,6 +290,58 @@
 		new Notice(t('messages.add_language_instruction'), 5000);
 	}
 
+	/**
+	 * Load publish config when content is added
+	 * - If project exists with config: apply project config
+	 * - If project doesn't have config: apply settings defaults
+	 */
+	function loadDefaultPublishConfigIfNeeded() {
+		// Get project ID to check if it exists
+		const projectId = getProjectId();
+		if (!projectId) {
+			return;
+		}
+
+		// Check if project already exists
+		const existingProject = plugin.projectService.getProject(projectId);
+		
+		if (existingProject && existingProject.publishConfig) {
+			selectedPublishOption = existingProject.publishConfig.method || 'netlify';
+			
+			// Apply Netlify config
+			netlifyAccessToken = existingProject.publishConfig.netlify?.accessToken || '';
+			netlifyProjectId = existingProject.publishConfig.netlify?.projectId || '';
+			
+			// Apply FTP config
+			ftpServer = existingProject.publishConfig.ftp?.server || '';
+			ftpUsername = existingProject.publishConfig.ftp?.username || '';
+			ftpPassword = existingProject.publishConfig.ftp?.password || '';
+			ftpRemoteDir = existingProject.publishConfig.ftp?.remoteDir || '';
+			ftpIgnoreCert = existingProject.publishConfig.ftp?.ignoreCert !== undefined 
+				? existingProject.publishConfig.ftp.ignoreCert 
+				: true;
+		} else {
+			selectedPublishOption = plugin.settings.publishMethod || 'netlify';
+			
+			// Load Netlify defaults
+			netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
+			netlifyProjectId = plugin.settings.netlifyProjectId || '';
+			
+			// Load FTP defaults
+			ftpServer = plugin.settings.ftpServer || '';
+			ftpUsername = plugin.settings.ftpUsername || '';
+			ftpPassword = plugin.settings.ftpPassword || '';
+			ftpRemoteDir = plugin.settings.ftpRemoteDir || '';
+			ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined 
+				? plugin.settings.ftpIgnoreCert 
+				: true;
+		}
+		
+		// Reset FTP test state
+		ftpTestState = 'idle';
+		ftpTestMessage = '';
+	}
+
 	function openThemeModal() {
 		// Call plugin method to show theme selection modal
 		plugin.showThemeSelectionModal(selectedThemeId, async (themeUrl: string, themeName?: string, themeId?: string) => {
@@ -269,6 +363,320 @@
 				}
 			}
 		}, isForSingleFile);
+	}
+
+	function openProjectsModal() {
+		// Call plugin method to show project management modal
+		plugin.showProjectManagementModal(applyProjectConfiguration, exportHistoryBuild, clearPreviewHistory);
+	}
+
+	async function exportHistoryBuild(previewId: string) {
+		try {
+			// Construct path to the preview directory
+			const previewDir = path.join(plugin.pluginDir, 'preview', previewId);
+			const publicDir = path.join(previewDir, 'public');
+			
+			// Check if the directory exists
+			const adapter = app.vault.adapter;
+			if (!(await adapter.exists(publicDir))) {
+				new Notice(t('projects.preview_not_found'), 5000);
+				return;
+			}
+			
+			// Get absolute path
+			const absPublicDir = path.join(basePath, publicDir);
+			
+			// Create ZIP from public directory
+			const zipContent = await createZipFromDirectory(absPublicDir);
+
+			// Use Electron's dialog API to show save dialog
+			const { dialog } = require('@electron/remote') || require('electron').remote;
+			const { canceled, filePath } = await dialog.showSaveDialog({
+				title: t('ui.export_site_dialog_title'),
+				defaultPath: `mdfriday-site-${previewId}.zip`,
+				filters: [
+					{ name: 'ZIP Files', extensions: ['zip'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+
+			if (!canceled && filePath) {
+				// Save the ZIP file to the selected path
+				await fs.promises.writeFile(filePath, zipContent);
+				new Notice(t('messages.site_exported_successfully', { path: filePath }), 3000);
+			}
+		} catch (error) {
+			console.error('Export history build failed:', error);
+			new Notice(t('messages.export_failed', { error: error.message }), 5000);
+		}
+	}
+
+	async function clearPreviewHistory(projectId: string) {
+		try {
+			// Show confirmation dialog
+			const confirmed = confirm(t('projects.confirm_clear_history'));
+			if (!confirmed) {
+				return;
+			}
+
+			// Get all build history for this project
+			const buildHistory = plugin.projectService.getBuildHistory(projectId, 1000);
+			
+			// Extract all previewIds
+			const previewIds = buildHistory
+				.filter(h => h.previewId)
+				.map(h => h.previewId!);
+			
+			if (previewIds.length === 0) {
+				new Notice(t('projects.no_preview_files'), 3000);
+				return;
+			}
+
+			// Get preview root directory
+			const previewRoot = path.join(plugin.pluginDir, 'preview');
+			const adapter = app.vault.adapter;
+			
+			// Check if preview directory exists
+			if (!(await adapter.exists(previewRoot))) {
+				new Notice(t('projects.no_preview_files'), 3000);
+				return;
+			}
+
+			// Get absolute path for file system operations
+			const absPreviewRoot = path.join(basePath, previewRoot);
+			let deletedCount = 0;
+
+			// Delete only the preview directories belonging to this project
+			for (const previewId of previewIds) {
+				const previewDirPath = path.join(absPreviewRoot, previewId);
+				try {
+					// Check if directory exists before deleting
+					if (await fs.promises.access(previewDirPath).then(() => true).catch(() => false)) {
+						await fs.promises.rm(previewDirPath, { recursive: true, force: true });
+						deletedCount++;
+					}
+				} catch (error) {
+					console.warn(`Failed to delete preview directory ${previewId}:`, error);
+				}
+			}
+
+			// Clear build history for this project
+			await plugin.projectService.clearProjectBuildHistory(projectId);
+
+			if (deletedCount > 0) {
+				new Notice(t('projects.preview_history_cleared', { count: deletedCount }), 3000);
+			} else {
+				new Notice(t('projects.no_preview_files'), 3000);
+			}
+		} catch (error) {
+			console.error('Clear preview history failed:', error);
+			new Notice(t('messages.export_failed', { error: error.message }), 5000);
+		}
+	}
+
+	async function applyProjectConfiguration(project: any) {
+		try {
+			// Clear existing content first
+			site.clearAllContent();
+			
+			// Apply site name
+			siteName = project.name;
+			
+			// Apply theme
+			selectedThemeDownloadUrl = project.themeUrl;
+			selectedThemeName = project.themeName;
+			selectedThemeId = project.themeId;
+			userHasSelectedTheme = true;
+			
+			// Apply site path
+			sitePath = project.sitePath;
+			
+			// Apply advanced settings
+			googleAnalyticsId = project.googleAnalyticsId || '';
+			disqusShortname = project.disqusShortname || '';
+			sitePassword = project.sitePassword || '';
+			
+			// Apply publish settings
+			if (project.publishConfig) {
+				// Project has config, use it
+				selectedPublishOption = project.publishConfig.method || 'netlify';
+				
+				// Apply Netlify config
+				netlifyAccessToken = project.publishConfig.netlify?.accessToken || '';
+				netlifyProjectId = project.publishConfig.netlify?.projectId || '';
+				
+				// Apply FTP config
+				ftpServer = project.publishConfig.ftp?.server || '';
+				ftpUsername = project.publishConfig.ftp?.username || '';
+				ftpPassword = project.publishConfig.ftp?.password || '';
+				ftpRemoteDir = project.publishConfig.ftp?.remoteDir || '';
+				ftpIgnoreCert = project.publishConfig.ftp?.ignoreCert !== undefined ? project.publishConfig.ftp.ignoreCert : true;
+			} else {
+				// Project doesn't have config, load defaults from settings
+				selectedPublishOption = plugin.settings.publishMethod || 'netlify';
+				
+				// Load Netlify defaults
+				netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
+				netlifyProjectId = plugin.settings.netlifyProjectId || '';
+				
+				// Load FTP defaults
+				ftpServer = plugin.settings.ftpServer || '';
+				ftpUsername = plugin.settings.ftpUsername || '';
+				ftpPassword = plugin.settings.ftpPassword || '';
+				ftpRemoteDir = plugin.settings.ftpRemoteDir || '';
+				ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined ? plugin.settings.ftpIgnoreCert : true;
+			}
+			
+			// Reset FTP test state
+			ftpTestState = 'idle';
+			ftpTestMessage = '';
+			
+			// Try to reload content paths
+			let contentLoadedCount = 0;
+			if (project.contents && project.contents.length > 0) {
+				for (let i = 0; i < project.contents.length; i++) {
+					const contentConfig = project.contents[i];
+					const abstractFile = app.vault.getAbstractFileByPath(contentConfig.contentPath);
+					
+					if (abstractFile) {
+						if (abstractFile instanceof TFolder) {
+							if (i === 0) {
+								site.initializeContentWithLanguage(abstractFile, null, contentConfig.languageCode);
+							} else {
+								site.addLanguageContentWithCode(abstractFile, null, contentConfig.languageCode);
+							}
+							contentLoadedCount++;
+						} else if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+							if (i === 0) {
+								site.initializeContentWithLanguage(null, abstractFile, contentConfig.languageCode);
+							} else {
+								site.addLanguageContentWithCode(null, abstractFile, contentConfig.languageCode);
+							}
+							contentLoadedCount++;
+						}
+					} else {
+						console.warn(`Content path not found: ${contentConfig.contentPath}`);
+					}
+				}
+			}
+			
+			// Try to reload site assets
+			if (project.assetsPath) {
+				const assetsFile = app.vault.getAbstractFileByPath(project.assetsPath);
+				if (assetsFile instanceof TFolder) {
+					site.setSiteAssets(assetsFile);
+				} else {
+					console.warn(`Assets path not found: ${project.assetsPath}`);
+				}
+			}
+			
+			// Show appropriate message
+			if (contentLoadedCount > 0) {
+				const contentText = contentLoadedCount === 1 ? 'content' : 'contents';
+				new Notice(t('projects.project_applied') + `\n✅ ${contentLoadedCount} ${contentText} loaded`, 3000);
+			} else {
+				new Notice(t('projects.project_applied_no_content'), 5000);
+			}
+		} catch (error) {
+			console.error('Failed to apply project configuration:', error);
+			new Notice(t('messages.export_failed', { error: error.message }), 5000);
+		}
+	}
+
+	/**
+	 * Get project ID from current content
+	 * If content is in a content subfolder, returns parent folder path
+	 * Otherwise returns content path
+	 */
+	function getProjectId(): string {
+		if (currentContents.length === 0) {
+			return '';
+		}
+
+		const firstContent = currentContents[0];
+		let projectId = firstContent.folder?.path || firstContent.file?.path || '';
+		
+		// Try to get parent folder for better project identification
+		const contentFolder = firstContent.folder || (firstContent.file ? firstContent.file.parent : null);
+		if (contentFolder && contentFolder.parent) {
+			// Check if this looks like a content subfolder (content, content.en, etc.)
+			const folderName = contentFolder.name.toLowerCase();
+			if (folderName === 'content' || folderName.startsWith('content.')) {
+				// Use parent folder path as project ID
+				projectId = contentFolder.parent.path;
+			}
+		}
+		
+		return projectId;
+	}
+
+	async function saveCurrentProjectConfiguration() {
+		if (currentContents.length === 0 || !siteName) {
+			// No content to save
+			return;
+		}
+
+		try {
+			// Get project ID using helper function
+			const projectId = getProjectId();
+			
+			if (!projectId) {
+				return;
+			}
+			
+			// Always use user's input site name
+			const projectName = siteName;
+
+			// Check if project already exists to preserve createdAt
+			const existingProject = plugin.projectService.getProject(projectId);
+			const now = Date.now();
+
+			// Build publish config (only if there's actual configuration)
+			const hasNetlifyConfig = !!(netlifyAccessToken || netlifyProjectId);
+			const hasFtpConfig = !!(ftpServer || ftpUsername || ftpPassword || ftpRemoteDir);
+			const hasPublishConfig = hasNetlifyConfig || hasFtpConfig;
+			
+			// Build project config
+			const projectConfig = {
+				id: projectId,
+				name: projectName,
+				contents: currentContents.map(content => ({
+					languageCode: content.languageCode,
+					contentPath: content.folder?.path || content.file?.path || '',
+					weight: content.weight
+				})),
+				defaultContentLanguage: defaultContentLanguage,
+				assetsPath: currentAssets?.folder?.path || undefined,
+				sitePath: sitePath,
+				themeUrl: selectedThemeDownloadUrl,
+				themeName: selectedThemeName,
+				themeId: selectedThemeId,
+				googleAnalyticsId: googleAnalyticsId || undefined,
+				disqusShortname: disqusShortname || undefined,
+				sitePassword: sitePassword || undefined,
+				publishConfig: hasPublishConfig ? {
+					method: selectedPublishOption,
+					netlify: hasNetlifyConfig ? {
+						accessToken: netlifyAccessToken || undefined,
+						projectId: netlifyProjectId || undefined
+					} : undefined,
+					ftp: hasFtpConfig ? {
+						server: ftpServer || undefined,
+						username: ftpUsername || undefined,
+						password: ftpPassword || undefined,
+						remoteDir: ftpRemoteDir || undefined,
+						ignoreCert: ftpIgnoreCert
+					} : undefined
+				} : undefined,
+				createdAt: existingProject?.createdAt || now,
+				updatedAt: now
+			};
+
+			// Save to project service
+			await plugin.projectService.saveProject(projectConfig);
+		} catch (error) {
+			console.error('Failed to save project configuration:', error);
+		}
 	}
 
 	async function downloadThemeSample() {
@@ -660,6 +1068,22 @@
 
 			new Notice(t('messages.preview_generated_successfully'), 3000);
 
+			// Save project configuration and add build history
+			await saveCurrentProjectConfiguration();
+			if (currentContents.length > 0 && siteName) {
+				const projectId = getProjectId();
+				if (projectId) {
+					await plugin.projectService.addBuildHistory({
+						projectId: projectId,
+						timestamp: Date.now(),
+						success: true,
+						type: 'preview',
+						url: previewUrl,
+						previewId: previewId // Save preview ID for export functionality
+					});
+				}
+			}
+
 			// Send counter for preview (don't wait for result)
 			plugin.hugoverse.sendCounter('preview').catch(error => {
 				console.warn('Counter request failed (non-critical):', error);
@@ -686,12 +1110,12 @@
 
 		// Check settings based on selected publish option
 		if (selectedPublishOption === 'netlify') {
-			if (!plugin.settings.netlifyAccessToken || !plugin.settings.netlifyProjectId) {
+			if (!netlifyAccessToken || !netlifyProjectId) {
 				new Notice(t('messages.netlify_settings_missing'), 5000);
 				return;
 			}
 		} else if (selectedPublishOption === 'ftp') {
-			if (!plugin.settings.ftpServer || !plugin.settings.ftpUsername || !plugin.settings.ftpPassword) {
+			if (!ftpServer || !ftpUsername || !ftpPassword) {
 				new Notice(t('messages.ftp_settings_missing'), 5000);
 				return;
 			}
@@ -737,6 +1161,22 @@
 
 				new Notice(t('messages.site_published_successfully'), 3000);
 
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-preview',
+							url: publishUrl
+						});
+					}
+				}
+
 				// Send counter for publish (don't wait for result)
 				plugin.hugoverse.sendCounter('mdf-preview').catch(error => {
 					console.warn('Counter request failed (non-critical):', error);
@@ -753,11 +1193,41 @@
 
 	async function publishToNetlify(publicDir: string) {
 		try {
-			publishUrl = await plugin.netlify.deployToNetlify(publicDir, (progress) => {
-				publishProgress = Math.round(progress);
-			});
+			// Temporarily override plugin settings with panel configuration
+			const originalToken = plugin.settings.netlifyAccessToken;
+			const originalProjectId = plugin.settings.netlifyProjectId;
+			
+			plugin.settings.netlifyAccessToken = netlifyAccessToken;
+			plugin.settings.netlifyProjectId = netlifyProjectId;
+			
+			try {
+				publishUrl = await plugin.netlify.deployToNetlify(publicDir, (progress) => {
+					publishProgress = Math.round(progress);
+				});
+			} finally {
+				// Restore original settings
+				plugin.settings.netlifyAccessToken = originalToken;
+				plugin.settings.netlifyProjectId = originalProjectId;
+			}
+			
 			publishSuccess = true;
 			new Notice(t('messages.netlify_deploy_success'), 3000);
+
+			// Save project configuration and add build history
+			await saveCurrentProjectConfiguration();
+			if (currentContents.length > 0 && siteName) {
+				const projectId = getProjectId();
+				if (projectId) {
+					await plugin.projectService.addBuildHistory({
+						projectId: projectId,
+						timestamp: Date.now(),
+						success: true,
+						type: 'publish',
+						publishMethod: 'netlify',
+						url: publishUrl
+					});
+				}
+			}
 
 			// Send counter for netlify publish (don't wait for result)
 			plugin.hugoverse.sendCounter('netlify').catch(error => {
@@ -771,7 +1241,20 @@
 
 	async function publishToFTP(publicDir: string) {
 		try {
-			// Reinitialize FTP uploader to ensure latest settings
+			// Temporarily override plugin settings with panel configuration
+			const originalServer = plugin.settings.ftpServer;
+			const originalUsername = plugin.settings.ftpUsername;
+			const originalPassword = plugin.settings.ftpPassword;
+			const originalRemoteDir = plugin.settings.ftpRemoteDir;
+			const originalIgnoreCert = plugin.settings.ftpIgnoreCert;
+			
+			plugin.settings.ftpServer = ftpServer;
+			plugin.settings.ftpUsername = ftpUsername;
+			plugin.settings.ftpPassword = ftpPassword;
+			plugin.settings.ftpRemoteDir = ftpRemoteDir;
+			plugin.settings.ftpIgnoreCert = ftpIgnoreCert;
+			
+			// Reinitialize FTP uploader with panel settings
 			plugin.initializeFTP();
 			
 			if (!plugin.ftp) {
@@ -783,8 +1266,20 @@
 				publishProgress = Math.round(progress.percentage);
 			});
 
-			// Upload directory
-			const result = await plugin.ftp.uploadDirectory(publicDir);
+			let result;
+			try {
+				// Upload directory
+				result = await plugin.ftp.uploadDirectory(publicDir);
+			} finally {
+				// Restore original settings
+				plugin.settings.ftpServer = originalServer;
+				plugin.settings.ftpUsername = originalUsername;
+				plugin.settings.ftpPassword = originalPassword;
+				plugin.settings.ftpRemoteDir = originalRemoteDir;
+				plugin.settings.ftpIgnoreCert = originalIgnoreCert;
+				// Reinitialize FTP with original settings
+				plugin.initializeFTP();
+			}
 
 			if (result.success) {
 				publishSuccess = true;
@@ -795,6 +1290,21 @@
 					new Notice(t('messages.ftp_fallback_to_plain'), 4000);
 				}
 				new Notice(t('messages.ftp_upload_success'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'ftp'
+						});
+					}
+				}
 
 				// Send counter for ftp publish (don't wait for result)
 				plugin.hugoverse.sendCounter('ftp').catch(error => {
@@ -808,6 +1318,71 @@
 			console.error('FTP upload failed:', error);
 			throw new Error(t('messages.ftp_upload_failed', { error: error.message }));
 		}
+	}
+
+	// Reactive: Check if FTP is configured
+	$: isFTPConfigured = !!(ftpServer.trim() && ftpUsername.trim() && ftpPassword.trim());
+
+	// Test FTP connection
+	async function testFTPConnection() {
+		ftpTestState = 'testing';
+		ftpTestMessage = '';
+		
+		try {
+			// Temporarily override plugin settings with panel configuration
+			const originalServer = plugin.settings.ftpServer;
+			const originalUsername = plugin.settings.ftpUsername;
+			const originalPassword = plugin.settings.ftpPassword;
+			const originalRemoteDir = plugin.settings.ftpRemoteDir;
+			const originalIgnoreCert = plugin.settings.ftpIgnoreCert;
+			
+			plugin.settings.ftpServer = ftpServer;
+			plugin.settings.ftpUsername = ftpUsername;
+			plugin.settings.ftpPassword = ftpPassword;
+			plugin.settings.ftpRemoteDir = ftpRemoteDir;
+			plugin.settings.ftpIgnoreCert = ftpIgnoreCert;
+			
+			// Reinitialize FTP uploader with panel settings
+			plugin.initializeFTP();
+			
+			let result;
+			try {
+				result = await plugin.testFTPConnection();
+			} finally {
+				// Restore original settings
+				plugin.settings.ftpServer = originalServer;
+				plugin.settings.ftpUsername = originalUsername;
+				plugin.settings.ftpPassword = originalPassword;
+				plugin.settings.ftpRemoteDir = originalRemoteDir;
+				plugin.settings.ftpIgnoreCert = originalIgnoreCert;
+				// Reinitialize FTP with original settings
+				plugin.initializeFTP();
+			}
+			
+			if (result.success) {
+				ftpTestState = 'success';
+				ftpTestMessage = result.message || t('settings.ftp_test_connection_success');
+			} else {
+				ftpTestState = 'error';
+				ftpTestMessage = result.message || t('settings.ftp_test_connection_failed');
+			}
+		} catch (error) {
+			console.error('FTP test error:', error);
+			ftpTestState = 'error';
+			ftpTestMessage = error.message || t('settings.ftp_test_connection_failed');
+		}
+	}
+
+	// Track FTP config changes to reset test state
+	let previousFtpConfig = '';
+	$: {
+		const currentFtpConfig = `${ftpServer}|${ftpUsername}|${ftpPassword}|${ftpRemoteDir}|${ftpIgnoreCert}`;
+		if (previousFtpConfig && previousFtpConfig !== currentFtpConfig && ftpTestState !== 'idle') {
+			// Config changed while test result is showing, reset to idle
+			ftpTestState = 'idle';
+			ftpTestMessage = '';
+		}
+		previousFtpConfig = currentFtpConfig;
 	}
 
 	function generateRandomId(): string {
@@ -877,7 +1452,7 @@
 				]
 			},
 			params: {
-				branding: false,
+				branding: true,
 				...(sitePassword && sitePassword.trim() ? { password: sitePassword.trim() } : {})
 			}
 		};
@@ -1357,6 +1932,17 @@
 </script>
 
 <div class="site-builder">
+	<!-- Projects Management Button -->
+	<div class="section advanced-settings">
+		<button 
+			class="advanced-toggle" 
+			on:click={openProjectsModal}
+			aria-label={t('projects.manage_projects')}
+		>
+			{t('projects.manage_projects')}
+		</button>
+	</div>
+
 	<!-- Multi-language Content Section -->
 	<div class="section">
 		<div class="section-label">{t('ui.multilingual_content')}</div>
@@ -1595,15 +2181,146 @@
 	<div class="section">
 		<h3 class="section-title">{t('ui.publish')}</h3>
 		<div class="publish-section">
-			<div class="publish-options">
-				<div class="publish-select-wrapper">
-					<select class="form-select" bind:value={selectedPublishOption}>
-						{#each publishOptions as option}
-							<option value={option.value}>{option.label}</option>
-						{/each}
-					</select>
-				</div>
+			<div class="publish-select-wrapper">
+				<label class="section-label" for="publish-method">{t('ui.publish_method')}</label>
+				<select id="publish-method" class="form-select" bind:value={selectedPublishOption}>
+					{#each publishOptions as option}
+						<option value={option.value}>{option.label}</option>
+					{/each}
+				</select>
+			</div>
 
+			<!-- Netlify Configuration -->
+			{#if selectedPublishOption === 'netlify'}
+				<div class="publish-config">
+					<div class="config-field">
+						<label class="section-label" for="netlify-token">{t('settings.netlify_access_token')}</label>
+						<input
+							type="password"
+							class="form-input"
+							bind:value={netlifyAccessToken}
+							placeholder={t('settings.netlify_access_token_placeholder')}
+						/>
+						<div class="field-hint">
+							{t('settings.netlify_access_token_desc')}
+						</div>
+					</div>
+					<div class="config-field">
+						<label class="section-label" for="netlify-project">{t('settings.netlify_project_id')}</label>
+						<input
+							type="text"
+							class="form-input"
+							bind:value={netlifyProjectId}
+							placeholder={t('settings.netlify_project_id_placeholder')}
+						/>
+						<div class="field-hint">
+							{t('settings.netlify_project_id_desc')}
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			<!-- FTP Configuration -->
+			{#if selectedPublishOption === 'ftp'}
+				<div class="publish-config">
+					<div class="config-field">
+						<label class="section-label" for="ftp-server">{t('settings.ftp_server')}</label>
+						<input
+							type="text"
+							class="form-input"
+							bind:value={ftpServer}
+							placeholder={t('settings.ftp_server_placeholder')}
+						/>
+					</div>
+					<div class="config-field">
+						<label class="section-label" for="ftp-username">{t('settings.ftp_username')}</label>
+						<input
+							type="text"
+							class="form-input"
+							bind:value={ftpUsername}
+							placeholder={t('settings.ftp_username_placeholder')}
+						/>
+					</div>
+					<div class="config-field">
+						<label class="section-label" for="ftp-password">{t('settings.ftp_password')}</label>
+						<input
+							type="password"
+							class="form-input"
+							bind:value={ftpPassword}
+							placeholder={t('settings.ftp_password_placeholder')}
+						/>
+					</div>
+					<div class="config-field">
+						<label class="section-label" for="ftp-remote-dir">{t('settings.ftp_remote_dir')}</label>
+						<input
+							type="text"
+							class="form-input"
+							bind:value={ftpRemoteDir}
+							placeholder={t('settings.ftp_remote_dir_placeholder')}
+						/>
+						<div class="field-hint">
+							{t('settings.ftp_remote_dir_desc')}
+						</div>
+					</div>
+					<div class="config-field">
+						<label class="checkbox-label">
+							<input
+								type="checkbox"
+								bind:checked={ftpIgnoreCert}
+							/>
+							<span>{t('settings.ftp_ignore_cert')}</span>
+						</label>
+						<div class="field-hint">
+							{t('settings.ftp_ignore_cert_desc')}
+						</div>
+					</div>
+					
+					<!-- FTP Test Connection -->
+					<div class="config-field">
+						<button
+							class="ftp-test-btn"
+							class:ftp-test-success={ftpTestState === 'success'}
+							class:ftp-test-error={ftpTestState === 'error'}
+							on:click={testFTPConnection}
+							disabled={!isFTPConfigured || ftpTestState === 'testing'}
+						>
+							{#if ftpTestState === 'testing'}
+								{t('settings.ftp_test_connection_testing')}
+							{:else if ftpTestState === 'success'}
+								{t('settings.ftp_test_connection_success')}
+							{:else if ftpTestState === 'error'}
+								{t('settings.ftp_test_connection_failed')}
+							{:else}
+								{t('settings.ftp_test_connection')}
+							{/if}
+						</button>
+						<div class="field-hint">
+							{t('settings.ftp_test_connection_desc')}
+						</div>
+						{#if ftpTestMessage}
+							<div 
+								class="ftp-test-result"
+								class:ftp-test-result-success={ftpTestState === 'success'}
+								class:ftp-test-result-error={ftpTestState === 'error'}
+							>
+								{ftpTestState === 'success' ? '✅' : '❌'} {ftpTestMessage}
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<!-- MDFriday Preview Info -->
+			{#if selectedPublishOption === 'mdf-preview'}
+				<div class="publish-config">
+					<div class="field-hint">
+						{t('ui.mdfriday_preview_hint')}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Publish Button -->
+			<div class="publish-actions">
 				{#if isPublishing}
 					<div class="progress-container">
 						<p>{t('ui.publish_building')}</p>
@@ -1615,7 +2332,7 @@
 						on:click={startPublish}
 						disabled={!hasPreview}
 					>
-{t('ui.publish')}
+						{t('ui.publish')}
 					</button>
 				{/if}
 			</div>
@@ -1833,16 +2550,43 @@
 		font-size: 14px;
 	}
 
-	.publish-options {
-		display: flex;
-		align-items: flex-start;
-		gap: 10px;
-		flex-wrap: wrap;
+	.publish-select-wrapper {
+		margin-bottom: 16px;
 	}
 
-	.publish-select-wrapper {
-		flex: 1;
-		min-width: 150px;
+	.publish-config {
+		background: var(--background-secondary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.config-field {
+		margin-bottom: 16px;
+	}
+
+	.config-field:last-child {
+		margin-bottom: 0;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		cursor: pointer;
+		font-size: 14px;
+		color: var(--text-normal);
+	}
+
+	.checkbox-label input[type="checkbox"] {
+		width: 16px;
+		height: 16px;
+		cursor: pointer;
+	}
+
+	.publish-actions {
+		margin-top: 16px;
 	}
 
 	.success-message {
@@ -2162,5 +2906,64 @@
 		font-size: 12px;
 		color: var(--text-muted);
 		line-height: 1.4;
+	}
+
+	/* FTP Test Connection Styles */
+	.ftp-test-btn {
+		padding: 10px 20px;
+		border: 1px solid var(--interactive-accent);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--interactive-accent);
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s;
+		min-height: 38px;
+	}
+
+	.ftp-test-btn:hover:not(:disabled) {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+	}
+
+	.ftp-test-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.ftp-test-btn.ftp-test-success {
+		background-color: var(--color-green) !important;
+		color: white !important;
+		border-color: var(--color-green) !important;
+	}
+
+	.ftp-test-btn.ftp-test-error {
+		background-color: var(--color-red) !important;
+		color: white !important;
+		border-color: var(--color-red) !important;
+	}
+
+	.ftp-test-result {
+		margin-top: 8px;
+		padding: 8px 12px;
+		border-radius: 4px;
+		font-size: 13px;
+		line-height: 1.4;
+		display: block;
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.ftp-test-result-success {
+		background-color: rgba(var(--color-green-rgb), 0.1);
+		color: var(--color-green);
+		border: 1px solid rgba(var(--color-green-rgb), 0.3);
+	}
+
+	.ftp-test-result-error {
+		background-color: rgba(var(--color-red-rgb), 0.1);
+		color: var(--color-red);
+		border: 1px solid rgba(var(--color-red-rgb), 0.3);
 	}
 </style> 
