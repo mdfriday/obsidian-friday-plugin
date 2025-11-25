@@ -72,15 +72,29 @@ export class FTPUploader {
 			secure: true, // Try FTPS first
 			secureOptions: { 
 				rejectUnauthorized: !this.config.ignoreCert 
-			}
+			},
+			// Timeout settings for slow networks and large files
+			timeout: 90000  // 90 seconds timeout
 		};
 
 		// Enable verbose logging for debugging
 		this.client.ftp.verbose = true;
+		
+		// Force IPv4 to avoid EPSV issues on Windows
+		this.client.ftp.ipFamily = 4;
 
 		try {
 			// First attempt: FTPS (secure)
 			await this.client.access(accessConfig);
+			
+			// Disable EPSV, use traditional PASV (better Windows compatibility)
+			try {
+				await this.client.send("EPSV ALL");
+			} catch (epsvErr) {
+				// Some servers don't support "EPSV ALL", ignore the error
+				console.log('EPSV ALL command not supported, continuing with default settings');
+			}
+			
 			return { usedSecure: true };
 		} catch (err) {
 			const errorMessage = String(err);
@@ -94,15 +108,27 @@ export class FTPUploader {
 				this.client = new ftp.Client();
 				this.client.ftp.verbose = true;
 				
+				// Force IPv4 for new client as well
+				this.client.ftp.ipFamily = 4;
+				
 				// Second attempt: Plain FTP
 				const plainConfig = {
 					host: this.config.server,
 					user: this.config.username,
 					password: this.config.password,
-					secure: false
+					secure: false,
+					timeout: 90000  // Same timeout for plain FTP
 				};
 				
 				await this.client.access(plainConfig);
+				
+				// Disable EPSV for plain FTP too
+				try {
+					await this.client.send("EPSV ALL");
+				} catch (epsvErr) {
+					console.log('EPSV ALL command not supported, continuing with default settings');
+				}
+				
 				return { usedSecure: false };
 			} else {
 				// Re-throw non-TLS related errors
