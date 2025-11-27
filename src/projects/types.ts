@@ -20,6 +20,7 @@ export interface ProjectPublishConfig {
 		password?: string;
 		remoteDir?: string;
 		ignoreCert?: boolean;
+		preferredSecure?: boolean; // Remember last successful connection type
 	};
 }
 

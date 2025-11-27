@@ -233,6 +233,7 @@ export const zhCn: TranslationNamespace = {
 		publishing_failed: "发布失败：{{error}}",
 		site_exported_successfully: "站点导出成功至：{{path}}",
 		export_failed: "导出失败：{{error}}",
+		incremental_upload_stats: "增量上传：已上传 {{uploaded}} 个，已删除 {{deleted}} 个，未变化 {{unchanged}} 个（节省约 {{saved}}% 时间）",
 
 		// Netlify messages
 		netlify_settings_missing: "请先配置 Netlify 设置",

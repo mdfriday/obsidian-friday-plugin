@@ -111,6 +111,7 @@
 	let ftpPassword = '';
 	let ftpRemoteDir = '';
 	let ftpIgnoreCert = true;
+	let ftpPreferredSecure: boolean | undefined = undefined; // Remember last successful connection type
 	
 	// FTP test connection state
 	let ftpTestState: 'idle' | 'testing' | 'success' | 'error' = 'idle';
@@ -258,6 +259,7 @@
 		ftpPassword = '';
 		ftpRemoteDir = '';
 		ftpIgnoreCert = true;
+		ftpPreferredSecure = undefined;
 		ftpTestState = 'idle';
 		ftpTestMessage = '';
 	}
@@ -320,6 +322,7 @@
 			ftpIgnoreCert = existingProject.publishConfig.ftp?.ignoreCert !== undefined 
 				? existingProject.publishConfig.ftp.ignoreCert 
 				: true;
+			ftpPreferredSecure = existingProject.publishConfig.ftp?.preferredSecure;
 		} else {
 			selectedPublishOption = plugin.settings.publishMethod || 'netlify';
 			
@@ -335,6 +338,7 @@
 			ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined 
 				? plugin.settings.ftpIgnoreCert 
 				: true;
+			ftpPreferredSecure = undefined; // Default to plain FTP
 		}
 		
 		// Reset FTP test state
@@ -511,6 +515,7 @@
 				ftpPassword = project.publishConfig.ftp?.password || '';
 				ftpRemoteDir = project.publishConfig.ftp?.remoteDir || '';
 				ftpIgnoreCert = project.publishConfig.ftp?.ignoreCert !== undefined ? project.publishConfig.ftp.ignoreCert : true;
+				ftpPreferredSecure = project.publishConfig.ftp?.preferredSecure;
 			} else {
 				// Project doesn't have config, load defaults from settings
 				selectedPublishOption = plugin.settings.publishMethod || 'netlify';
@@ -525,6 +530,7 @@
 				ftpPassword = plugin.settings.ftpPassword || '';
 				ftpRemoteDir = plugin.settings.ftpRemoteDir || '';
 				ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined ? plugin.settings.ftpIgnoreCert : true;
+				ftpPreferredSecure = undefined; // Default to plain FTP for new projects
 			}
 			
 			// Reset FTP test state
@@ -665,7 +671,8 @@
 						username: ftpUsername || undefined,
 						password: ftpPassword || undefined,
 						remoteDir: ftpRemoteDir || undefined,
-						ignoreCert: ftpIgnoreCert
+						ignoreCert: ftpIgnoreCert,
+						preferredSecure: ftpPreferredSecure
 					} : undefined
 				} : undefined,
 				createdAt: existingProject?.createdAt || now,
@@ -1254,12 +1261,17 @@
 			plugin.settings.ftpRemoteDir = ftpRemoteDir;
 			plugin.settings.ftpIgnoreCert = ftpIgnoreCert;
 			
-			// Reinitialize FTP uploader with panel settings
-			plugin.initializeFTP();
+			// Reinitialize FTP uploader with panel settings and preferred connection type
+			plugin.initializeFTP(ftpPreferredSecure);
 			
 			if (!plugin.ftp) {
 				throw new Error('FTP uploader not initialized - please check FTP settings');
 			}
+
+			// Set up connection type callback to remember successful connection
+			plugin.ftp.setConnectionTypeCallback((usedSecure: boolean) => {
+				ftpPreferredSecure = usedSecure;
+			});
 
 			// Set up progress callback
 			plugin.ftp.setProgressCallback((progress) => {
@@ -1268,8 +1280,51 @@
 
 			let result;
 			try {
-				// Upload directory
-				result = await plugin.ftp.uploadDirectory(publicDir);
+				// Get project ID for incremental upload
+				const projectId = getProjectId();
+				
+				if (projectId) {
+					// Load previous manifest
+					const oldManifest = await plugin.projectService.loadManifest(projectId, 'ftp');
+					
+					// Use incremental upload
+					const incrementalResult = await plugin.ftp.uploadDirectoryIncremental(
+						publicDir,
+						projectId,
+						oldManifest
+					);
+					
+					result = {
+						success: incrementalResult.success,
+						usedSecure: incrementalResult.usedSecure,
+						error: incrementalResult.error
+					};
+					
+					// Save new manifest if successful
+					if (incrementalResult.success && incrementalResult.newManifest) {
+						await plugin.projectService.saveManifest(incrementalResult.newManifest);
+						
+						// Show incremental upload stats
+						if (incrementalResult.stats) {
+							const { uploaded, deleted, unchanged } = incrementalResult.stats;
+							const totalFiles = uploaded + unchanged;
+							const savedTime = totalFiles > 0 ? Math.round((unchanged / totalFiles) * 100) : 0;
+							new Notice(
+								t('messages.incremental_upload_stats', {
+									uploaded,
+									deleted,
+									unchanged,
+									saved: savedTime
+								}) || 
+								`Incremental upload: ${uploaded} uploaded, ${deleted} deleted, ${unchanged} unchanged (${savedTime}% time saved)`,
+								4000
+							);
+						}
+					}
+				} else {
+					// Fallback to full upload if no project ID
+					result = await plugin.ftp.uploadDirectory(publicDir);
+				}
 			} finally {
 				// Restore original settings
 				plugin.settings.ftpServer = originalServer;
@@ -1342,8 +1397,15 @@
 			plugin.settings.ftpRemoteDir = ftpRemoteDir;
 			plugin.settings.ftpIgnoreCert = ftpIgnoreCert;
 			
-			// Reinitialize FTP uploader with panel settings
-			plugin.initializeFTP();
+			// Reinitialize FTP uploader with panel settings and preferred connection type
+			plugin.initializeFTP(ftpPreferredSecure);
+			
+			if (plugin.ftp) {
+				// Set up connection type callback to remember successful connection
+				plugin.ftp.setConnectionTypeCallback((usedSecure: boolean) => {
+					ftpPreferredSecure = usedSecure;
+				});
+			}
 			
 			let result;
 			try {

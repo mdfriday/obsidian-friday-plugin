@@ -243,6 +243,7 @@ export const en: TranslationNamespace = {
 		publishing_failed: "Publishing failed: {{error}}",
 		site_exported_successfully: "Site exported successfully to: {{path}}",
 		export_failed: "Export failed: {{error}}",
+		incremental_upload_stats: "Incremental upload: {{uploaded}} uploaded, {{deleted}} deleted, {{unchanged}} unchanged (~{{saved}}% time saved)",
 
 		// Netlify messages
 		netlify_settings_missing: "Please configure Netlify settings first",

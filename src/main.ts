@@ -157,7 +157,6 @@ export default class FridayPlugin extends Plugin {
 		if (projectId) {
 			const existingProject = this.projectService.getProject(projectId);
 			if (existingProject) {
-				console.log('Found existing project configuration, applying to panel:', projectId);
 				// Apply the entire project configuration
 				await this.applyExistingProjectToPanel(existingProject);
 				return;
@@ -232,7 +231,6 @@ export default class FridayPlugin extends Plugin {
 			// Use the registered method from Site.svelte to apply complete project configuration
 			if (this.applyProjectConfigurationToPanel) {
 				this.applyProjectConfigurationToPanel(project);
-				console.log('Project configuration applied successfully:', project.name);
 			} else {
 				console.error('applyProjectConfigurationToPanel method not registered yet');
 			}
@@ -476,7 +474,7 @@ export default class FridayPlugin extends Plugin {
 	/**
 	 * Initialize FTP uploader with current settings
 	 */
-	initializeFTP() {
+	initializeFTP(preferredSecure?: boolean) {
 		const { ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert } = this.settings;
 		
 		if (ftpServer && ftpUsername && ftpPassword) {
@@ -485,7 +483,8 @@ export default class FridayPlugin extends Plugin {
 				username: ftpUsername,
 				password: ftpPassword,
 				remoteDir: ftpRemoteDir || '/',
-				ignoreCert: ftpIgnoreCert
+				ignoreCert: ftpIgnoreCert,
+				preferredSecure: preferredSecure
 			});
 		} else {
 			this.ftp = null;

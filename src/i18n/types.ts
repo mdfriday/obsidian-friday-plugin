@@ -290,6 +290,7 @@ export interface TranslationNamespace {
 		ftp_upload_failed: string;
 		ftp_upload_success: string;
 		ftp_fallback_to_plain: string;
+		incremental_upload_stats: string;
 	};
 
 	// Info and descriptions

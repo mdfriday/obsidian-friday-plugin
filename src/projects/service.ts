@@ -1,5 +1,8 @@
 import type FridayPlugin from '../main';
 import type { ProjectConfig, ProjectBuildHistory, ProjectsData } from './types';
+import type { FileManifest } from '../ftp';
+import * as path from 'path';
+import * as fs from 'fs';
 
 /**
  * Service class for managing site projects
@@ -37,9 +40,6 @@ export class ProjectService {
 			if (await adapter.exists(this.dataFilePath)) {
 				const content = await adapter.read(this.dataFilePath);
 				this.data = JSON.parse(content);
-				console.log('Projects data loaded successfully:', this.data.projects.length, 'projects');
-			} else {
-				console.log('No projects data file found, starting fresh');
 			}
 		} catch (error) {
 			console.error('Failed to load projects data:', error);
@@ -57,7 +57,6 @@ export class ProjectService {
 		try {
 			const adapter = this.plugin.app.vault.adapter;
 			await adapter.write(this.dataFilePath, JSON.stringify(this.data, null, 2));
-			console.log('Projects data saved successfully:', this.data.projects.length, 'projects');
 		} catch (error) {
 			console.error('Failed to save projects data:', error);
 			console.error('Data file path:', this.dataFilePath);
@@ -91,7 +90,6 @@ export class ProjectService {
 			project.createdAt = existingProject.createdAt;
 			project.updatedAt = Date.now();
 			this.data.projects[existingIndex] = project;
-			console.log('Project updated:', project.name);
 		} else {
 			// Add new project
 			if (!project.createdAt) {
@@ -99,7 +97,6 @@ export class ProjectService {
 			}
 			project.updatedAt = Date.now();
 			this.data.projects.push(project);
-			console.log('New project created:', project.name);
 		}
 
 		await this.saveData();
@@ -153,6 +150,78 @@ export class ProjectService {
 	async clearProjectBuildHistory(projectId: string): Promise<void> {
 		this.data.buildHistory = this.data.buildHistory.filter(h => h.projectId !== projectId);
 		await this.saveData();
+	}
+
+	/**
+	 * Get manifest file path for a project
+	 */
+	private getManifestFilePath(projectId: string, uploadMethod: 'ftp' | 'netlify' | 'other' = 'ftp'): string {
+		// Sanitize projectId to create a valid filename
+		const sanitizedId = projectId.replace(/[^a-zA-Z0-9-_]/g, '_');
+		const filename = `manifest-${uploadMethod}-${sanitizedId}.json`;
+		return path.join(this.plugin.pluginDir, filename);
+	}
+
+	/**
+	 * Load manifest for a project
+	 */
+	async loadManifest(projectId: string, uploadMethod: 'ftp' | 'netlify' | 'other' = 'ftp'): Promise<FileManifest | null> {
+		try {
+			const filePath = this.getManifestFilePath(projectId, uploadMethod);
+			const adapter = this.plugin.app.vault.adapter;
+			
+			if (!(await adapter.exists(filePath))) {
+				return null;
+			}
+
+			const content = await adapter.read(filePath);
+			const manifest = JSON.parse(content) as FileManifest;
+			
+			return manifest;
+		} catch (error) {
+			console.error(`[ProjectService] Failed to load manifest for ${projectId}:`, error);
+			return null;
+		}
+	}
+
+	/**
+	 * Save manifest for a project
+	 */
+	async saveManifest(manifest: FileManifest): Promise<void> {
+		try {
+			const filePath = this.getManifestFilePath(manifest.projectId, manifest.uploadMethod);
+			const adapter = this.plugin.app.vault.adapter;
+			
+			// Ensure directory exists
+			const dirPath = path.dirname(filePath);
+			if (!(await adapter.exists(dirPath))) {
+				await fs.promises.mkdir(dirPath, { recursive: true });
+			}
+
+			// Save manifest
+			const content = JSON.stringify(manifest, null, 2);
+			await adapter.write(filePath, content);
+			
+		} catch (error) {
+			console.error(`[ProjectService] Failed to save manifest for ${manifest.projectId}:`, error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Delete manifest for a project
+	 */
+	async deleteManifest(projectId: string, uploadMethod: 'ftp' | 'netlify' | 'other' = 'ftp'): Promise<void> {
+		try {
+			const filePath = this.getManifestFilePath(projectId, uploadMethod);
+			const adapter = this.plugin.app.vault.adapter;
+			
+			if (await adapter.exists(filePath)) {
+				await adapter.remove(filePath);
+			}
+		} catch (error) {
+			console.error(`[ProjectService] Failed to delete manifest for ${projectId}:`, error);
+		}
 	}
 }
 
