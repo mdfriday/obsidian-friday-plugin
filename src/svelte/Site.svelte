@@ -906,6 +906,10 @@
 				serverRunning = false;
 			}
 
+			// Clear previous monitoring paths to avoid accumulation across builds
+			absSelectedFolderPath = [];
+			absProjContentPath = [];
+
 			// Generate random preview ID
 			previewId = generateRandomId();
 

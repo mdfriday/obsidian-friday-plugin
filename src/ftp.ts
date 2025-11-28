@@ -540,72 +540,59 @@ export class FTPUploader {
 				}
 			}
 
-			// Delete obsolete files first
+			// Delete obsolete files first (best effort, don't block upload on deletion errors)
 			if (toDelete.length > 0) {
+				console.log(`[FTP Incremental] 🗑️  Attempting to delete ${toDelete.length} obsolete files...`);
 				for (const filePath of toDelete) {
 					try {
-						await this.client.remove(filePath);
+						// Use absolute remote path for deletion
+						const remoteFilePath = this.config.remoteDir && this.config.remoteDir !== '/' 
+							? `${this.config.remoteDir}/${filePath}`.replace(/\\/g, '/')
+							: filePath.replace(/\\/g, '/');
+						await this.client.remove(remoteFilePath);
 					} catch (err) {
-						console.warn(`[FTP Incremental]   - Failed to delete ${filePath}:`, err);
+						// Deletion errors are non-critical - just log and continue
+						// The main goal is to upload new/updated files successfully
+						console.error(`[FTP Incremental]   - ⚠️  Failed to delete ${filePath} (non-critical):`, err);
 					}
 				}
 			}
 
 			// Track created directories to avoid repeated creation attempts
 			const createdDirs = new Set<string>();
-			
+
 			for (const filePath of toUpload) {
 				const localFilePath = path.join(localDir, filePath);
-				const remoteFilePath = filePath;
-				
+				// Use absolute remote path: base directory + relative path
+				const remoteFilePath = this.config.remoteDir && this.config.remoteDir !== '/' 
+					? `${this.config.remoteDir}/${filePath}`.replace(/\\/g, '/')
+					: filePath.replace(/\\/g, '/');
+
 				// Ensure remote directory exists
 				const remoteDir = path.dirname(remoteFilePath).replace(/\\/g, '/');
 				if (remoteDir && remoteDir !== '.' && remoteDir !== '/') {
 					if (!createdDirs.has(remoteDir)) {
 						try {
-							// Split path and create directories one by one
-							const parts = remoteDir.split('/').filter(p => p);
-							let currentPath = '';
-							
-							for (const part of parts) {
-								currentPath = currentPath ? `${currentPath}/${part}` : part;
-								
-								if (!createdDirs.has(currentPath)) {
-									try {
-										// Try to create directory
-										await this.client.ensureDir(currentPath);
-										createdDirs.add(currentPath);
-									} catch (err) {
-										// Directory might already exist, try to cd into it
-										try {
-											await this.client.cd(currentPath);
-											createdDirs.add(currentPath);
-										} catch (cdErr) {
-											console.error(`[FTP Incremental]   - Failed to ensure dir ${currentPath}:`, err);
-											throw new Error(`Cannot create or access directory: ${currentPath}`);
-										}
-									}
-								}
-							}
-							
-							// Go back to base directory
-							if (this.config.remoteDir && this.config.remoteDir !== '/') {
-								await this.client.cd(this.config.remoteDir);
-							}
-							
+							// Use ensureDir with absolute path - it will create all parent directories
+							await this.client.ensureDir(remoteDir);
 							createdDirs.add(remoteDir);
 						} catch (err) {
-							console.error(`[FTP Incremental]   - Failed to ensure directory ${remoteDir}:`, err);
-							throw err;
+							// Directory creation failed, but try to continue
+							// The upload might still succeed if directory already exists
+							console.error(`[FTP Incremental]   - ⚠️  Failed to ensure directory ${remoteDir}:`, err);
+							console.error(`[FTP Incremental]   - Will attempt upload anyway...`);
 						}
 					}
 				}
 				
-				// Upload file
+				// Upload file (this is the critical operation)
 				try {
 					await this.client.uploadFrom(localFilePath, remoteFilePath);
 				} catch (err) {
-					console.error(`[FTP Incremental]   - Failed to upload ${filePath}:`, err);
+					console.error(`[FTP Incremental]   - ❌ Upload failed for ${filePath}:`, err);
+					console.error(`[FTP Incremental]   - Local path: ${localFilePath}`);
+					console.error(`[FTP Incremental]   - Remote path: ${remoteFilePath}`);
+					// Upload failure is critical - throw error to stop the process
 					throw err;
 				}
 			}
