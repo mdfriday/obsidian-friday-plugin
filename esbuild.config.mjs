@@ -13,7 +13,7 @@ if you want to view the source, please visit the github repository of this plugi
 `
 
 const prod = process.argv[2] === 'production'
-const pluginDir = '/Users/sunwei/github/sunwei/obsidian-vault/.obsidian/plugins/mdfriday';
+const pluginDir = '/Users/sunwei/github/mdfriday/obsidian-vault/.obsidian/plugins/mdfriday';
 
 // 构建完成后的回调函数，用于处理CSS文件
 const onBuildComplete = (result) => {
