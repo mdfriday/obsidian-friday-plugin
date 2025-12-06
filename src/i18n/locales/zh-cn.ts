@@ -240,11 +240,12 @@ export const zhCn: TranslationNamespace = {
 		netlify_deploy_failed: "Netlify 部署失败：{{error}}",
 		netlify_deploy_success: "站点已成功部署到 Netlify！",
 
-		// FTP messages
-		ftp_settings_missing: "请先配置 FTP 设置",
-		ftp_upload_failed: "FTP 上传失败：{{error}}",
-		ftp_upload_success: "站点已成功上传到 FTP 服务器！",
-		ftp_fallback_to_plain: "服务器不支持加密，已切换到普通 FTP",
+	// FTP messages
+	ftp_settings_missing: "请先配置 FTP 设置",
+	ftp_upload_failed: "FTP 上传失败：{{error}}",
+	ftp_upload_success: "站点已成功上传到 FTP 服务器！",
+	ftp_fallback_to_plain: "服务器不支持加密，已切换到普通 FTP",
+	ftp_fallback_to_full: "⚠️ 增量上传失败，正在尝试完整上传作为备选方案...",
 
 		// User messages
 		enter_email_password: "请输入您的邮箱和密码",

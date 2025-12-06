@@ -285,12 +285,13 @@ export interface TranslationNamespace {
 		netlify_deploy_failed: string;
 		netlify_deploy_success: string;
 
-		// FTP messages
-		ftp_settings_missing: string;
-		ftp_upload_failed: string;
-		ftp_upload_success: string;
-		ftp_fallback_to_plain: string;
-		incremental_upload_stats: string;
+	// FTP messages
+	ftp_settings_missing: string;
+	ftp_upload_failed: string;
+	ftp_upload_success: string;
+	ftp_fallback_to_plain: string;
+	ftp_fallback_to_full: string;
+	incremental_upload_stats: string;
 	};
 
 	// Info and descriptions

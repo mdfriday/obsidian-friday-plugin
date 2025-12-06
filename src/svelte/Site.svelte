@@ -1282,22 +1282,66 @@
 				publishProgress = Math.round(progress.percentage);
 			});
 
-			let result;
-			try {
-				// Get project ID for incremental upload
-				const projectId = getProjectId();
+		let result;
+		try {
+			// Get project ID for incremental upload
+			const projectId = getProjectId();
+			
+			if (projectId) {
+				// Load previous manifest
+				const oldManifest = await plugin.projectService.loadManifest(projectId, 'ftp');
 				
-				if (projectId) {
-					// Load previous manifest
-					const oldManifest = await plugin.projectService.loadManifest(projectId, 'ftp');
-					
+				// Try incremental upload first
+				let incrementalResult;
+				let shouldFallbackToFull = false;
+				
+				try {
 					// Use incremental upload
-					const incrementalResult = await plugin.ftp.uploadDirectoryIncremental(
+					incrementalResult = await plugin.ftp.uploadDirectoryIncremental(
 						publicDir,
 						projectId,
 						oldManifest
 					);
 					
+					// Check if incremental upload failed
+					if (!incrementalResult.success) {
+						shouldFallbackToFull = true;
+						console.warn('[FTP] Incremental upload failed, will fallback to full upload');
+						new Notice(
+							t('messages.ftp_fallback_to_full') || 
+							'⚠️ Incremental upload failed, trying full upload as fallback...',
+							4000
+						);
+					}
+				} catch (err) {
+					// Incremental upload threw an error, fallback to full upload
+					shouldFallbackToFull = true;
+					console.error('[FTP] Incremental upload error, will fallback to full upload:', err);
+					new Notice(
+						t('messages.ftp_fallback_to_full') || 
+						'⚠️ Incremental upload failed, trying full upload as fallback...',
+						4000
+					);
+				}
+				
+				// Fallback to full upload if incremental failed
+				if (shouldFallbackToFull) {
+					console.log('[FTP] Starting full upload as fallback...');
+					// Reset progress to 0 for new upload attempt
+					publishProgress = 0;
+					
+					result = await plugin.ftp.uploadDirectory(publicDir);
+					
+					// If full upload succeeded, generate and save manifest for next time
+					if (result.success) {
+						console.log('[FTP] Full upload succeeded, generating manifest for next incremental upload');
+						const newManifest = await plugin.ftp.generateManifest(publicDir, projectId);
+						newManifest.uploadMethod = 'ftp';
+						newManifest.remoteDir = plugin.settings.ftpRemoteDir;
+						await plugin.projectService.saveManifest(newManifest);
+					}
+				} else {
+					// Incremental upload succeeded
 					result = {
 						success: incrementalResult.success,
 						usedSecure: incrementalResult.usedSecure,
@@ -1320,16 +1364,17 @@
 									unchanged,
 									saved: savedTime
 								}) || 
-								`Incremental upload: ${uploaded} uploaded, ${deleted} deleted, ${unchanged} unchanged (${savedTime}% time saved)`,
+								`✅ Incremental upload: ${uploaded} uploaded, ${deleted} deleted, ${unchanged} unchanged (${savedTime}% time saved)`,
 								4000
 							);
 						}
 					}
-				} else {
-					// Fallback to full upload if no project ID
-					result = await plugin.ftp.uploadDirectory(publicDir);
 				}
-			} finally {
+			} else {
+				// Fallback to full upload if no project ID
+				result = await plugin.ftp.uploadDirectory(publicDir);
+			}
+		} finally {
 				// Restore original settings
 				plugin.settings.ftpServer = originalServer;
 				plugin.settings.ftpUsername = originalUsername;

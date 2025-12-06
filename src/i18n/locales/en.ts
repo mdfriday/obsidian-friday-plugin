@@ -250,12 +250,14 @@ export const en: TranslationNamespace = {
 		netlify_deploy_failed: "Netlify deployment failed: {{error}}",
 		netlify_deploy_success: "Site deployed to Netlify successfully!",
 
-		// FTP messages
-		ftp_settings_missing: "Please configure FTP settings first",
-		ftp_upload_failed: "FTP upload failed: {{error}}",
-		ftp_upload_success: "Site uploaded to FTP server successfully!",
-		ftp_fallback_to_plain:
-			"Server does not support encryption, switched to plain FTP",
+	// FTP messages
+	ftp_settings_missing: "Please configure FTP settings first",
+	ftp_upload_failed: "FTP upload failed: {{error}}",
+	ftp_upload_success: "Site uploaded to FTP server successfully!",
+	ftp_fallback_to_plain:
+		"Server does not support encryption, switched to plain FTP",
+	ftp_fallback_to_full:
+		"⚠️ Incremental upload failed, trying full upload as fallback...",
 
 		// User messages
 		enter_email_password: "Please enter your email and password",

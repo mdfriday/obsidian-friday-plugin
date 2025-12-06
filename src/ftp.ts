@@ -69,7 +69,7 @@ export class FTPUploader {
 		return new Promise((resolve, reject) => {
 			const hash = crypto.createHash('md5');
 			const stream = fs.createReadStream(filePath);
-			
+
 			stream.on('data', (data) => hash.update(data));
 			stream.on('end', () => resolve(hash.digest('hex')));
 			stream.on('error', reject);
@@ -84,20 +84,20 @@ export class FTPUploader {
 
 		const scanRecursive = async (currentPath: string, relativePath: string = '') => {
 			const items = await fs.promises.readdir(currentPath, { withFileTypes: true });
-			
+
 			for (const item of items) {
 				const itemPath = path.join(currentPath, item.name);
 				const itemRelativePath = relativePath ? path.join(relativePath, item.name) : item.name;
-				
+
 				if (item.isDirectory()) {
 					await scanRecursive(itemPath, itemRelativePath);
 				} else if (item.isFile()) {
 					const stats = await fs.promises.stat(itemPath);
 					const hash = await this.calculateFileHash(itemPath);
-					
+
 					// Normalize path separators for cross-platform compatibility
 					const normalizedPath = itemRelativePath.replace(/\\/g, '/');
-					
+
 					files[normalizedPath] = {
 						hash,
 						size: stats.size,
@@ -143,7 +143,7 @@ export class FTPUploader {
 		// Find files to upload (new or modified)
 		for (const [filePath, newEntry] of Object.entries(newManifest.files)) {
 			const oldEntry = oldManifest.files[filePath];
-			
+
 			if (!oldEntry) {
 				// New file
 				toUpload.push(filePath);
@@ -170,10 +170,10 @@ export class FTPUploader {
 
 		const calculateRecursive = async (currentPath: string) => {
 			const items = await fs.promises.readdir(currentPath, { withFileTypes: true });
-			
+
 			for (const item of items) {
 				const itemPath = path.join(currentPath, item.name);
-				
+
 				if (item.isDirectory()) {
 					await calculateRecursive(itemPath);
 				} else if (item.isFile()) {
@@ -196,7 +196,7 @@ export class FTPUploader {
 		// Enable verbose logging only in development
 		const isDevelopment = process.env.NODE_ENV === 'development';
 		this.client.ftp.verbose = isDevelopment;
-		
+
 		// Force IPv4 to avoid EPSV issues on Windows
 		this.client.ftp.ipFamily = 4;
 
@@ -222,7 +222,7 @@ export class FTPUploader {
 					this.client = new ftp.Client();
 					this.client.ftp.verbose = isDevelopment;
 					this.client.ftp.ipFamily = 4;
-					
+
 					const result = await this.trySecureFTP();
 					const ftpsDuration = Date.now() - ftpsStart;
 					if (this.onConnectionTypeDiscovered) {
@@ -252,7 +252,7 @@ export class FTPUploader {
 					this.client = new ftp.Client();
 					this.client.ftp.verbose = isDevelopment;
 					this.client.ftp.ipFamily = 4;
-					
+
 					const result = await this.tryPlainFTP();
 					if (this.onConnectionTypeDiscovered) {
 						this.onConnectionTypeDiscovered(false);
@@ -279,7 +279,7 @@ export class FTPUploader {
 			secure: false,
 			timeout: 90000
 		};
-		
+
 		await this.client.access(plainConfig);
 		return { usedSecure: false };
 	}
@@ -293,83 +293,14 @@ export class FTPUploader {
 			user: this.config.username,
 			password: this.config.password,
 			secure: true,
-			secureOptions: { 
-				rejectUnauthorized: !this.config.ignoreCert 
+			secureOptions: {
+				rejectUnauthorized: !this.config.ignoreCert
 			},
 			timeout: 90000
 		};
-		
+
 		await this.client.access(secureConfig);
 		return { usedSecure: true };
-	}
-
-	/**
-	 * Clean up potentially corrupted files on remote server (files with size 0)
-	 * This helps recover from interrupted uploads
-	 */
-	private async cleanupCorruptedFiles(remoteDir: string): Promise<void> {
-		try {
-			const files = await this.client.list(remoteDir);
-			const corruptedFiles = files.filter(file => 
-				file.type === ftp.FileType.File && file.size === 0
-			);
-
-			if (corruptedFiles.length > 0) {
-				console.log(`[FTP Cleanup] 🧹 Found ${corruptedFiles.length} corrupted (0-byte) files, cleaning up...`);
-				
-				for (const file of corruptedFiles) {
-					try {
-						const filePath = `${remoteDir}/${file.name}`.replace(/\/+/g, '/');
-						await this.client.remove(filePath);
-						console.log(`[FTP Cleanup]   ✓ Removed: ${file.name}`);
-					} catch (err) {
-						console.warn(`[FTP Cleanup]   ⚠️  Failed to remove ${file.name}:`, err);
-					}
-				}
-			}
-		} catch (err) {
-			// Cleanup is best-effort, don't block upload if it fails
-			console.warn('[FTP Cleanup] ⚠️  Cleanup failed (non-critical):', err);
-		}
-	}
-
-	/**
-	 * Recursively clean up corrupted files in directory tree
-	 */
-	private async cleanupCorruptedFilesRecursive(remoteDir: string): Promise<void> {
-		try {
-			const items = await this.client.list(remoteDir);
-			
-			// First, clean up files in current directory
-			const corruptedFiles = items.filter(item => 
-				item.type === ftp.FileType.File && item.size === 0
-			);
-
-			for (const file of corruptedFiles) {
-				try {
-					const filePath = `${remoteDir}/${file.name}`.replace(/\/+/g, '/');
-					await this.client.remove(filePath);
-					console.log(`[FTP Cleanup]   ✓ Removed: ${filePath}`);
-				} catch (err) {
-					console.warn(`[FTP Cleanup]   ⚠️  Failed to remove ${file.name}:`, err);
-				}
-			}
-
-			// Then, recursively process subdirectories
-			const directories = items.filter(item => 
-				item.type === ftp.FileType.Directory && 
-				item.name !== '.' && 
-				item.name !== '..'
-			);
-
-			for (const dir of directories) {
-				const subDirPath = `${remoteDir}/${dir.name}`.replace(/\/+/g, '/');
-				await this.cleanupCorruptedFilesRecursive(subDirPath);
-			}
-		} catch (err) {
-			// Cleanup is best-effort
-			console.warn(`[FTP Cleanup] ⚠️  Failed to process ${remoteDir}:`, err);
-		}
 	}
 
 	/**
@@ -402,21 +333,21 @@ export class FTPUploader {
 			// Setup throttled progress tracking after successful connection
 			const PROGRESS_THROTTLE_MS = 200; // Update progress every 200ms max
 			this.lastProgressUpdate = 0;
-			
+
 			this.client.trackProgress(info => {
 				this.transferredSize += info.bytes;
-				
+
 				// Throttle progress updates to avoid excessive UI updates
 				const now = Date.now();
 				if (now - this.lastProgressUpdate < PROGRESS_THROTTLE_MS) {
 					return; // Skip this update
 				}
 				this.lastProgressUpdate = now;
-				
+
 				// Calculate real progress percentage
-				const realProgress = this.totalSize > 0 ? 
+				const realProgress = this.totalSize > 0 ?
 					(this.transferredSize / this.totalSize) : 0;
-				
+
 				// Apply easing function for better visual perception
 				// Start from 40% and scale to 100% using square root
 				// This makes: 0% → 40%, 25% → 70%, 50% → 82%, 75% → 92%, 100% → 100%
@@ -445,11 +376,6 @@ export class FTPUploader {
 					await this.client.cd(this.config.remoteDir);
 				}
 			}
-
-			// Clean up any corrupted (0-byte) files from previous failed uploads
-			const targetDir = this.config.remoteDir || '/';
-			console.log('[FTP Upload] 🧹 Checking for corrupted files from previous failed uploads...');
-			await this.cleanupCorruptedFilesRecursive(targetDir);
 
 			// Upload directory contents
 			await this.client.uploadFromDir(localDir);
@@ -487,6 +413,65 @@ export class FTPUploader {
 	}
 
 	/**
+	 * Upload a single file with retry mechanism
+	 * This handles the case where a previous upload left a 0-byte file on the server
+	 */
+	private async uploadFileWithRetry(
+		localFilePath: string,
+		remoteFilePath: string,
+		displayName: string,
+		maxRetries: number = 2
+	): Promise<void> {
+		let lastError: Error | null = null;
+
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				// CRITICAL FIX: Always delete the remote file first before uploading
+				// This prevents issues with:
+				// 1. 0-byte files left from previous failed uploads
+				// 2. File overwrite conflicts that cause control socket timeouts
+				// 3. FTP server locking issues with incomplete files
+				try {
+					await this.client.remove(remoteFilePath);
+					console.log(`[FTP Incremental]   - 🗑️  Removed existing file before upload: ${displayName}`);
+				} catch (removeErr) {
+					// File doesn't exist or deletion failed - this is acceptable
+					// We'll proceed with upload anyway
+				}
+
+				// Now upload the file
+				await this.client.uploadFrom(localFilePath, remoteFilePath);
+				
+				// Success! Log and return
+				if (attempt > 1) {
+					console.log(`[FTP Incremental]   - ✅ Upload succeeded on attempt ${attempt}: ${displayName}`);
+				}
+				return;
+
+			} catch (err) {
+				lastError = err as Error;
+				
+				if (attempt < maxRetries) {
+					// Not the last attempt, log and retry
+					console.warn(`[FTP Incremental]   - ⚠️  Upload attempt ${attempt}/${maxRetries} failed for ${displayName}, retrying...`);
+					console.warn(`[FTP Incremental]   - Error: ${lastError.message}`);
+					
+					// Wait a bit before retrying (exponential backoff)
+					const waitTime = 1000 * attempt; // 1s, 2s, etc.
+					await new Promise(resolve => setTimeout(resolve, waitTime));
+				} else {
+					// Last attempt failed, throw the error
+					console.error(`[FTP Incremental]   - ❌ All upload attempts failed for ${displayName}`);
+					throw lastError;
+				}
+			}
+		}
+
+		// Should never reach here, but just in case
+		throw lastError || new Error('Upload failed with unknown error');
+	}
+
+	/**
 	 * Test FTP connection
 	 */
 	async testConnection(): Promise<{ success: boolean; usedSecure: boolean; error?: string }> {
@@ -518,10 +503,10 @@ export class FTPUploader {
 		localDir: string,
 		projectId: string,
 		oldManifest: FileManifest | null
-	): Promise<{ 
-		success: boolean; 
-		usedSecure: boolean; 
-		error?: string; 
+	): Promise<{
+		success: boolean;
+		usedSecure: boolean;
+		error?: string;
 		newManifest?: FileManifest;
 		stats?: {
 			uploaded: number;
@@ -535,10 +520,10 @@ export class FTPUploader {
 		try {
 			// Generate new manifest
 			const newManifest = await this.generateManifest(localDir, projectId);
-			
+
 			// Compare with old manifest
 			const { toUpload, toDelete, unchanged } = this.compareManifests(oldManifest, newManifest);
-			
+
 			const stats = {
 				uploaded: toUpload.length,
 				deleted: toDelete.length,
@@ -578,16 +563,16 @@ export class FTPUploader {
 			// Setup throttled progress tracking
 			const PROGRESS_THROTTLE_MS = 200;
 			this.lastProgressUpdate = 0;
-			
+
 			this.client.trackProgress(info => {
 				this.transferredSize += info.bytes;
-				
+
 				const now = Date.now();
 				if (now - this.lastProgressUpdate < PROGRESS_THROTTLE_MS) {
 					return;
 				}
 				this.lastProgressUpdate = now;
-				
+
 				const realProgress = this.totalSize > 0 ? (this.transferredSize / this.totalSize) : 0;
 				const BASE_PROGRESS = 40;
 				const PROGRESS_RANGE = 60;
@@ -614,18 +599,13 @@ export class FTPUploader {
 				}
 			}
 
-			// Clean up any corrupted (0-byte) files from previous failed uploads
-			const targetDir = this.config.remoteDir || '/';
-			console.log('[FTP Incremental] 🧹 Checking for corrupted files...');
-			await this.cleanupCorruptedFilesRecursive(targetDir);
-
 			// Delete obsolete files first (best effort, don't block upload on deletion errors)
 			if (toDelete.length > 0) {
 				console.log(`[FTP Incremental] 🗑️  Attempting to delete ${toDelete.length} obsolete files...`);
 				for (const filePath of toDelete) {
 					try {
 						// Use absolute remote path for deletion
-						const remoteFilePath = this.config.remoteDir && this.config.remoteDir !== '/' 
+						const remoteFilePath = this.config.remoteDir && this.config.remoteDir !== '/'
 							? `${this.config.remoteDir}/${filePath}`.replace(/\\/g, '/')
 							: filePath.replace(/\\/g, '/');
 						await this.client.remove(remoteFilePath);
@@ -643,7 +623,7 @@ export class FTPUploader {
 			for (const filePath of toUpload) {
 				const localFilePath = path.join(localDir, filePath);
 				// Use absolute remote path: base directory + relative path
-				const remoteFilePath = this.config.remoteDir && this.config.remoteDir !== '/' 
+				const remoteFilePath = this.config.remoteDir && this.config.remoteDir !== '/'
 					? `${this.config.remoteDir}/${filePath}`.replace(/\\/g, '/')
 					: filePath.replace(/\\/g, '/');
 
@@ -663,58 +643,17 @@ export class FTPUploader {
 						}
 					}
 				}
-				
-				// Upload file with retry and cleanup on failure
-				const MAX_RETRIES = 2;
-				let uploadSuccess = false;
-				let lastError: Error | null = null;
 
-				for (let attempt = 0; attempt <= MAX_RETRIES && !uploadSuccess; attempt++) {
-					try {
-						if (attempt > 0) {
-							console.log(`[FTP Incremental]   - 🔄 Retry ${attempt}/${MAX_RETRIES} for ${filePath}`);
-							
-							// Before retry, try to remove potentially corrupted file
-							try {
-								await this.client.remove(remoteFilePath);
-								console.log(`[FTP Incremental]   - 🧹 Cleaned up corrupted file before retry`);
-							} catch (cleanupErr) {
-								// Ignore cleanup errors
-							}
-						}
-
-						await this.client.uploadFrom(localFilePath, remoteFilePath);
-						uploadSuccess = true;
-						
-						if (attempt > 0) {
-							console.log(`[FTP Incremental]   - ✓ Upload succeeded on retry ${attempt}`);
-						}
-					} catch (err) {
-						lastError = err instanceof Error ? err : new Error(String(err));
-						
-						if (attempt < MAX_RETRIES) {
-							// Wait before retry (exponential backoff: 1s, 2s)
-							const waitTime = Math.pow(2, attempt) * 1000;
-							await new Promise(resolve => setTimeout(resolve, waitTime));
-						}
-					}
-				}
-
-				if (!uploadSuccess && lastError) {
-					console.error(`[FTP Incremental]   - ❌ Upload failed after ${MAX_RETRIES + 1} attempts for ${filePath}:`, lastError);
+				// Upload file (this is the critical operation)
+				// Use retry mechanism to handle transient errors and 0-byte file issues
+				try {
+					await this.uploadFileWithRetry(localFilePath, remoteFilePath, filePath, 2);
+				} catch (err) {
+					console.error(`[FTP Incremental]   - ❌ Upload failed for ${filePath} after retries:`, err);
 					console.error(`[FTP Incremental]   - Local path: ${localFilePath}`);
 					console.error(`[FTP Incremental]   - Remote path: ${remoteFilePath}`);
-					
-					// Try to clean up potentially corrupted file before throwing
-					try {
-						await this.client.remove(remoteFilePath);
-						console.log(`[FTP Incremental]   - 🧹 Cleaned up corrupted file`);
-					} catch (cleanupErr) {
-						// Ignore cleanup errors
-					}
-					
 					// Upload failure is critical - throw error to stop the process
-					throw lastError;
+					throw err;
 				}
 			}
 
