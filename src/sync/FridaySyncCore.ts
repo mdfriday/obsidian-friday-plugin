@@ -162,7 +162,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     private statusCallback: SyncStatusCallback | null = null;
     private _status: SyncStatus = "NOT_CONNECTED";
     
-    // Reactive counters for status display
+    // Reactive counters for status display (same as livesync)
     replicationStat: ReactiveSource<ReplicationStat> = reactiveSource({
         sent: 0,
         arrived: 0,
@@ -172,6 +172,20 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         lastSyncPushSeq: 0,
         syncStatus: "NOT_CONNECTED" as DatabaseConnectingStatus,
     });
+    
+    // Additional reactive counters for status display
+    requestCount: ReactiveSource<number> = reactiveSource(0);
+    responseCount: ReactiveSource<number> = reactiveSource(0);
+    totalQueued: ReactiveSource<number> = reactiveSource(0);
+    batched: ReactiveSource<number> = reactiveSource(0);
+    processing: ReactiveSource<number> = reactiveSource(0);
+    databaseQueueCount: ReactiveSource<number> = reactiveSource(0);
+    storageApplyingCount: ReactiveSource<number> = reactiveSource(0);
+    replicationResultCount: ReactiveSource<number> = reactiveSource(0);
+    conflictProcessQueueCount: ReactiveSource<number> = reactiveSource(0);
+    pendingFileEventCount: ReactiveSource<number> = reactiveSource(0);
+    processingFileEventCount: ReactiveSource<number> = reactiveSource(0);
+    _totalProcessingCount: ReactiveSource<number> = reactiveSource(0);
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -318,9 +332,12 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     }
 
     /**
-     * Start synchronization (pull from server)
+     * Start synchronization
+     * 
+     * @param continuous - If true (default), starts LiveSync mode (continuous replication)
+     *                     If false, performs a one-shot sync
      */
-    async startSync(continuous: boolean = false): Promise<boolean> {
+    async startSync(continuous: boolean = true): Promise<boolean> {
         if (!this._replicator) {
             this.setStatus("ERRORED", "Replicator not initialized");
             return false;
@@ -329,15 +346,15 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         try {
             this.setStatus("STARTED", "Starting synchronization...");
             
-            // Open replication
+            // Open replication - default is LiveSync (continuous) mode
             await this._replicator.openReplication(
                 this._settings,
-                continuous,  // keepAlive for live sync
+                continuous,  // keepAlive for live sync (default: true)
                 true,        // showResult
                 false        // ignoreCleanLock
             );
 
-            this.setStatus("CONNECTED", "Connected to CouchDB");
+            // Status will be updated by replicator via updateInfo
             return true;
         } catch (error) {
             console.error("Sync failed:", error);

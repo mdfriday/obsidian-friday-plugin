@@ -1,111 +1,251 @@
 /**
- * SyncStatusDisplay - Manages sync status display in status bar and editor
- * Based on livesync's ModuleLog implementation
+ * SyncStatusDisplay - Status display module from livesync
+ * 
+ * This is a direct port of livesync's ModuleLog status display functionality
  */
 
 import { Plugin, Notice } from "obsidian";
-import type { SyncStatus, SyncStatusCallback } from "./SyncService";
-
-export interface ReplicationStat {
-    sent: number;
-    arrived: number;
-    maxPullSeq: number;
-    maxPushSeq: number;
-    lastSyncPullSeq: number;
-    lastSyncPushSeq: number;
-    syncStatus: SyncStatus;
-}
+import { computed, reactive, reactiveSource, type ReactiveValue } from "octagonal-wheels/dataobject/reactive";
+import type { DatabaseConnectingStatus } from "./core/common/types";
+import type { ReplicationStat } from "./core/replication/LiveSyncAbstractReplicator";
+import type { FridaySyncCore } from "./FridaySyncCore";
 
 export const MARK_DONE = "\u{2009}\u{2009}";
 
 export class SyncStatusDisplay {
     private plugin: Plugin;
-    private statusBar: HTMLElement | null = null;
-    private statusDiv: HTMLElement | null = null;
-    private statusLine: HTMLDivElement | null = null;
-    private logMessage: HTMLDivElement | null = null;
-    private messageArea: HTMLDivElement | null = null;
+    private core: FridaySyncCore | null = null;
     
-    // Status tracking
-    private currentStatus: SyncStatus = "NOT_CONNECTED";
-    private replicationStat: ReplicationStat = {
-        sent: 0,
-        arrived: 0,
-        maxPullSeq: 0,
-        maxPushSeq: 0,
-        lastSyncPullSeq: 0,
-        lastSyncPushSeq: 0,
-        syncStatus: "NOT_CONNECTED",
-    };
+    // UI Elements
+    statusBar?: HTMLElement;
+    statusDiv?: HTMLElement;
+    statusLine?: HTMLDivElement;
+    logMessage?: HTMLDivElement;
+    messageArea?: HTMLDivElement;
+    logHistory?: HTMLDivElement;
     
-    // Counters for display
-    private requestCount = 0;
-    private responseCount = 0;
-    private processingCount = 0;
-    private queuedCount = 0;
-    private dbQueueCount = 0;
-    private storageApplyingCount = 0;
-    
-    // Animation frame handling
-    private nextFrameQueue: ReturnType<typeof requestAnimationFrame> | undefined = undefined;
+    // Reactive sources
+    statusLog = reactiveSource("");
+    activeFileStatus = reactiveSource("");
+    statusBarLabels!: ReactiveValue<{ message: string; status: string }>;
     
     // Notification handling
-    private notifies: { [key: string]: { notice: Notice; count: number } } = {};
+    notifies: { [key: string]: { notice: Notice; count: number } } = {};
+    
+    // Animation frame handling
+    nextFrameQueue: ReturnType<typeof requestAnimationFrame> | undefined = undefined;
+    logLines: { ttl: number; message: string }[] = [];
     
     constructor(plugin: Plugin) {
         this.plugin = plugin;
     }
     
     /**
-     * Initialize the status display
+     * Set the sync core reference
      */
-    initialize() {
-        // Create status bar item
-        this.statusBar = this.plugin.addStatusBarItem();
-        this.statusBar.addClass("friday-sync-statusbar");
-        
-        // Create status div for editor display
-        this.createStatusDiv();
-        
-        // Initial status update
-        this.updateDisplay();
+    setCore(core: FridaySyncCore) {
+        this.core = core;
     }
     
     /**
-     * Create the status div that appears in the editor
+     * Initialize the status display
      */
-    private createStatusDiv() {
+    initialize() {
         // Remove any existing status divs
-        document.querySelectorAll(".friday-sync-status")?.forEach((e) => e.remove());
+        document.querySelectorAll(".livesync-status")?.forEach((e) => e.remove());
         
-        // Create new status div
-        const workspace = this.plugin.app.workspace;
-        this.statusDiv = workspace.containerEl.createDiv({ cls: "friday-sync-status" });
-        this.statusLine = this.statusDiv.createDiv({ cls: "friday-sync-status-statusline" });
-        this.messageArea = this.statusDiv.createDiv({ cls: "friday-sync-status-messagearea" });
-        this.logMessage = this.statusDiv.createDiv({ cls: "friday-sync-status-logmessage" });
+        // Set up reactive observers
+        this.observeForLogs();
+        
+        // Create status div
+        this.statusDiv = this.plugin.app.workspace.containerEl.createDiv({ cls: "livesync-status" });
+        this.statusLine = this.statusDiv.createDiv({ cls: "livesync-status-statusline" });
+        this.messageArea = this.statusDiv.createDiv({ cls: "livesync-status-messagearea" });
+        this.logMessage = this.statusDiv.createDiv({ cls: "livesync-status-logmessage" });
+        this.logHistory = this.statusDiv.createDiv({ cls: "livesync-status-loghistory" });
+        
+        // Create status bar
+        this.statusBar = this.plugin.addStatusBarItem();
+        this.statusBar.addClass("syncstatusbar");
         
         // Position the status div
         this.adjustStatusDivPosition();
         
-        // Re-position when layout changes
+        // Register layout change event
         this.plugin.registerEvent(
-            workspace.on("layout-change", () => {
+            this.plugin.app.workspace.on("layout-change", () => {
                 this.adjustStatusDivPosition();
             })
         );
         
         this.plugin.registerEvent(
-            workspace.on("active-leaf-change", () => {
+            this.plugin.app.workspace.on("active-leaf-change", () => {
                 this.adjustStatusDivPosition();
             })
         );
     }
     
     /**
-     * Adjust the position of the status div to the active leaf
+     * Set up reactive observers for log display (from livesync's ModuleLog)
      */
-    private adjustStatusDivPosition() {
+    observeForLogs() {
+        const padSpaces = `\u{2007}`.repeat(10);
+        
+        // Helper function to create padded counter labels
+        function padLeftSpComputed(numI: ReactiveValue<number>, mark: string) {
+            const formatted = reactiveSource("");
+            let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+            let maxLen = 1;
+            numI.onChanged((numX) => {
+                const num = numX.value;
+                const numLen = `${Math.abs(num)}`.length + 1;
+                maxLen = maxLen < numLen ? numLen : maxLen;
+                if (timer) clearTimeout(timer);
+                if (num == 0) {
+                    timer = setTimeout(() => {
+                        formatted.value = "";
+                        maxLen = 1;
+                    }, 3000);
+                }
+                formatted.value = ` ${mark}${`${padSpaces}${num}`.slice(-maxLen)}`;
+            });
+            return computed(() => formatted.value);
+        }
+        
+        // Create counter labels if core is available
+        const replicationResultCount = this.core?.replicationResultCount ?? reactiveSource(0);
+        const databaseQueueCount = this.core?.databaseQueueCount ?? reactiveSource(0);
+        const storageApplyingCount = this.core?.storageApplyingCount ?? reactiveSource(0);
+        const processing = this.core?.processing ?? reactiveSource(0);
+        const totalQueued = this.core?.totalQueued ?? reactiveSource(0);
+        const batched = this.core?.batched ?? reactiveSource(0);
+        const requestCount = this.core?.requestCount ?? reactiveSource(0);
+        const responseCount = this.core?.responseCount ?? reactiveSource(0);
+        
+        const labelReplication = padLeftSpComputed(replicationResultCount, `📥`);
+        const labelDBCount = padLeftSpComputed(databaseQueueCount, `📄`);
+        const labelStorageCount = padLeftSpComputed(storageApplyingCount, `💾`);
+        
+        const queueCountLabelX = reactive(() => {
+            return `${labelReplication()}${labelDBCount()}${labelStorageCount()}`;
+        });
+        const queueCountLabel = () => queueCountLabelX.value;
+        
+        const requestingStatLabel = computed(() => {
+            const diff = requestCount.value - responseCount.value;
+            return diff != 0 ? "📲 " : "";
+        });
+        
+        const replicationStat = this.core?.replicationStat ?? reactiveSource({
+            sent: 0,
+            arrived: 0,
+            maxPullSeq: 0,
+            maxPushSeq: 0,
+            lastSyncPullSeq: 0,
+            lastSyncPushSeq: 0,
+            syncStatus: "NOT_CONNECTED" as DatabaseConnectingStatus,
+        });
+        
+        const replicationStatLabel = computed(() => {
+            const e = replicationStat.value;
+            const sent = e.sent;
+            const arrived = e.arrived;
+            const maxPullSeq = e.maxPullSeq;
+            const maxPushSeq = e.maxPushSeq;
+            const lastSyncPullSeq = e.lastSyncPullSeq;
+            const lastSyncPushSeq = e.lastSyncPushSeq;
+            let pushLast = "";
+            let pullLast = "";
+            let w = "";
+            
+            const labels: Partial<Record<DatabaseConnectingStatus, string>> = {
+                CONNECTED: "⚡",
+                JOURNAL_SEND: "📦↑",
+                JOURNAL_RECEIVE: "📦↓",
+            };
+            
+            switch (e.syncStatus) {
+                case "CLOSED":
+                case "COMPLETED":
+                case "NOT_CONNECTED":
+                    w = "⏹";
+                    break;
+                case "STARTED":
+                    w = "🌀";
+                    break;
+                case "PAUSED":
+                    w = "💤";
+                    break;
+                case "CONNECTED":
+                case "JOURNAL_SEND":
+                case "JOURNAL_RECEIVE":
+                    w = labels[e.syncStatus] || "⚡";
+                    pushLast =
+                        lastSyncPushSeq == 0
+                            ? ""
+                            : lastSyncPushSeq >= maxPushSeq
+                              ? " (LIVE)"
+                              : ` (${maxPushSeq - lastSyncPushSeq})`;
+                    pullLast =
+                        lastSyncPullSeq == 0
+                            ? ""
+                            : lastSyncPullSeq >= maxPullSeq
+                              ? " (LIVE)"
+                              : ` (${maxPullSeq - lastSyncPullSeq})`;
+                    break;
+                case "ERRORED":
+                    w = "⚠";
+                    break;
+                default:
+                    w = "?";
+            }
+            return { w, sent, pushLast, arrived, pullLast };
+        });
+        
+        const labelProc = padLeftSpComputed(processing, `⏳`);
+        const labelPend = padLeftSpComputed(totalQueued, `🛫`);
+        const labelInBatchDelay = padLeftSpComputed(batched, `📬`);
+        
+        const waitingLabel = computed(() => {
+            return `${labelProc()}${labelPend()}${labelInBatchDelay()}`;
+        });
+        
+        const statusLineLabel = computed(() => {
+            const { w, sent, pushLast, arrived, pullLast } = replicationStatLabel();
+            const queued = queueCountLabel();
+            const waiting = waitingLabel();
+            const networkActivity = requestingStatLabel();
+            return {
+                message: `${networkActivity}Sync: ${w} ↑ ${sent}${pushLast} ↓ ${arrived}${pullLast}${waiting}${queued}`,
+            };
+        });
+        
+        const statusBarLabels = reactive(() => {
+            const { message } = statusLineLabel();
+            const status = this.statusLog.value;
+            return {
+                message: `${message}`,
+                status,
+            };
+        });
+        this.statusBarLabels = statusBarLabels;
+        
+        // Throttled update
+        let updateTimer: ReturnType<typeof setTimeout> | undefined;
+        const applyToDisplay = (label: typeof statusBarLabels.value) => {
+            if (updateTimer) return;
+            updateTimer = setTimeout(() => {
+                updateTimer = undefined;
+                this.applyStatusBarText();
+            }, 20);
+        };
+        statusBarLabels.onChanged((label) => applyToDisplay(label.value));
+    }
+    
+    /**
+     * Adjust status div position to active leaf
+     */
+    adjustStatusDivPosition() {
         const mdv = this.plugin.app.workspace.getMostRecentLeaf();
         if (mdv && this.statusDiv) {
             this.statusDiv.remove();
@@ -115,80 +255,72 @@ export class SyncStatusDisplay {
     }
     
     /**
-     * Update sync status
+     * Apply status text to UI elements
      */
-    setStatus(status: SyncStatus, message?: string) {
-        this.currentStatus = status;
-        this.replicationStat.syncStatus = status;
-        
-        if (message) {
-            this.showLogMessage(message);
+    applyStatusBarText() {
+        if (this.nextFrameQueue) {
+            return;
         }
-        
-        this.updateDisplay();
-    }
-    
-    /**
-     * Update replication statistics
-     */
-    updateReplicationStat(stat: Partial<ReplicationStat>) {
-        this.replicationStat = { ...this.replicationStat, ...stat };
-        this.updateDisplay();
-    }
-    
-    /**
-     * Update counters
-     */
-    updateCounters(counters: {
-        requestCount?: number;
-        responseCount?: number;
-        processingCount?: number;
-        queuedCount?: number;
-        dbQueueCount?: number;
-        storageApplyingCount?: number;
-    }) {
-        if (counters.requestCount !== undefined) this.requestCount = counters.requestCount;
-        if (counters.responseCount !== undefined) this.responseCount = counters.responseCount;
-        if (counters.processingCount !== undefined) this.processingCount = counters.processingCount;
-        if (counters.queuedCount !== undefined) this.queuedCount = counters.queuedCount;
-        if (counters.dbQueueCount !== undefined) this.dbQueueCount = counters.dbQueueCount;
-        if (counters.storageApplyingCount !== undefined) this.storageApplyingCount = counters.storageApplyingCount;
-        this.updateDisplay();
-    }
-    
-    /**
-     * Show a log message in the status area
-     */
-    showLogMessage(message: string) {
-        if (this.logMessage) {
-            this.logMessage.innerText = message;
-        }
-        
-        // Clear message after 3 seconds
-        setTimeout(() => {
-            if (this.logMessage) {
-                this.logMessage.innerText = "";
+        this.nextFrameQueue = requestAnimationFrame(() => {
+            this.nextFrameQueue = undefined;
+            const { message, status } = this.statusBarLabels.value;
+            const newMsg = message;
+            let newLog = status;
+            const moduleTagEnd = newLog.indexOf(`]\u{200A}`);
+            if (moduleTagEnd != -1) {
+                newLog = newLog.substring(moduleTagEnd + 2);
             }
+            
+            this.statusBar?.setText(newMsg.split("\n")[0]);
+            if (this.statusDiv) {
+                const now = new Date().getTime();
+                this.logLines = this.logLines.filter((e) => e.ttl > now);
+                const minimumNext = this.logLines.reduce(
+                    (a, b) => (a < b.ttl ? a : b.ttl),
+                    Number.MAX_SAFE_INTEGER
+                );
+                if (this.logLines.length > 0) setTimeout(() => this.applyStatusBarText(), minimumNext - now);
+                const recent = this.logLines.map((e) => e.message);
+                const recentLogs = recent.reverse().join("\n");
+                if (this.logHistory) this.logHistory.innerText = recentLogs;
+                if (this.statusLine) this.statusLine.innerText = newMsg;
+                if (this.logMessage) this.logMessage.innerText = newLog;
+            }
+        });
+        
+        // Schedule status log clear
+        setTimeout(() => {
+            this.statusLog.value = "";
         }, 3000);
     }
     
     /**
-     * Show a warning message in the message area
+     * Add a log message
      */
-    showWarning(message: string) {
-        if (this.messageArea) {
-            this.messageArea.innerText = message ? `⚠️ ${message}` : "";
+    addLog(message: string, level: number = 0) {
+        const now = new Date();
+        const timestamp = now.toLocaleString();
+        const newMessage = timestamp + " -> " + message;
+        
+        console.log(`[Friday Sync] ${message}`);
+        
+        this.statusLog.value = message;
+        this.logLines.push({ ttl: now.getTime() + 3000, message: newMessage });
+        this.applyStatusBarText();
+        
+        // Show notice for important messages
+        if (level >= 2) { // LOG_LEVEL_NOTICE
+            this.showNotice(message);
         }
     }
     
     /**
-     * Show a notification
+     * Show a notice
      */
-    notify(message: string, key?: string, timeout = 5000) {
+    showNotice(message: string, key?: string, timeout = 5000) {
         if (!key) key = message;
         
         if (key in this.notifies) {
-            // Update existing notice
             // @ts-ignore - noticeEl may not be typed
             const isShown = this.notifies[key].notice.noticeEl?.isShown();
             if (!isShown) {
@@ -202,7 +334,6 @@ export class SyncStatusDisplay {
                 this.notifies[key].notice.setMessage(message);
             }
         } else {
-            // Create new notice
             const notice = new Notice(message, 0);
             this.notifies[key] = {
                 count: 0,
@@ -227,121 +358,13 @@ export class SyncStatusDisplay {
     }
     
     /**
-     * Update the display (throttled via requestAnimationFrame)
+     * Clean up
      */
-    private updateDisplay() {
-        if (this.nextFrameQueue) {
-            return;
-        }
-        
-        this.nextFrameQueue = requestAnimationFrame(() => {
-            this.nextFrameQueue = undefined;
-            this.renderStatus();
-        });
-    }
-    
-    /**
-     * Render the status to the UI elements
-     */
-    private renderStatus() {
-        const { message, statusText } = this.buildStatusLabels();
-        
-        // Update status bar
-        if (this.statusBar) {
-            this.statusBar.setText(message.split("\n")[0]);
-        }
-        
-        // Update status line in editor
-        if (this.statusLine) {
-            this.statusLine.innerText = message;
-        }
-    }
-    
-    /**
-     * Build status labels based on current state
-     */
-    private buildStatusLabels(): { message: string; statusText: string } {
-        const { sent, arrived, maxPullSeq, maxPushSeq, lastSyncPullSeq, lastSyncPushSeq, syncStatus } = this.replicationStat;
-        
-        // Status icon
-        let statusIcon = "?";
-        let pushLast = "";
-        let pullLast = "";
-        
-        switch (syncStatus) {
-            case "CLOSED":
-            case "COMPLETED":
-            case "NOT_CONNECTED":
-                statusIcon = "⏹";
-                break;
-            case "STARTED":
-                statusIcon = "🌀";
-                break;
-            case "PAUSED":
-                statusIcon = "💤";
-                break;
-            case "CONNECTED":
-                statusIcon = "⚡";
-                pushLast = lastSyncPushSeq === 0 
-                    ? "" 
-                    : lastSyncPushSeq >= maxPushSeq 
-                        ? " (LIVE)" 
-                        : ` (${maxPushSeq - lastSyncPushSeq})`;
-                pullLast = lastSyncPullSeq === 0 
-                    ? "" 
-                    : lastSyncPullSeq >= maxPullSeq 
-                        ? " (LIVE)" 
-                        : ` (${maxPullSeq - lastSyncPullSeq})`;
-                break;
-            case "ERRORED":
-                statusIcon = "⚠";
-                break;
-        }
-        
-        // Network activity indicator
-        const networkActivity = (this.requestCount - this.responseCount) !== 0 ? "📲 " : "";
-        
-        // Counter labels
-        const counters = this.buildCounterLabels();
-        
-        // Build message
-        const message = `${networkActivity}Sync: ${statusIcon} ↑ ${sent}${pushLast} ↓ ${arrived}${pullLast}${counters}`;
-        
-        return { message, statusText: syncStatus };
-    }
-    
-    /**
-     * Build counter labels for display
-     */
-    private buildCounterLabels(): string {
-        const labels: string[] = [];
-        
-        if (this.processingCount > 0) {
-            labels.push(`⏳${this.processingCount}`);
-        }
-        if (this.queuedCount > 0) {
-            labels.push(`🛫${this.queuedCount}`);
-        }
-        if (this.dbQueueCount > 0) {
-            labels.push(`📄${this.dbQueueCount}`);
-        }
-        if (this.storageApplyingCount > 0) {
-            labels.push(`💾${this.storageApplyingCount}`);
-        }
-        
-        return labels.length > 0 ? " " + labels.join(" ") : "";
-    }
-    
-    /**
-     * Clean up the status display
-     */
-    destroy() {
+    onunload() {
         if (this.statusDiv) {
             this.statusDiv.remove();
-            this.statusDiv = null;
         }
-        
-        document.querySelectorAll(".friday-sync-status")?.forEach((e) => e.remove());
+        document.querySelectorAll(".livesync-status")?.forEach((e) => e.remove());
         
         // Hide all notifications
         for (const key in this.notifies) {
@@ -354,4 +377,3 @@ export class SyncStatusDisplay {
         this.notifies = {};
     }
 }
-

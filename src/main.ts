@@ -518,7 +518,7 @@ export default class FridayPlugin extends Plugin {
 	async onunload() {
 		// Clean up sync status display
 		if (this.syncStatusDisplay) {
-			this.syncStatusDisplay.destroy();
+			this.syncStatusDisplay.onunload();
 			this.syncStatusDisplay = null;
 		}
 		
@@ -575,34 +575,26 @@ export default class FridayPlugin extends Plugin {
 	async initializeSyncService() {
 		this.syncService = new SyncService(this);
 		
-		// Initialize status display (similar to livesync's ModuleLog)
+		// Initialize status display (using livesync's ModuleLog implementation)
 		this.syncStatusDisplay = new SyncStatusDisplay(this);
-		this.syncStatusDisplay.initialize();
-		
-		// Set up status callback to update status display
-		this.syncService.onStatusChange((status, message) => {
-			const statusText = message ? `Sync: ${status} - ${message}` : `Sync: ${status}`;
-			console.log(statusText);
-			
-			// Update status display
-			if (this.syncStatusDisplay) {
-				this.syncStatusDisplay.setStatus(status, message);
-				
-				// Show notification for important status changes
-				if (status === "CONNECTED") {
-					this.syncStatusDisplay.notify("Sync connected to CouchDB", "sync-connected");
-				} else if (status === "ERRORED") {
-					this.syncStatusDisplay.notify(`Sync error: ${message}`, "sync-error");
-				}
-			}
-		});
 
 		// Initialize if sync is enabled
 		if (this.settings.syncEnabled && this.settings.syncConfig) {
 			const initialized = await this.syncService.initialize(this.settings.syncConfig);
-			if (initialized && this.settings.syncConfig.syncOnStart) {
-				await this.syncService.startSync();
+			
+			// Connect status display to sync core after initialization
+			if (initialized && this.syncService.syncCore) {
+				this.syncStatusDisplay.setCore(this.syncService.syncCore);
+				this.syncStatusDisplay.initialize();
+				
+				// Start LiveSync (continuous replication) by default
+				if (this.settings.syncConfig.syncOnStart) {
+					await this.syncService.startSync(true); // true = liveSync mode
+				}
 			}
+		} else {
+			// Initialize status display even if sync is not enabled
+			this.syncStatusDisplay.initialize();
 		}
 	}
 
@@ -1281,3 +1273,4 @@ class FridaySettingTab extends PluginSettingTab {
 		}
 	}
 }
+
