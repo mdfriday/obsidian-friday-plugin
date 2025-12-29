@@ -24,7 +24,7 @@ import {
     E2EEAlgorithms,
 } from "../common/types.ts";
 
-import { PouchDB } from "../pouchdb/pouchdb-http.ts";
+import { PouchDB } from "../pouchdb/pouchdb-browser.ts";
 import { LiveSyncLocalDB, type LiveSyncLocalDBEnv } from "../pouchdb/LiveSyncLocalDB.ts";
 import { isErrorOfMissingDoc } from "../pouchdb/utils_couchdb.ts";
 import { replicationFilter } from "../pouchdb/compress.ts";

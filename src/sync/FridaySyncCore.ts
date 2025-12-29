@@ -33,25 +33,14 @@ import { LiveSyncManagers } from "./core/managers/LiveSyncManagers";
 import { type KeyValueDatabase } from "./core/interfaces/KeyValueDatabase";
 import { type SimpleStore } from "octagonal-wheels/databases/SimpleStoreBase";
 import { Logger, setGlobalLogFunction } from "./core/common/logger";
+import { readContent, isTextDocument } from "./core/common/utils";
 
 // Import services
 import { FridayServiceHub } from "./FridayServiceHub";
 import type { SyncConfig, SyncStatus, SyncStatusCallback } from "./SyncService";
 
-// PouchDB imports
-import PouchDB from "pouchdb-core";
-import idb from "pouchdb-adapter-idb";
-import http from "pouchdb-adapter-http";
-import replication from "pouchdb-replication";
-import mapreduce from "pouchdb-mapreduce";
-import find from "pouchdb-find";
-
-// Initialize PouchDB plugins
-PouchDB.plugin(idb);
-PouchDB.plugin(http);
-PouchDB.plugin(replication);
-PouchDB.plugin(mapreduce);
-PouchDB.plugin(find);
+// PouchDB imports - use the configured PouchDB with all plugins (including transform-pouch)
+import { PouchDB } from "./core/pouchdb/pouchdb-browser";
 
 /**
  * Simple KeyValue Database implementation using localStorage
@@ -534,11 +523,11 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                         continue;
                     }
                     
-                    // Get content
-                    let content: string | ArrayBuffer = "";
-                    if ("data" in fullEntry && fullEntry.data) {
-                        content = fullEntry.data;
-                    }
+                    // Get content using readContent (same as livesync)
+                    // This correctly handles:
+                    // - Text documents: joins string[] chunks into a single string
+                    // - Binary documents: decodes base64 data to ArrayBuffer
+                    const content = readContent(fullEntry);
                     
                     // Ensure parent directories exist
                     const dirPath = path.substring(0, path.lastIndexOf("/"));
@@ -554,19 +543,21 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     }
                     
                     // Write file
+                    // Use isTextDocument to determine if content is text or binary (same as livesync)
+                    const isText = isTextDocument(fullEntry);
                     const existingFile = vault.getAbstractFileByPath(path);
                     if (existingFile) {
-                        if (typeof content === "string") {
-                            await vault.modify(existingFile as any, content);
+                        if (isText) {
+                            await vault.modify(existingFile as any, content as string);
                         } else {
-                            await vault.modifyBinary(existingFile as any, content);
+                            await vault.modifyBinary(existingFile as any, content as ArrayBuffer);
                         }
                         updated++;
                     } else {
-                        if (typeof content === "string") {
-                            await vault.create(path, content);
+                        if (isText) {
+                            await vault.create(path, content as string);
                         } else {
-                            await vault.createBinary(path, content);
+                            await vault.createBinary(path, content as ArrayBuffer);
                         }
                         created++;
                     }

@@ -51,11 +51,13 @@ import type { LiveSyncLocalDB } from "./core/pouchdb/LiveSyncLocalDB";
 import type { LiveSyncAbstractReplicator } from "./core/replication/LiveSyncAbstractReplicator";
 import type { SimpleStore } from "octagonal-wheels/databases/SimpleStoreBase";
 import type { SvelteDialogManagerBase } from "./core/UI/svelteDialog";
+import { readContent, isTextDocument } from "./core/common/utils";
+import { enableEncryption, disableEncryption } from "./core/pouchdb/encryption";
+import { replicationFilter } from "./core/pouchdb/compress";
+import { E2EEAlgorithms } from "./core/common/types";
 
-// PouchDB imports
-import PouchDB from "pouchdb-core";
-import idb from "pouchdb-adapter-idb";
-import http from "pouchdb-adapter-http";
+// PouchDB imports - use the configured PouchDB with transform-pouch plugin
+import { PouchDB } from "./core/pouchdb/pouchdb-browser";
 
 /**
  * Stub API Service
@@ -292,6 +294,8 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
     /**
      * Default handler for processing synchronized documents
      * Writes the document content to the vault
+     * 
+     * This follows the same pattern as livesync's ModuleFileHandler.dbToStorage
      */
     private async defaultProcessSynchroniseResult(doc: MetaEntry): Promise<boolean> {
         try {
@@ -329,16 +333,12 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 return false;
             }
             
-            // Get content as string or binary
-            let content: string | ArrayBuffer;
-            if ("data" in fullEntry && fullEntry.data) {
-                content = fullEntry.data;
-            } else if ("datatype" in fullEntry && fullEntry.datatype === "plain") {
-                content = "";
-            } else {
-                console.log(`[Friday Sync] No data in entry: ${path}`);
-                return false;
-            }
+            // Get content using readContent (same as livesync)
+            // This correctly handles:
+            // - Text documents: joins string[] chunks into a single string  
+            // - Binary documents: decodes base64 data to ArrayBuffer
+            const content = readContent(fullEntry);
+            const isText = isTextDocument(fullEntry);
             
             // Write to vault
             const vault = this.core.plugin.app.vault;
@@ -355,18 +355,18 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             
             if (existingFile) {
                 // Modify existing file
-                if (typeof content === "string") {
-                    await vault.modify(existingFile as any, content);
+                if (isText) {
+                    await vault.modify(existingFile as any, content as string);
                 } else {
-                    await vault.modifyBinary(existingFile as any, content);
+                    await vault.modifyBinary(existingFile as any, content as ArrayBuffer);
                 }
                 console.log(`[Friday Sync] Updated file: ${path}`);
             } else {
                 // Create new file
-                if (typeof content === "string") {
-                    await vault.create(path, content);
+                if (isText) {
+                    await vault.create(path, content as string);
                 } else {
-                    await vault.createBinary(path, content);
+                    await vault.createBinary(path, content as ArrayBuffer);
                 }
                 console.log(`[Friday Sync] Created file: ${path}`);
             }
@@ -653,6 +653,27 @@ class FridayRemoteService extends ServiceBase implements RemoteService {
             
             // Create PouchDB instance
             const db = new PouchDB<EntryDoc>(uri, conf);
+            
+            // Apply replication filter (compression support)
+            replicationFilter(db, compression);
+            
+            // Reset encryption state and enable if passphrase is provided
+            // This is critical for decrypting data from the server (same as livesync)
+            disableEncryption();
+            if (passphrase !== false && typeof passphrase === "string" && passphrase !== "") {
+                // Get E2EEAlgorithm from settings, default to V2 for forward compatibility
+                const settings = this.core.getSettings();
+                const e2eeAlgorithm = settings.E2EEAlgorithm || E2EEAlgorithms.V2;
+                console.log(`[Friday Sync] Enabling encryption with passphrase (algorithm: ${e2eeAlgorithm})`);
+                enableEncryption(
+                    db,
+                    passphrase,
+                    useDynamicIterationCount,
+                    false, // migrationDecrypt
+                    getPBKDF2Salt,
+                    e2eeAlgorithm
+                );
+            }
             
             // If skipInfo, return without fetching info
             if (skipInfo) {
