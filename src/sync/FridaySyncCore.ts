@@ -282,18 +282,21 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
     /**
      * Set up monitoring for replication status changes
+     * Note: Uses VERBOSE level to avoid cluttering user-visible logs
+     * These messages are for debugging/console only
      */
     private _lastLoggedStatus: string = "";
     private setupStatusMonitoring() {
         // Monitor replicationStat changes by polling
-        // This helps debug LiveSync status issues
+        // This helps debug LiveSync status issues (verbose level - console only)
         setInterval(() => {
             const currentStatus = this.replicationStat.value.syncStatus;
             if (currentStatus !== this._lastLoggedStatus) {
-                Logger(`[Status Change] ${this._lastLoggedStatus || 'initial'} -> ${currentStatus}`, LOG_LEVEL_INFO);
+                // Use VERBOSE level - only shows in console, not in UI
+                Logger(`[Status Change] ${this._lastLoggedStatus || 'initial'} -> ${currentStatus}`, LOG_LEVEL_VERBOSE);
                 this._lastLoggedStatus = currentStatus;
                 
-                // Log detailed info on status changes
+                // Log detailed info on status changes (verbose level)
                 const stat = this.replicationStat.value;
                 Logger(`  Docs: sent=${stat.sent}, arrived=${stat.arrived}`, LOG_LEVEL_VERBOSE);
                 Logger(`  Seq: pull=${stat.lastSyncPullSeq}/${stat.maxPullSeq}, push=${stat.lastSyncPushSeq}/${stat.maxPushSeq}`, LOG_LEVEL_VERBOSE);
@@ -370,6 +373,10 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      * 
      * @param continuous - If true (default), starts LiveSync mode (continuous replication)
      *                     If false, performs a one-shot sync
+     * 
+     * Note: Following livesync's pattern, continuous sync uses showResult=false
+     * to avoid spamming users with Notice popups. Status is shown in the 
+     * top-right corner display instead.
      */
     async startSync(continuous: boolean = true): Promise<boolean> {
         if (!this._replicator) {
@@ -378,42 +385,18 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         }
 
         try {
-            const mode = continuous ? "LiveSync (continuous)" : "One-shot";
-            Logger(`Starting ${mode} synchronization...`, LOG_LEVEL_NOTICE);
-            this.setStatus("STARTED", `Starting ${mode} synchronization...`);
+            this.setStatus("STARTED", "Starting synchronization...");
             
             // Open replication - default is LiveSync (continuous) mode
-            // When continuous=true, this will call openContinuousReplication which:
-            // 1. First does a one-shot pull to catch up
-            // 2. Then starts live sync with { live: true, retry: true }
-            Logger(`Calling openReplication with keepAlive=${continuous}`, LOG_LEVEL_INFO);
-            
-            // Note: For continuous mode, openReplication uses `void` internally,
-            // so it returns immediately. We need to monitor the status.
+            // IMPORTANT: Use showResult=false for continuous mode (matching livesync)
+            // This prevents Notice spam - status updates are shown in the UI instead
+            // Only manual operations (pull/push/fetch) use showResult=true
             await this._replicator.openReplication(
                 this._settings,
                 continuous,  // keepAlive for live sync (default: true)
-                true,        // showResult
+                false,       // showResult: false for LiveSync (matches livesync)
                 false        // ignoreCleanLock
             );
-
-            if (continuous) {
-                Logger("LiveSync mode initiated - monitoring status...", LOG_LEVEL_INFO);
-                
-                // Set up a monitor to check if LiveSync actually started
-                // The status should change from STARTED to CONNECTED within a reasonable time
-                setTimeout(() => {
-                    const currentStatus = this._replicator?.syncStatus;
-                    Logger(`LiveSync status check: ${currentStatus}`, LOG_LEVEL_INFO);
-                    
-                    if (currentStatus === "NOT_CONNECTED" || currentStatus === "CLOSED" || currentStatus === "ERRORED") {
-                        Logger(`LiveSync may have failed to start. Current status: ${currentStatus}`, LOG_LEVEL_NOTICE);
-                        Logger("Check console for errors. Common issues: wrong password, network issues, or database locked.", LOG_LEVEL_INFO);
-                    } else if (currentStatus === "CONNECTED" || currentStatus === "STARTED" || currentStatus === "PAUSED") {
-                        Logger(`LiveSync is running! Status: ${currentStatus}. Changes will sync automatically.`, LOG_LEVEL_NOTICE);
-                    }
-                }, 5000); // Check after 5 seconds
-            }
             
             // Status will be updated by replicator via updateInfo
             return true;

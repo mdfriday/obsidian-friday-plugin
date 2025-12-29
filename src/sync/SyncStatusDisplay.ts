@@ -301,14 +301,26 @@ export class SyncStatusDisplay {
     
     /**
      * Add a log message (matching livesync's __addLog behavior)
-     * - ALL log messages are displayed in logMessage area (below status line)
-     * - Only LOG_LEVEL_NOTICE (64) and above show Notice popup
+     * 
+     * Log levels (from livesync):
+     * - LOG_LEVEL_DEBUG = 1    -> Skip (not shown in UI)
+     * - LOG_LEVEL_VERBOSE = 2  -> Skip (not shown in UI)
+     * - LOG_LEVEL_INFO = 32    -> Show in logMessage area (below status line)
+     * - LOG_LEVEL_NOTICE = 64  -> Show in logMessage area + Notice popup
+     * - LOG_LEVEL_URGENT = 128 -> Show in logMessage area + Notice popup
      * 
      * @param message - The log message
-     * @param level - Log level (LOG_LEVEL_INFO = 32, LOG_LEVEL_NOTICE = 64)
+     * @param level - Log level
      * @param key - Optional key for Notice grouping
      */
-    addLog(message: string, level: number = 0, key?: string) {
+    addLog(message: string, level: number = 32, key?: string) {
+        // Filter out DEBUG and VERBOSE level messages (matching livesync's default behavior)
+        // LOG_LEVEL_DEBUG = 1, LOG_LEVEL_VERBOSE = 2, LOG_LEVEL_INFO = 32
+        if (level < 32) {
+            // Debug/Verbose messages - don't show in UI (only in console)
+            return;
+        }
+        
         // Update statusLog to display in logMessage area (below status line)
         // This matches livesync's behavior: statusLog.value = messageContent
         this.statusLog.value = message;
