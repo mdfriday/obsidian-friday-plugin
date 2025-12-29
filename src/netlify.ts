@@ -91,10 +91,10 @@ export class NetlifyAPI {
 					if (subFolder) {
 						await addDirectoryToZip(itemPath, subFolder);
 					}
-				} else if (item.isFile()) {
-					const fileContent = await fs.promises.readFile(itemPath);
-					zipFolder.file(item.name, fileContent);
-				}
+			} else if (item.isFile()) {
+				const fileContent = await fs.promises.readFile(itemPath);
+				zipFolder.file(item.name, new Uint8Array(fileContent));
+			}
 			}
 		};
 

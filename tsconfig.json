@@ -15,7 +15,13 @@
 		"verbatimModuleSyntax": true,
 		"noEmit": true,
 		"useUnknownInCatchVariables": false,
-		"lib": ["ES2018", "DOM", "ES5", "ES6", "ES7", "ES2019.Array", "ES2021.WeakRef", "ES2020.BigInt", "ESNext.Intl"]
+		"lib": ["ES2018", "ES2022", "DOM", "ES5", "ES6", "ES7", "ES2019.Array", "ES2021.WeakRef", "ES2020.BigInt", "ESNext.Intl"],
+		"paths": {
+			"@/*": ["src/sync/*"],
+			"@lib/*": ["src/sync/core/*"],
+			"src/*": ["src/*"]
+		}
 	},
-	"include": ["src/**/*", "svelte-custom.d.ts"]
+	"include": ["src/**/*", "svelte-custom.d.ts"],
+	"exclude": ["src/sync/lib/**/*", "**/*.test.ts"]
 }

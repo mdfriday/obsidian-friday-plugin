@@ -67,12 +67,12 @@ export class FTPUploader {
 	 */
 	private async calculateFileHash(filePath: string): Promise<string> {
 		return new Promise((resolve, reject) => {
-			const hash = crypto.createHash('md5');
-			const stream = fs.createReadStream(filePath);
+		const hash = crypto.createHash('md5');
+		const stream = fs.createReadStream(filePath);
 
-			stream.on('data', (data) => hash.update(data));
-			stream.on('end', () => resolve(hash.digest('hex')));
-			stream.on('error', reject);
+		stream.on('data', (data) => hash.update(data as crypto.BinaryLike));
+		stream.on('end', () => resolve(hash.digest('hex')));
+		stream.on('error', reject);
 		});
 	}
 

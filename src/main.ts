@@ -14,6 +14,7 @@ import {themeApiService} from "./theme/themeApiService";
 import {ProjectManagementModal} from "./projects/modal";
 import {ProjectService} from "./projects/service";
 import type {ProjectConfig} from "./projects/types";
+import {SyncService, type SyncConfig} from "./sync";
 
 interface FridaySettings {
 	username: string;
@@ -31,6 +32,9 @@ interface FridaySettings {
 	ftpPassword: string;
 	ftpRemoteDir: string;
 	ftpIgnoreCert: boolean;
+	// CouchDB Sync Settings
+	syncEnabled: boolean;
+	syncConfig: SyncConfig;
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
@@ -49,6 +53,9 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	ftpPassword: '',
 	ftpRemoteDir: '',
 	ftpIgnoreCert: true, // Default to true for easier setup with self-signed certs
+	// CouchDB Sync Settings defaults
+	syncEnabled: false,
+	syncConfig: SyncService.getDefaultConfig(),
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -71,6 +78,7 @@ export default class FridayPlugin extends Plugin {
 	ftp: FTPUploader | null = null
 	site: Site
 	projectService: ProjectService
+	syncService: SyncService
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
 	private previousDownloadServer: 'global' | 'east' = 'global'
 
@@ -81,6 +89,9 @@ export default class FridayPlugin extends Plugin {
 
 		// Initialize FTP uploader
 		this.initializeFTP();
+
+		// Initialize Sync Service
+		this.initializeSyncService();
 
 		this.statusBar = this.addStatusBarItem();
 
@@ -492,6 +503,39 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
+	 * Initialize Sync Service with current settings
+	 */
+	async initializeSyncService() {
+		this.syncService = new SyncService(this);
+		
+		// Set up status callback to update status bar
+		this.syncService.onStatusChange((status, message) => {
+			const statusText = message ? `Sync: ${status} - ${message}` : `Sync: ${status}`;
+			console.log(statusText);
+		});
+
+		// Initialize if sync is enabled
+		if (this.settings.syncEnabled && this.settings.syncConfig) {
+			const initialized = await this.syncService.initialize(this.settings.syncConfig);
+			if (initialized && this.settings.syncConfig.syncOnStart) {
+				await this.syncService.startSync();
+			}
+		}
+	}
+
+	/**
+	 * Test CouchDB Sync connection
+	 */
+	async testSyncConnection(): Promise<{ success: boolean; message: string }> {
+		if (!this.syncService || !this.syncService.isInitialized) {
+			// Initialize with current config for testing
+			this.syncService = new SyncService(this);
+			await this.syncService.initialize(this.settings.syncConfig);
+		}
+		return await this.syncService.testConnection();
+	}
+
+	/**
 	 * Test FTP connection
 	 */
 	async testFTPConnection(): Promise<{ success: boolean; message: string }> {
@@ -812,7 +856,182 @@ class FridaySettingTab extends PluginSettingTab {
 		// Initialize the display based on current publish method
 		showPublishSettings(publishMethod || 'netlify');
 
+		// CouchDB Sync Settings Section
+		containerEl.createEl("h2", {text: "CouchDB Sync"});
 
+		// Enable/Disable Sync
+		new Setting(containerEl)
+			.setName("Enable CouchDB Sync")
+			.setDesc("Enable synchronization with a CouchDB server")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.syncEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.syncEnabled = value;
+						await this.plugin.saveSettings();
+						this.display(); // Refresh to show/hide sync settings
+					})
+			);
+
+		// Only show sync settings if sync is enabled
+		if (this.plugin.settings.syncEnabled) {
+			// CouchDB Server URI
+			new Setting(containerEl)
+				.setName("CouchDB Server URI")
+				.setDesc("The URI of your CouchDB server (e.g., https://your-server:5984)")
+				.addText((text) =>
+					text
+						.setPlaceholder("https://your-couchdb-server:5984")
+						.setValue(this.plugin.settings.syncConfig?.couchDB_URI || "")
+						.onChange(async (value) => {
+							this.plugin.settings.syncConfig.couchDB_URI = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			// CouchDB Database Name
+			new Setting(containerEl)
+				.setName("Database Name")
+				.setDesc("The name of the database to sync with")
+				.addText((text) =>
+					text
+						.setPlaceholder("friday-sync")
+						.setValue(this.plugin.settings.syncConfig?.couchDB_DBNAME || "friday-sync")
+						.onChange(async (value) => {
+							this.plugin.settings.syncConfig.couchDB_DBNAME = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			// CouchDB Username
+			new Setting(containerEl)
+				.setName("Username")
+				.setDesc("CouchDB username")
+				.addText((text) =>
+					text
+						.setPlaceholder("username")
+						.setValue(this.plugin.settings.syncConfig?.couchDB_USER || "")
+						.onChange(async (value) => {
+							this.plugin.settings.syncConfig.couchDB_USER = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			// CouchDB Password
+			new Setting(containerEl)
+				.setName("Password")
+				.setDesc("CouchDB password")
+				.addText((text) => {
+					text
+						.setPlaceholder("password")
+						.setValue(this.plugin.settings.syncConfig?.couchDB_PASSWORD || "")
+						.onChange(async (value) => {
+							this.plugin.settings.syncConfig.couchDB_PASSWORD = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.type = "password";
+				});
+
+			// Encryption Toggle
+			new Setting(containerEl)
+				.setName("Enable Encryption")
+				.setDesc("Encrypt data before sending to the server")
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.syncConfig?.encrypt || false)
+						.onChange(async (value) => {
+							this.plugin.settings.syncConfig.encrypt = value;
+							await this.plugin.saveSettings();
+							this.display();
+						})
+				);
+
+			// Passphrase (only if encryption is enabled)
+			if (this.plugin.settings.syncConfig?.encrypt) {
+				new Setting(containerEl)
+					.setName("Encryption Passphrase")
+					.setDesc("Passphrase for encrypting data")
+					.addText((text) => {
+						text
+							.setPlaceholder("passphrase")
+							.setValue(this.plugin.settings.syncConfig?.passphrase || "")
+							.onChange(async (value) => {
+								this.plugin.settings.syncConfig.passphrase = value;
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.type = "password";
+					});
+			}
+
+			// Sync on Start
+			new Setting(containerEl)
+				.setName("Sync on Start")
+				.setDesc("Automatically sync when Obsidian starts")
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.syncConfig?.syncOnStart || false)
+						.onChange(async (value) => {
+							this.plugin.settings.syncConfig.syncOnStart = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			// Sync on Save
+			new Setting(containerEl)
+				.setName("Sync on Save")
+				.setDesc("Automatically sync when files are saved")
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.syncConfig?.syncOnSave || false)
+						.onChange(async (value) => {
+							this.plugin.settings.syncConfig.syncOnSave = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			// Test Connection Button
+			const syncTestSetting = new Setting(containerEl)
+				.setName("Test Connection")
+				.setDesc("Test the connection to your CouchDB server");
+
+			let syncTestButton: HTMLButtonElement;
+			let syncTestStatus: HTMLElement;
+
+			syncTestSetting.addButton((button) => {
+				syncTestButton = button.buttonEl;
+				button
+					.setButtonText("Test Connection")
+					.setCta()
+					.onClick(async () => {
+						syncTestButton.disabled = true;
+						syncTestButton.setText("Testing...");
+						syncTestStatus.setText("");
+						syncTestStatus.removeClass("sync-test-success", "sync-test-error");
+
+						try {
+							this.plugin.initializeSyncService();
+							const result = await this.plugin.testSyncConnection();
+							
+							if (result.success) {
+								syncTestStatus.setText(result.message);
+								syncTestStatus.addClass("sync-test-success");
+							} else {
+								syncTestStatus.setText(result.message);
+								syncTestStatus.addClass("sync-test-error");
+							}
+						} catch (error) {
+							const errorMessage = error instanceof Error ? error.message : String(error);
+							syncTestStatus.setText(errorMessage);
+							syncTestStatus.addClass("sync-test-error");
+						} finally {
+							syncTestButton.disabled = false;
+							syncTestButton.setText("Test Connection");
+						}
+					});
+			});
+
+			syncTestStatus = syncTestSetting.descEl.createSpan({cls: "sync-test-status"});
+		}
 
 		// MDFriday Account Section (optional for advanced features)
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.mdfriday_account')});

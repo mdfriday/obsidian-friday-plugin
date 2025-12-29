@@ -3,6 +3,7 @@ import process from 'process'
 import builtins from 'builtin-modules'
 import sveltePlugin from 'esbuild-svelte'
 import { sveltePreprocess } from 'svelte-preprocess'
+import inlineWorkerPlugin from 'esbuild-plugin-inline-worker'
 import fs from 'fs'
 import path from 'path'
 
@@ -77,6 +78,7 @@ const buildOptions = {
 	external: [
 		'obsidian',
 		'electron',
+		'crypto',
 		'@codemirror/autocomplete',
 		'@codemirror/closebrackets',
 		'@codemirror/collab',
@@ -110,6 +112,14 @@ const buildOptions = {
 	treeShaking: true,
 	metafile: true, // 启用元数据输出以便追踪生成的文件
 	plugins: [
+		inlineWorkerPlugin({
+			external: [
+				'obsidian',
+				'electron',
+				'crypto',
+			],
+			treeShaking: true,
+		}),
 		sveltePlugin({
 			preprocess: sveltePreprocess(),
 			compilerOptions: { css: 'injected' },
