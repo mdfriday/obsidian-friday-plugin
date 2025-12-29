@@ -14,7 +14,7 @@ import {themeApiService} from "./theme/themeApiService";
 import {ProjectManagementModal} from "./projects/modal";
 import {ProjectService} from "./projects/service";
 import type {ProjectConfig} from "./projects/types";
-import {SyncService, type SyncConfig} from "./sync";
+import {SyncService, SyncStatusDisplay, type SyncConfig} from "./sync";
 
 interface FridaySettings {
 	username: string;
@@ -79,6 +79,7 @@ export default class FridayPlugin extends Plugin {
 	site: Site
 	projectService: ProjectService
 	syncService: SyncService
+	syncStatusDisplay: SyncStatusDisplay | null = null
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
 	private previousDownloadServer: 'global' | 'east' = 'global'
 
@@ -113,6 +114,62 @@ export default class FridayPlugin extends Plugin {
 					return true;
 				}
 				return false;
+			}
+		});
+
+		// Register sync commands
+		this.addCommand({
+			id: "sync-pull-from-server",
+			name: "Sync: Pull from Server",
+			callback: async () => {
+				if (!this.settings.syncEnabled) {
+					new Notice("Sync is not enabled. Please enable it in settings first.");
+					return;
+				}
+				if (!this.syncService.isInitialized) {
+					await this.syncService.initialize(this.settings.syncConfig);
+				}
+				await this.syncService.pullFromServer();
+			}
+		});
+
+		this.addCommand({
+			id: "sync-push-to-server",
+			name: "Sync: Push to Server",
+			callback: async () => {
+				if (!this.settings.syncEnabled) {
+					new Notice("Sync is not enabled. Please enable it in settings first.");
+					return;
+				}
+				if (!this.syncService.isInitialized) {
+					await this.syncService.initialize(this.settings.syncConfig);
+				}
+				await this.syncService.pushToServer();
+			}
+		});
+
+		this.addCommand({
+			id: "sync-start-live-sync",
+			name: "Sync: Start Live Sync",
+			callback: async () => {
+				if (!this.settings.syncEnabled) {
+					new Notice("Sync is not enabled. Please enable it in settings first.");
+					return;
+				}
+				if (!this.syncService.isInitialized) {
+					await this.syncService.initialize(this.settings.syncConfig);
+				}
+				await this.syncService.startSync(true); // continuous = true for live sync
+			}
+		});
+
+		this.addCommand({
+			id: "sync-stop",
+			name: "Sync: Stop Synchronization",
+			callback: async () => {
+				if (this.syncService) {
+					await this.syncService.stopSync();
+				}
 			}
 		});
 
@@ -459,6 +516,16 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	async onunload() {
+		// Clean up sync status display
+		if (this.syncStatusDisplay) {
+			this.syncStatusDisplay.destroy();
+			this.syncStatusDisplay = null;
+		}
+		
+		// Stop sync service
+		if (this.syncService) {
+			await this.syncService.stopSync();
+		}
 	}
 
 	async loadSettings() {
@@ -508,10 +575,26 @@ export default class FridayPlugin extends Plugin {
 	async initializeSyncService() {
 		this.syncService = new SyncService(this);
 		
-		// Set up status callback to update status bar
+		// Initialize status display (similar to livesync's ModuleLog)
+		this.syncStatusDisplay = new SyncStatusDisplay(this);
+		this.syncStatusDisplay.initialize();
+		
+		// Set up status callback to update status display
 		this.syncService.onStatusChange((status, message) => {
 			const statusText = message ? `Sync: ${status} - ${message}` : `Sync: ${status}`;
 			console.log(statusText);
+			
+			// Update status display
+			if (this.syncStatusDisplay) {
+				this.syncStatusDisplay.setStatus(status, message);
+				
+				// Show notification for important status changes
+				if (status === "CONNECTED") {
+					this.syncStatusDisplay.notify("Sync connected to CouchDB", "sync-connected");
+				} else if (status === "ERRORED") {
+					this.syncStatusDisplay.notify(`Sync error: ${message}`, "sync-error");
+				}
+			}
 		});
 
 		// Initialize if sync is enabled
@@ -1031,6 +1114,99 @@ class FridaySettingTab extends PluginSettingTab {
 			});
 
 			syncTestStatus = syncTestSetting.descEl.createSpan({cls: "sync-test-status"});
+
+			// Fetch from Server Button (for first-time sync)
+			const syncFetchSetting = new Setting(containerEl)
+				.setName("Fetch from Server")
+				.setDesc("Fetch all data from server (use this for first-time sync on a new device)");
+
+			let syncFetchButton: HTMLButtonElement;
+			let syncFetchStatus: HTMLElement;
+
+			syncFetchSetting.addButton((button) => {
+				syncFetchButton = button.buttonEl;
+				button
+					.setButtonText("Fetch from Server")
+					.setCta()
+					.onClick(async () => {
+						syncFetchButton.disabled = true;
+						syncFetchButton.setText("Fetching...");
+						syncFetchStatus.setText("");
+						syncFetchStatus.removeClass("sync-test-success", "sync-test-error");
+
+						try {
+							// Initialize sync service if not already
+							if (!this.plugin.syncService.isInitialized) {
+								await this.plugin.syncService.initialize(this.plugin.settings.syncConfig);
+							}
+							
+							const result = await this.plugin.syncService.fetchFromServer();
+							
+							if (result) {
+								syncFetchStatus.setText("Fetch completed successfully!");
+								syncFetchStatus.addClass("sync-test-success");
+							} else {
+								syncFetchStatus.setText("Fetch failed. Check console for details.");
+								syncFetchStatus.addClass("sync-test-error");
+							}
+						} catch (error) {
+							const errorMessage = error instanceof Error ? error.message : String(error);
+							syncFetchStatus.setText(errorMessage);
+							syncFetchStatus.addClass("sync-test-error");
+						} finally {
+							syncFetchButton.disabled = false;
+							syncFetchButton.setText("Fetch from Server");
+						}
+					});
+			});
+
+			syncFetchStatus = syncFetchSetting.descEl.createSpan({cls: "sync-test-status"});
+
+			// Rebuild Vault from DB Button
+			const syncRebuildSetting = new Setting(containerEl)
+				.setName("Rebuild Vault from Database")
+				.setDesc("Write all synced files from local database to vault (use if files are missing)");
+
+			let syncRebuildButton: HTMLButtonElement;
+			let syncRebuildStatus: HTMLElement;
+
+			syncRebuildSetting.addButton((button) => {
+				syncRebuildButton = button.buttonEl;
+				button
+					.setButtonText("Rebuild Vault")
+					.onClick(async () => {
+						syncRebuildButton.disabled = true;
+						syncRebuildButton.setText("Rebuilding...");
+						syncRebuildStatus.setText("");
+						syncRebuildStatus.removeClass("sync-test-success", "sync-test-error");
+
+						try {
+							// Initialize sync service if not already
+							if (!this.plugin.syncService.isInitialized) {
+								await this.plugin.syncService.initialize(this.plugin.settings.syncConfig);
+							}
+							
+							const result = await this.plugin.syncService.rebuildVaultFromDB();
+							
+							if (result) {
+								syncRebuildStatus.setText("Rebuild completed!");
+								syncRebuildStatus.addClass("sync-test-success");
+							} else {
+								syncRebuildStatus.setText("Rebuild failed. Check console for details.");
+								syncRebuildStatus.addClass("sync-test-error");
+							}
+						} catch (error) {
+							const errorMessage = error instanceof Error ? error.message : String(error);
+							syncRebuildStatus.setText(errorMessage);
+							syncRebuildStatus.addClass("sync-test-error");
+						} finally {
+							syncRebuildButton.disabled = false;
+							syncRebuildButton.setText("Rebuild Vault");
+						}
+					});
+			});
+
+			syncRebuildStatus = syncRebuildSetting.descEl.createSpan({cls: "sync-test-status"});
 		}
 
 		// MDFriday Account Section (optional for advanced features)

@@ -14,7 +14,7 @@ if you want to view the source, please visit the github repository of this plugi
 `
 
 const prod = process.argv[2] === 'production'
-const pluginDir = '/Users/sunwei/github/mdfriday/obsidian-vault/.obsidian/plugins/mdfriday';
+const pluginDir = '/Users/sunwei/Desktop/mdf-sync/.obsidian/plugins/mdfriday';
 
 // 构建完成后的回调函数，用于处理CSS文件
 const onBuildComplete = (result) => {
@@ -122,7 +122,13 @@ const buildOptions = {
 		}),
 		sveltePlugin({
 			preprocess: sveltePreprocess(),
-			compilerOptions: { css: 'injected' },
+			compilerOptions: { 
+				css: 'injected',
+				// Enable Svelte 4 component API compatibility for existing components
+				compatibility: {
+					componentApi: 4
+				}
+			},
 		}),
 	],
 	outfile: prod ? 'main.js' : path.join(pluginDir, 'main.js'),

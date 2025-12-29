@@ -3,14 +3,13 @@
  * 
  * A simplified CouchDB sync service for the Friday Obsidian plugin
  * Based on Self-hosted LiveSync core library
+ * 
+ * This service provides a high-level API for synchronization,
+ * wrapping the FridaySyncCore which implements the full livesync functionality.
  */
 
 import { Plugin, Notice } from "obsidian";
-import type { 
-    ObsidianLiveSyncSettings, 
-    RemoteDBSettings 
-} from "./core/common/types";
-import { DEFAULT_SETTINGS, REMOTE_COUCHDB } from "./core/common/types";
+import { FridaySyncCore } from "./FridaySyncCore";
 
 /**
  * Sync configuration for CouchDB
@@ -52,13 +51,16 @@ export type SyncStatusCallback = (status: SyncStatus, message?: string) => void;
 
 /**
  * Friday Sync Service
+ * 
+ * Provides a simple interface for CouchDB synchronization.
+ * Uses FridaySyncCore internally for full livesync functionality.
  */
 export class SyncService {
     private plugin: Plugin;
     private config: SyncConfig | null = null;
+    private core: FridaySyncCore | null = null;
     private statusCallback: SyncStatusCallback | null = null;
     private _isInitialized = false;
-    private _status: SyncStatus = "NOT_CONNECTED";
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -68,7 +70,7 @@ export class SyncService {
      * Get current sync status
      */
     get status(): SyncStatus {
-        return this._status;
+        return this.core?.status ?? "NOT_CONNECTED";
     }
 
     /**
@@ -79,19 +81,19 @@ export class SyncService {
     }
 
     /**
+     * Get the underlying sync core (for advanced usage)
+     */
+    get syncCore(): FridaySyncCore | null {
+        return this.core;
+    }
+
+    /**
      * Set status callback
      */
     onStatusChange(callback: SyncStatusCallback) {
         this.statusCallback = callback;
-    }
-
-    /**
-     * Update status and notify callback
-     */
-    private setStatus(status: SyncStatus, message?: string) {
-        this._status = status;
-        if (this.statusCallback) {
-            this.statusCallback(status, message);
+        if (this.core) {
+            this.core.onStatusChange(callback);
         }
     }
 
@@ -108,12 +110,22 @@ export class SyncService {
                 return false;
             }
 
-            this._isInitialized = true;
-            this.setStatus("NOT_CONNECTED", "Sync initialized");
-            return true;
+            // Create and initialize the sync core
+            this.core = new FridaySyncCore(this.plugin);
+            
+            // Set up status callback
+            if (this.statusCallback) {
+                this.core.onStatusChange(this.statusCallback);
+            }
+
+            // Initialize the core
+            const result = await this.core.initialize(config);
+            this._isInitialized = result;
+            
+            return result;
         } catch (error) {
             console.error("Sync initialization failed:", error);
-            this.setStatus("ERRORED", `Initialization failed: ${error}`);
+            new Notice(`Sync initialization failed: ${error}`);
             return false;
         }
     }
@@ -122,116 +134,112 @@ export class SyncService {
      * Test connection to CouchDB
      */
     async testConnection(): Promise<{ success: boolean; message: string }> {
-        if (!this.config) {
-            return { success: false, message: "Sync not configured" };
-        }
-
-        try {
-            // Create a simple fetch to test connection
-            const uri = this.config.couchDB_URI.replace(/\/$/, "");
-            const dbUrl = `${uri}/${this.config.couchDB_DBNAME}`;
-            
-            const credentials = btoa(`${this.config.couchDB_USER}:${this.config.couchDB_PASSWORD}`);
-            
-            const response = await fetch(dbUrl, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Basic ${credentials}`,
-                    "Content-Type": "application/json",
-                },
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                return { 
-                    success: true, 
-                    message: `Connected to ${data.db_name}, docs: ${data.doc_count}` 
-                };
-            } else if (response.status === 404) {
-                // Database doesn't exist, try to create it
-                const createResponse = await fetch(dbUrl, {
-                    method: "PUT",
-                    headers: {
-                        "Authorization": `Basic ${credentials}`,
-                        "Content-Type": "application/json",
-                    },
-                });
-                
-                if (createResponse.ok) {
-                    return { success: true, message: "Database created successfully" };
-                } else {
-                    return { success: false, message: `Failed to create database: ${createResponse.statusText}` };
-                }
-            } else {
-                return { success: false, message: `Connection failed: ${response.statusText}` };
+        if (!this.core) {
+            // Create a temporary core for testing
+            const tempCore = new FridaySyncCore(this.plugin);
+            if (this.config) {
+                await tempCore.initialize(this.config);
             }
-        } catch (error) {
-            return { success: false, message: `Connection error: ${error}` };
-        }
-    }
-
-    /**
-     * Convert SyncConfig to ObsidianLiveSyncSettings
-     */
-    private toSettings(): ObsidianLiveSyncSettings {
-        if (!this.config) {
-            return DEFAULT_SETTINGS;
+            const result = await tempCore.testConnection();
+            await tempCore.close();
+            return result;
         }
 
-        return {
-            ...DEFAULT_SETTINGS,
-            couchDB_URI: this.config.couchDB_URI,
-            couchDB_USER: this.config.couchDB_USER,
-            couchDB_PASSWORD: this.config.couchDB_PASSWORD,
-            couchDB_DBNAME: this.config.couchDB_DBNAME,
-            encrypt: this.config.encrypt,
-            passphrase: this.config.passphrase,
-            usePathObfuscation: this.config.usePathObfuscation,
-            liveSync: this.config.liveSync,
-            syncOnStart: this.config.syncOnStart,
-            syncOnSave: this.config.syncOnSave,
-            remoteType: REMOTE_COUCHDB,
-            isConfigured: true,
-        };
+        return await this.core.testConnection();
     }
 
     /**
      * Start synchronization
+     * 
+     * @param continuous - If true, starts live sync (continuous replication)
      */
-    async startSync(): Promise<boolean> {
-        if (!this.config) {
-            new Notice("Sync: Not configured");
+    async startSync(continuous: boolean = false): Promise<boolean> {
+        if (!this.core) {
+            new Notice("Sync: Not initialized. Please initialize first.");
             return false;
         }
 
-        try {
-            this.setStatus("STARTED", "Starting synchronization...");
-            new Notice("Sync: Starting...");
-            
-            // Test connection first
-            const testResult = await this.testConnection();
-            if (!testResult.success) {
-                this.setStatus("ERRORED", testResult.message);
-                new Notice(`Sync failed: ${testResult.message}`);
-                return false;
-            }
+        return await this.core.startSync(continuous);
+    }
 
-            this.setStatus("CONNECTED", "Connected to CouchDB");
-            new Notice("Sync: Connected");
-            return true;
-        } catch (error) {
-            this.setStatus("ERRORED", `Sync failed: ${error}`);
-            new Notice(`Sync error: ${error}`);
+    /**
+     * Pull all documents from server (one-shot sync)
+     * 
+     * This downloads all documents from the remote CouchDB to local.
+     */
+    async pullFromServer(): Promise<boolean> {
+        if (!this.core) {
+            new Notice("Sync: Not initialized. Please initialize first.");
             return false;
         }
+
+        return await this.core.pullFromServer();
+    }
+
+    /**
+     * Push all documents to server (one-shot sync)
+     * 
+     * This uploads all local documents to the remote CouchDB.
+     */
+    async pushToServer(): Promise<boolean> {
+        if (!this.core) {
+            new Notice("Sync: Not initialized. Please initialize first.");
+            return false;
+        }
+
+        return await this.core.pushToServer();
+    }
+
+    /**
+     * Fetch from server for first-time sync
+     * 
+     * Use this when connecting a new device to an existing database.
+     * It marks the device as accepted and pulls all data from the server.
+     * 
+     * This is required when you see "The remote database has been rebuilt or corrupted" message.
+     */
+    async fetchFromServer(): Promise<boolean> {
+        if (!this.core) {
+            new Notice("Sync: Not initialized. Please initialize first.");
+            return false;
+        }
+
+        return await this.core.fetchFromServer();
+    }
+
+    /**
+     * Rebuild vault from local database
+     * 
+     * Use this when the database is synced but files haven't been written to disk.
+     * This reads all documents from the local PouchDB and writes them to the vault.
+     */
+    async rebuildVaultFromDB(): Promise<boolean> {
+        if (!this.core) {
+            new Notice("Sync: Not initialized. Please initialize first.");
+            return false;
+        }
+
+        return await this.core.rebuildVaultFromDB();
     }
 
     /**
      * Stop synchronization
      */
     async stopSync(): Promise<void> {
-        this.setStatus("CLOSED", "Sync stopped");
-        new Notice("Sync: Stopped");
+        if (this.core) {
+            await this.core.stopSync();
+        }
+    }
+
+    /**
+     * Close and clean up resources
+     */
+    async close(): Promise<void> {
+        if (this.core) {
+            await this.core.close();
+            this.core = null;
+        }
+        this._isInitialized = false;
     }
 
     /**
