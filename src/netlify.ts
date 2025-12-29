@@ -1,4 +1,5 @@
-import {App, FileSystemAdapter, requestUrl, RequestUrlResponse} from "obsidian";
+import {App, FileSystemAdapter, requestUrl} from "obsidian";
+import type {RequestUrlResponse} from "obsidian";
 import type FridayPlugin from "./main";
 import * as path from "path";
 import * as fs from "fs";

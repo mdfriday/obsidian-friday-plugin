@@ -1,5 +1,6 @@
 import { Plugin, MarkdownRenderer as ObsidianMarkdownRenderer, TFile } from "obsidian";
-import { MarkdownRenderer, ParsingResult, AutoIDGenerator } from "@mdfriday/foundry";
+import { AutoIDGenerator } from "@mdfriday/foundry";
+import type { MarkdownRenderer, ParsingResult } from "@mdfriday/foundry";
 import type { BaseRendererOptions } from "./types";
 import { ObsidianParsingResult } from "./obsidian-parser-result";
 import { ObsidianResourceProcessor } from "./resource-processor";

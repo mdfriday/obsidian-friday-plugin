@@ -1,4 +1,5 @@
-import {App, FileSystemAdapter, Notice, requestUrl, RequestUrlResponse, TFile, TFolder, Vault} from "obsidian";
+import {App, FileSystemAdapter, Notice, requestUrl, TFile, TFolder, Vault} from "obsidian";
+import type {RequestUrlResponse} from "obsidian";
 import type {User} from "./user";
 import type FridayPlugin from "./main";
 import * as path from "path";
@@ -119,7 +120,7 @@ export class Hugoverse {
 
 			const mimeType = "application/zip"; // 默认 MIME 类型
 
-			const blob = new Blob([content], {type: mimeType});
+			const blob = new Blob([new Uint8Array(content)], {type: mimeType});
 			body.append(`asset`, blob, `${name}.zip`);
 
 			// 将 FormData 转换为 ArrayBuffer

@@ -161,7 +161,12 @@
   max-width: 420px;
   margin: 0 auto;
   border-radius: 12px;
-  background: linear-gradient(90deg, var(--background-secondary) 25%, var(--background-modifier-hover) 50%, var(--background-secondary) 75%);
+  background:
+    linear-gradient(
+      90deg,
+      var(--background-secondary) 25%,
+      var(--background-modifier-hover) 50%,
+      var(--background-secondary) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s infinite;
   position: relative;
@@ -182,7 +187,11 @@
   left: 20px;
   right: 20px;
   height: 60px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.1) 0%, transparent 100%);
+  background:
+    linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.1) 0%,
+      transparent 100%);
   border-radius: 8px;
 }
 .friday-theme-modal .error-container {

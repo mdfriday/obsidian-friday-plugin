@@ -1,4 +1,4 @@
-import { DOMRenderResult } from "./types";
+import type { DOMRenderResult } from "./types";
 
 /**
  * 渲染复杂度等级

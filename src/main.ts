@@ -556,8 +556,8 @@ class FridaySettingTab extends PluginSettingTab {
 					.addOption('global', this.plugin.i18n.t('settings.download_server_global'))
 					.addOption('east', this.plugin.i18n.t('settings.download_server_east'))
 					.setValue(downloadServer || 'global')
-					.onChange(async (value: 'global' | 'east') => {
-						this.plugin.settings.downloadServer = value;
+					.onChange(async (value) => {
+						this.plugin.settings.downloadServer = value as 'global' | 'east';
 						await this.plugin.saveSettings();
 					});
 			});
@@ -578,10 +578,10 @@ class FridaySettingTab extends PluginSettingTab {
 					.addOption('netlify', this.plugin.i18n.t('settings.publish_method_netlify'))
 					.addOption('ftp', this.plugin.i18n.t('settings.publish_method_ftp'))
 					.setValue(publishMethod || 'netlify')
-					.onChange(async (value: 'netlify' | 'ftp') => {
-						this.plugin.settings.publishMethod = value;
+					.onChange(async (value) => {
+						this.plugin.settings.publishMethod = value as 'netlify' | 'ftp';
 						await this.plugin.saveSettings();
-						showPublishSettings(value);
+						showPublishSettings(value as 'netlify' | 'ftp');
 					});
 			});
 

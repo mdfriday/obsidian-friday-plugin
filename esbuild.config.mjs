@@ -2,7 +2,7 @@ import esbuild from 'esbuild'
 import process from 'process'
 import builtins from 'builtin-modules'
 import sveltePlugin from 'esbuild-svelte'
-import autoPreprocess from 'svelte-preprocess'
+import { sveltePreprocess } from 'svelte-preprocess'
 import fs from 'fs'
 import path from 'path'
 
@@ -72,6 +72,7 @@ const buildOptions = {
 	bundle: true,
 	define: {
 		'process.env.NODE_ENV': prod ? '"production"' : '"development"',
+		global: 'window',
 	},
 	external: [
 		'obsidian',
@@ -103,16 +104,15 @@ const buildOptions = {
 		...builtins,
 	],
 	format: 'cjs',
-	watch: !prod,
-	target: 'es2020',
+	target: 'es2018',
 	logLevel: 'info',
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,
 	metafile: true, // 启用元数据输出以便追踪生成的文件
 	plugins: [
 		sveltePlugin({
-			preprocess: autoPreprocess(),
-			compilerOptions: {css: true},
+			preprocess: sveltePreprocess(),
+			compilerOptions: { css: 'injected' },
 		}),
 	],
 	outfile: prod ? 'main.js' : path.join(pluginDir, 'main.js'),
@@ -122,7 +122,12 @@ const buildOptions = {
 buildOptions.loader = buildOptions.loader || {};
 buildOptions.loader['.css'] = 'css';
 
-esbuild
-	.build(buildOptions)
-	.then(onBuildComplete)
-	.catch(() => process.exit(1))
+if (prod) {
+	esbuild
+		.build(buildOptions)
+		.then(onBuildComplete)
+		.catch(() => process.exit(1));
+} else {
+	const context = await esbuild.context(buildOptions);
+	await context.watch();
+}

@@ -3,10 +3,13 @@
 	"version": "0.11.5",
 	"description": "Friday is an Obsidian plugin that empowers users to focus on content creation by writing Markdown files, while we handle the distribution. From creating websites to content deployment, Friday serves as a creative output assistant, helping users turn their work into publishable sites with ease.",
 	"main": "main.js",
+	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"version": "node version-bump.mjs && git add manifest.json versions.json"
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"svelte-check": "svelte-check --tsconfig ./tsconfig.json",
+		"tsc-check": "tsc --noEmit"
 	},
 	"keywords": [
 		"friday",
@@ -20,15 +23,20 @@
 	"author": "sunwei",
 	"license": "Apache-2.0",
 	"devDependencies": {
+		"@tsconfig/svelte": "^5.0.5",
 		"@types/js-yaml": "^4.0.9",
-		"@types/node": "^16.11.6",
-		"@typescript-eslint/eslint-plugin": "5.29.0",
-		"@typescript-eslint/parser": "5.29.0",
-		"builtin-modules": "3.3.0",
-		"esbuild": "0.14.47",
-		"obsidian": "latest",
-		"tslib": "2.4.0",
-		"typescript": "^4.7.4"
+		"@types/node": "^22.13.8",
+		"@typescript-eslint/eslint-plugin": "8.46.2",
+		"@typescript-eslint/parser": "8.46.2",
+		"builtin-modules": "5.0.0",
+		"esbuild": "0.25.0",
+		"esbuild-svelte": "^0.9.3",
+		"obsidian": "^1.8.7",
+		"svelte": "5.41.1",
+		"svelte-check": "^4.3.3",
+		"svelte-preprocess": "^6.0.3",
+		"tslib": "^2.8.1",
+		"typescript": "5.9.3"
 	},
 	"importSort": {
 		".js, .ts, .tsx": {
@@ -42,11 +50,7 @@
 	},
 	"dependencies": {
 		"@mdfriday/foundry": "^25.12.1",
-		"@tsconfig/svelte": "^1.0.10",
 		"basic-ftp": "^5.0.5",
-		"esbuild-svelte": "^0.7.1",
-		"jszip": "^3.10.1",
-		"svelte": "^3.49.0",
-		"svelte-preprocess": "^4.10.7"
+		"jszip": "^3.10.1"
 	}
 }

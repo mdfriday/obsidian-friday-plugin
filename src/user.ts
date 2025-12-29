@@ -1,5 +1,6 @@
 import type FridayPlugin from "./main";
-import {App, requestUrl, RequestUrlResponse, Notice } from "obsidian";
+import {App, requestUrl, Notice } from "obsidian";
+import type {RequestUrlResponse} from "obsidian";
 
 export class User {
 	name: string;

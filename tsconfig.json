@@ -2,10 +2,20 @@
 	"extends": "@tsconfig/svelte/tsconfig.json",
 	"compilerOptions": {
 		"baseUrl": ".",
-		"moduleResolution": "node",
-		"importHelpers": true,
+		"module": "ESNext",
+		"target": "ES2018",
+		"allowJs": true,
+		"noImplicitAny": false,
+		"strictPropertyInitialization": false,
+		"strictNullChecks": false,
+		"moduleResolution": "bundler",
 		"types": ["svelte", "node"],
-		"lib": ["ESNext", "DOM"]
+		"importHelpers": true,
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"useUnknownInCatchVariables": false,
+		"lib": ["ES2018", "DOM", "ES5", "ES6", "ES7", "ES2019.Array", "ES2021.WeakRef", "ES2020.BigInt", "ESNext.Intl"]
 	},
 	"include": ["src/**/*", "svelte-custom.d.ts"]
 }
