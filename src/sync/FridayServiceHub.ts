@@ -391,8 +391,9 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
 
     parseSynchroniseResult(docs: Array<PouchDB.Core.ExistingDocument<EntryDoc>>): void {
         // Queue documents for processing
-        console.log(`[Friday Sync] Received ${docs.length} documents for processing`);
+        console.log(`[Friday Sync] *** LiveSync received ${docs.length} documents for processing ***`);
         
+        let queuedCount = 0;
         for (const doc of docs) {
             // Skip chunks and system documents
             if (doc._id.startsWith("h:")) continue; // chunk
@@ -405,8 +406,12 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             // Process note/plain documents
             if (doc.type === "notes" || doc.type === "newnote" || doc.type === "plain") {
                 this.processingQueue.push(doc);
+                queuedCount++;
+                console.log(`[Friday Sync] Queued document: ${(doc as any).path || doc._id} (type: ${doc.type})`);
             }
         }
+        
+        console.log(`[Friday Sync] Queued ${queuedCount} documents for writing to vault`);
         
         // Start processing queue if not already processing
         if (!this.isProcessing) {
@@ -418,18 +423,26 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         if (this.isProcessing) return;
         this.isProcessing = true;
         
+        console.log(`[Friday Sync] Starting to process ${this.processingQueue.length} queued documents...`);
+        
         try {
+            let processed = 0;
             while (this.processingQueue.length > 0) {
                 const doc = this.processingQueue.shift();
                 if (!doc) continue;
                 
                 try {
                     // Cast to MetaEntry for processing
-                    await this.processSynchroniseResult(doc as unknown as MetaEntry);
+                    const path = (doc as any).path || doc._id;
+                    console.log(`[Friday Sync] Processing document: ${path}`);
+                    const result = await this.processSynchroniseResult(doc as unknown as MetaEntry);
+                    processed++;
+                    console.log(`[Friday Sync] Document processed (${result ? 'success' : 'failed'}): ${path}`);
                 } catch (error) {
                     console.error(`[Friday Sync] Error processing doc ${doc._id}:`, error);
                 }
             }
+            console.log(`[Friday Sync] Finished processing ${processed} documents`);
         } finally {
             this.isProcessing = false;
         }
@@ -439,12 +452,37 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         return this.core.localDatabase !== null && this.core.replicator !== null;
     }
 
+    /**
+     * Trigger a replication (one-shot sync).
+     * In LiveSync mode, this will run alongside the continuous replication.
+     * This is typically called when the user wants to manually trigger a sync.
+     */
     async replicate(showMessage?: boolean): Promise<boolean | void> {
-        return this.core.startSync(false);
+        // If LiveSync is already running, the continuous replication
+        // will automatically handle changes. We can still do a one-shot
+        // sync if needed, but it's generally not necessary.
+        const replicator = this.core.replicator;
+        if (replicator) {
+            // Check if we already have an active replication
+            const status = this.core.replicationStat.value.syncStatus;
+            if (status === "CONNECTED" || status === "STARTED") {
+                // LiveSync is running, no need to do one-shot sync
+                console.log("[Friday Sync] LiveSync is running, skipping one-shot sync");
+                return true;
+            }
+            // Otherwise, do a one-shot sync
+            return this.core.startSync(false);
+        }
+        return false;
     }
 
+    /**
+     * Trigger replication by event (e.g., file saved).
+     * In LiveSync mode, changes are automatically synced, so this may be a no-op.
+     */
     async replicateByEvent(showMessage?: boolean): Promise<boolean | void> {
-        return this.core.startSync(false);
+        // Same as replicate() - if LiveSync is running, it will handle changes automatically
+        return this.replicate(showMessage);
     }
 }
 

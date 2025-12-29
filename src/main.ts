@@ -98,7 +98,12 @@ export default class FridayPlugin extends Plugin {
 
 		this.addSettingTab(new FridaySettingTab(this.app, this));
 
-		this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
+		// Register view with protection against duplicate registration (can happen during hot reload)
+		try {
+			this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
+		} catch (e) {
+			console.log('[Friday] View already registered, skipping');
+		}
 		this.app.workspace.onLayoutReady(() => this.initLeaf())
 
 		// Register export HTML command
@@ -573,28 +578,33 @@ export default class FridayPlugin extends Plugin {
 	 * Initialize Sync Service with current settings
 	 */
 	async initializeSyncService() {
-		this.syncService = new SyncService(this);
-		
-		// Initialize status display (using livesync's ModuleLog implementation)
-		this.syncStatusDisplay = new SyncStatusDisplay(this);
-
-		// Initialize if sync is enabled
-		if (this.settings.syncEnabled && this.settings.syncConfig) {
-			const initialized = await this.syncService.initialize(this.settings.syncConfig);
+		try {
+			this.syncService = new SyncService(this);
 			
-			// Connect status display to sync core after initialization
-			if (initialized && this.syncService.syncCore) {
-				this.syncStatusDisplay.setCore(this.syncService.syncCore);
-				this.syncStatusDisplay.initialize();
+			// Initialize status display (using livesync's ModuleLog implementation)
+			this.syncStatusDisplay = new SyncStatusDisplay(this);
+
+			// Initialize if sync is enabled
+			if (this.settings.syncEnabled && this.settings.syncConfig) {
+				const initialized = await this.syncService.initialize(this.settings.syncConfig);
 				
-				// Start LiveSync (continuous replication) by default
-				if (this.settings.syncConfig.syncOnStart) {
-					await this.syncService.startSync(true); // true = liveSync mode
+				// Connect status display to sync core after initialization
+				if (initialized && this.syncService.syncCore && this.syncStatusDisplay) {
+					this.syncStatusDisplay.setCore(this.syncService.syncCore);
+					this.syncStatusDisplay.initialize();
+					
+					// Start LiveSync (continuous replication) by default
+					if (this.settings.syncConfig.syncOnStart) {
+						console.log('[Friday Sync] Starting LiveSync on startup...');
+						await this.syncService.startSync(true); // true = liveSync mode
+					}
 				}
+			} else if (this.syncStatusDisplay) {
+				// Initialize status display even if sync is not enabled
+				this.syncStatusDisplay.initialize();
 			}
-		} else {
-			// Initialize status display even if sync is not enabled
-			this.syncStatusDisplay.initialize();
+		} catch (error) {
+			console.error('[Friday] Error initializing sync service:', error);
 		}
 	}
 

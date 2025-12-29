@@ -151,15 +151,25 @@ export class SyncService {
     /**
      * Start synchronization
      * 
-     * @param continuous - If true, starts live sync (continuous replication)
+     * @param continuous - If true (default), starts LiveSync mode (continuous replication)
+     *                     that monitors remote database for changes in real-time.
+     *                     If false, performs a one-shot sync.
      */
-    async startSync(continuous: boolean = false): Promise<boolean> {
+    async startSync(continuous: boolean = true): Promise<boolean> {
         if (!this.core) {
             new Notice("Sync: Not initialized. Please initialize first.");
             return false;
         }
 
-        return await this.core.startSync(continuous);
+        // Debug: log the values to diagnose LiveSync issue
+        console.log(`[Friday Sync] startSync called with continuous=${continuous}, config.liveSync=${this.config?.liveSync}`);
+        
+        // When continuous is explicitly true, always use LiveSync mode
+        // Only check config.liveSync when continuous is not explicitly passed
+        const useContinuous = continuous;
+        console.log(`[Friday Sync] Using continuous=${useContinuous} for sync`);
+        
+        return await this.core.startSync(useContinuous);
     }
 
     /**
@@ -254,7 +264,7 @@ export class SyncService {
             encrypt: false,
             passphrase: "",
             usePathObfuscation: false,
-            liveSync: false,
+            liveSync: true,   // Default to LiveSync mode for real-time synchronization
             syncOnStart: true,
             syncOnSave: true,
         };
