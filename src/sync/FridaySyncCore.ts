@@ -175,6 +175,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     pendingFileEventCount: ReactiveSource<number> = reactiveSource(0);
     processingFileEventCount: ReactiveSource<number> = reactiveSource(0);
     _totalProcessingCount: ReactiveSource<number> = reactiveSource(0);
+    
+    // Log callback for status display integration
+    private _logCallback?: (message: string, level: number, key?: string) => void;
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -183,17 +186,35 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         this._kvDB = new SimpleKeyValueDB("friday-kv");
         this._simpleStore = new FridaySimpleStore("checkpoint");
         
-        // Set up global logging
+        // Set up global logging that also notifies status display
+        // This matches livesync's pattern: all logs go to status display
         setGlobalLogFunction((message: any, level?: number, key?: string) => {
-            if (level && level >= LOG_LEVEL_NOTICE) {
-                new Notice(String(message));
-            }
-            if (level && level >= LOG_LEVEL_INFO) {
-                console.log(`[Friday Sync] ${message}`);
+            const msgStr = String(message);
+            const logLevel = level ?? LOG_LEVEL_INFO;
+            
+            // Console logging
+            if (logLevel >= LOG_LEVEL_INFO) {
+                console.log(`[Friday Sync] ${msgStr}`);
             } else {
-                console.debug(`[Friday Sync] ${message}`);
+                console.debug(`[Friday Sync] ${msgStr}`);
+            }
+            
+            // Notify status display callback
+            // All logs are displayed in logMessage area
+            // Only LOG_LEVEL_NOTICE shows Notice popup
+            if (this._logCallback) {
+                this._logCallback(msgStr, logLevel, key);
             }
         });
+    }
+    
+    /**
+     * Set log callback for status display integration
+     * This allows SyncStatusDisplay to receive log messages
+     * @param callback - Function that receives (message, level, key)
+     */
+    setLogCallback(callback: (message: string, level: number, key?: string) => void) {
+        this._logCallback = callback;
     }
 
     // ==================== LiveSyncLocalDBEnv Implementation ====================
@@ -415,23 +436,23 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         try {
             this.setStatus("STARTED", "Pulling from server...");
-            new Notice("Sync: Pulling from server...");
+            Logger("Pulling from server...", LOG_LEVEL_NOTICE);
             
             const result = await this._replicator.replicateAllFromServer(this._settings, true);
             
             if (result) {
                 this.setStatus("COMPLETED", "Pull completed");
-                new Notice("Sync: Pull completed");
+                Logger("Pull completed", LOG_LEVEL_NOTICE);
             } else {
                 this.setStatus("ERRORED", "Pull failed");
-                new Notice("Sync: Pull failed");
+                Logger("Pull failed", LOG_LEVEL_NOTICE);
             }
             
             return result;
         } catch (error) {
             console.error("Pull failed:", error);
             this.setStatus("ERRORED", `Pull failed: ${error}`);
-            new Notice(`Sync error: ${error}`);
+            Logger(`Sync error: ${error}`, LOG_LEVEL_NOTICE);
             return false;
         }
     }
@@ -447,23 +468,23 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         try {
             this.setStatus("STARTED", "Pushing to server...");
-            new Notice("Sync: Pushing to server...");
+            Logger("Pushing to server...", LOG_LEVEL_NOTICE);
             
             const result = await this._replicator.replicateAllToServer(this._settings, true);
             
             if (result) {
                 this.setStatus("COMPLETED", "Push completed");
-                new Notice("Sync: Push completed");
+                Logger("Push completed", LOG_LEVEL_NOTICE);
             } else {
                 this.setStatus("ERRORED", "Push failed");
-                new Notice("Sync: Push failed");
+                Logger("Push failed", LOG_LEVEL_NOTICE);
             }
             
             return result;
         } catch (error) {
             console.error("Push failed:", error);
             this.setStatus("ERRORED", `Push failed: ${error}`);
-            new Notice(`Sync error: ${error}`);
+            Logger(`Sync error: ${error}`, LOG_LEVEL_NOTICE);
             return false;
         }
     }
@@ -482,7 +503,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         try {
             this.setStatus("STARTED", "Fetching from server (first-time sync)...");
-            new Notice("Sync: Fetching from server (this may take a while)...");
+            Logger("Fetching from server (this may take a while)...", LOG_LEVEL_NOTICE);
             
             // Step 1: Mark this device as resolved/accepted
             Logger("Marking remote as resolved...", LOG_LEVEL_INFO);
@@ -495,21 +516,21 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             if (result) {
                 // Step 3: Rebuild vault from local database
                 Logger("Rebuilding vault from local database...", LOG_LEVEL_INFO);
-                new Notice("Sync: Writing files to vault...");
+                Logger("Writing files to vault...", LOG_LEVEL_NOTICE);
                 await this.rebuildVaultFromDB();
                 
                 this.setStatus("COMPLETED", "Fetch completed");
-                new Notice("Sync: Fetch completed successfully!");
+                Logger("Fetch completed successfully!", LOG_LEVEL_NOTICE);
             } else {
                 this.setStatus("ERRORED", "Fetch failed");
-                new Notice("Sync: Fetch failed");
+                Logger("Fetch failed", LOG_LEVEL_NOTICE);
             }
             
             return result;
         } catch (error) {
             console.error("Fetch failed:", error);
             this.setStatus("ERRORED", `Fetch failed: ${error}`);
-            new Notice(`Sync error: ${error}`);
+            Logger(`Sync error: ${error}`, LOG_LEVEL_NOTICE);
             return false;
         }
     }
@@ -616,7 +637,6 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     
                     if (processed % 50 === 0) {
                         Logger(`Progress: ${processed} files processed (${created} created, ${updated} updated)`, LOG_LEVEL_INFO);
-                        new Notice(`Sync: ${processed} files processed...`);
                     }
                 } catch (error) {
                     errors++;
@@ -625,7 +645,6 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             }
             
             Logger(`Rebuild complete: ${processed} files processed, ${created} created, ${updated} updated, ${errors} errors`, LOG_LEVEL_NOTICE);
-            new Notice(`Sync: ${processed} files processed (${created} created, ${updated} updated)`);
             
             return true;
         } catch (error) {

@@ -16,9 +16,30 @@ if you want to view the source, please visit the github repository of this plugi
 const prod = process.argv[2] === 'production'
 const pluginDir = '/Users/sunwei/Desktop/mdf-sync/.obsidian/plugins/mdfriday';
 
+// 复制项目根目录的 styles.css 到插件目录
+const copyStylesCss = () => {
+	const srcStylesPath = path.join(process.cwd(), 'styles.css');
+	if (fs.existsSync(srcStylesPath)) {
+		if (prod) {
+			// 生产模式：styles.css 已经在根目录，不需要移动
+			console.log('Production: styles.css is in place');
+		} else {
+			// 开发模式：复制到插件目录
+			const destStylesPath = path.join(pluginDir, 'styles.css');
+			fs.copyFileSync(srcStylesPath, destStylesPath);
+			console.log(`Copied styles.css to ${destStylesPath}`);
+		}
+	} else {
+		console.warn('Warning: styles.css not found in project root');
+	}
+};
+
 // 构建完成后的回调函数，用于处理CSS文件
 const onBuildComplete = (result) => {
-	// 检查是否有 metafile 信息
+	// 首先复制项目根目录的 styles.css（这是主要的样式文件）
+	copyStylesCss();
+	
+	// 检查是否有 metafile 信息（处理 Svelte 等生成的 CSS）
 	if (result && result.metafile) {
 		// 查找所有输出的 CSS 文件
 		const outputs = Object.keys(result.metafile.outputs).filter(file => file.endsWith('.css'));
@@ -26,41 +47,10 @@ const onBuildComplete = (result) => {
 		if (outputs.length > 0) {
 			console.log(`Found CSS outputs: ${outputs.join(', ')}`);
 			
-			// 处理每个 CSS 文件
+			// 处理每个 CSS 文件（这些是构建过程中生成的，与 styles.css 不同）
 			outputs.forEach(cssFile => {
-				if (prod) {
-					// 生产模式：重命名为 styles.css
-					if (cssFile !== 'styles.css' && fs.existsSync(cssFile)) {
-						fs.renameSync(cssFile, 'styles.css');
-						console.log(`Renamed ${cssFile} to styles.css`);
-					}
-				} else {
-					// 开发模式：复制到插件目录
-					if (fs.existsSync(cssFile)) {
-						fs.copyFileSync(cssFile, path.join(pluginDir, 'styles.css'));
-						console.log(`Copied ${cssFile} to ${path.join(pluginDir, 'styles.css')}`);
-					}
-				}
+				console.log(`Note: Build generated ${cssFile} (Svelte CSS is injected, this may be empty)`);
 			});
-		} else {
-			console.log('No CSS files were generated');
-		}
-	} else {
-		console.log('No build metadata available');
-		
-		// 后备方案：查找常见的 CSS 文件名
-		const possibleCssFiles = ['main.css', 'bundle.css', 'index.css'];
-		for (const cssFile of possibleCssFiles) {
-			if (fs.existsSync(cssFile)) {
-				if (prod) {
-					fs.renameSync(cssFile, 'styles.css');
-					console.log(`Renamed ${cssFile} to styles.css`);
-				} else {
-					fs.copyFileSync(cssFile, path.join(pluginDir, 'styles.css'));
-					console.log(`Copied ${cssFile} to ${path.join(pluginDir, 'styles.css')}`);
-				}
-				break;
-			}
 		}
 	}
 };
@@ -144,6 +134,17 @@ if (prod) {
 		.then(onBuildComplete)
 		.catch(() => process.exit(1));
 } else {
+	// 开发模式：首先复制 styles.css
+	copyStylesCss();
+	
+	// 监听 styles.css 变化并复制
+	const stylesPath = path.join(process.cwd(), 'styles.css');
+	fs.watchFile(stylesPath, { interval: 500 }, (curr, prev) => {
+		if (curr.mtime !== prev.mtime) {
+			copyStylesCss();
+		}
+	});
+	
 	const context = await esbuild.context(buildOptions);
 	await context.watch();
 }

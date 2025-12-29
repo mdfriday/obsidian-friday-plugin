@@ -593,6 +593,12 @@ export default class FridayPlugin extends Plugin {
 					this.syncStatusDisplay.setCore(this.syncService.syncCore);
 					this.syncStatusDisplay.initialize();
 					
+					// Connect log callback to status display
+					// All logs are displayed in logMessage area, only NOTICE shows popup
+					this.syncService.syncCore.setLogCallback((message, level, key) => {
+						this.syncStatusDisplay?.addLog(message, level, key);
+					});
+					
 					// Start LiveSync (continuous replication) by default
 					if (this.settings.syncConfig.syncOnStart) {
 						console.log('[Friday Sync] Starting LiveSync on startup...');

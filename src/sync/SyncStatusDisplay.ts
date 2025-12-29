@@ -7,7 +7,6 @@
 import { Plugin, Notice } from "obsidian";
 import { computed, reactive, reactiveSource, type ReactiveValue } from "octagonal-wheels/dataobject/reactive";
 import type { DatabaseConnectingStatus } from "./core/common/types";
-import type { ReplicationStat } from "./core/replication/LiveSyncAbstractReplicator";
 import type { FridaySyncCore } from "./FridaySyncCore";
 
 export const MARK_DONE = "\u{2009}\u{2009}";
@@ -16,25 +15,26 @@ export class SyncStatusDisplay {
     private plugin: Plugin;
     private core: FridaySyncCore | null = null;
     
-    // UI Elements
+    // UI Elements (exactly matching livesync's DOM structure)
     statusBar?: HTMLElement;
     statusDiv?: HTMLElement;
     statusLine?: HTMLDivElement;
-    logMessage?: HTMLDivElement;
     messageArea?: HTMLDivElement;
+    logMessage?: HTMLDivElement;
     logHistory?: HTMLDivElement;
     
     // Reactive sources
-    statusLog = reactiveSource("");
-    activeFileStatus = reactiveSource("");
     statusBarLabels!: ReactiveValue<{ message: string; status: string }>;
+    statusLog = reactiveSource("");  // Current log message to display below status line
     
     // Notification handling
     notifies: { [key: string]: { notice: Notice; count: number } } = {};
     
     // Animation frame handling
     nextFrameQueue: ReturnType<typeof requestAnimationFrame> | undefined = undefined;
-    logLines: { ttl: number; message: string }[] = [];
+    
+    // Log message hide timer
+    private logHideTimer?: ReturnType<typeof setTimeout>;
     
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -49,27 +49,38 @@ export class SyncStatusDisplay {
     
     /**
      * Initialize the status display
+     * Note: Call setCore() before initialize() if you want reactive status updates
+     * 
+     * DOM structure (exactly matching livesync):
+     * <div class="livesync-status">
+     *   <div class="livesync-status-statusline">Sync: 💤 ↑ 41 ↓ 0</div>
+     *   <div class="livesync-status-messagearea"></div>
+     *   <div class="livesync-status-logmessage"></div>
+     *   <div class="livesync-status-loghistory"></div>
+     * </div>
      */
     initialize() {
         // Remove any existing status divs
         document.querySelectorAll(".livesync-status")?.forEach((e) => e.remove());
         
-        // Set up reactive observers
-        this.observeForLogs();
-        
-        // Create status div
+        // Create status div in workspace container (exactly matching livesync's structure)
         this.statusDiv = this.plugin.app.workspace.containerEl.createDiv({ cls: "livesync-status" });
         this.statusLine = this.statusDiv.createDiv({ cls: "livesync-status-statusline" });
         this.messageArea = this.statusDiv.createDiv({ cls: "livesync-status-messagearea" });
         this.logMessage = this.statusDiv.createDiv({ cls: "livesync-status-logmessage" });
         this.logHistory = this.statusDiv.createDiv({ cls: "livesync-status-loghistory" });
         
-        // Create status bar
+        // Create status bar (bottom bar)
         this.statusBar = this.plugin.addStatusBarItem();
         this.statusBar.addClass("syncstatusbar");
         
-        // Position the status div
-        this.adjustStatusDivPosition();
+        // Set up reactive observers (uses core if available)
+        this.observeForLogs();
+        
+        // Position the status div after layout is ready
+        this.plugin.app.workspace.onLayoutReady(() => {
+            this.adjustStatusDivPosition();
+        });
         
         // Register layout change event
         this.plugin.registerEvent(
@@ -222,10 +233,9 @@ export class SyncStatusDisplay {
         
         const statusBarLabels = reactive(() => {
             const { message } = statusLineLabel();
-            const status = this.statusLog.value;
             return {
                 message: `${message}`,
-                status,
+                status: "",  // Not used anymore
             };
         });
         this.statusBarLabels = statusBarLabels;
@@ -243,19 +253,26 @@ export class SyncStatusDisplay {
     }
     
     /**
-     * Adjust status div position to active leaf
+     * Adjust status div position to active leaf (from livesync's ModuleLog)
+     * Positions the status display in the top-right corner of the active editor pane
+     * The actual positioning is done via CSS (position: absolute, top: var(--header-height), text-align: right)
      */
     adjustStatusDivPosition() {
         const mdv = this.plugin.app.workspace.getMostRecentLeaf();
         if (mdv && this.statusDiv) {
+            // Remove from current position
             this.statusDiv.remove();
+            // Insert into the active leaf's container
             const container = mdv.view.containerEl;
             container.insertBefore(this.statusDiv, container.lastChild);
         }
     }
     
     /**
-     * Apply status text to UI elements
+     * Apply status text to UI elements (matching livesync's behavior)
+     * Shows:
+     * - statusLine: "Sync: ⚡ ↑ 0 (LIVE) ↓ 3 (LIVE)"
+     * - logMessage: Current log message (e.g., "Replication activated")
      */
     applyStatusBarText() {
         if (this.nextFrameQueue) {
@@ -263,54 +280,52 @@ export class SyncStatusDisplay {
         }
         this.nextFrameQueue = requestAnimationFrame(() => {
             this.nextFrameQueue = undefined;
-            const { message, status } = this.statusBarLabels.value;
+            const { message } = this.statusBarLabels.value;
             const newMsg = message;
-            let newLog = status;
-            const moduleTagEnd = newLog.indexOf(`]\u{200A}`);
-            if (moduleTagEnd != -1) {
-                newLog = newLog.substring(moduleTagEnd + 2);
+            const newLog = this.statusLog.value;
+            
+            // Update bottom status bar
+            this.statusBar?.setText(newMsg.split("\n")[0]);
+            
+            // Update status line in editor (top right corner)
+            if (this.statusLine) {
+                this.statusLine.innerText = newMsg;
             }
             
-            this.statusBar?.setText(newMsg.split("\n")[0]);
-            if (this.statusDiv) {
-                const now = new Date().getTime();
-                this.logLines = this.logLines.filter((e) => e.ttl > now);
-                const minimumNext = this.logLines.reduce(
-                    (a, b) => (a < b.ttl ? a : b.ttl),
-                    Number.MAX_SAFE_INTEGER
-                );
-                if (this.logLines.length > 0) setTimeout(() => this.applyStatusBarText(), minimumNext - now);
-                const recent = this.logLines.map((e) => e.message);
-                const recentLogs = recent.reverse().join("\n");
-                if (this.logHistory) this.logHistory.innerText = recentLogs;
-                if (this.statusLine) this.statusLine.innerText = newMsg;
-                if (this.logMessage) this.logMessage.innerText = newLog;
+            // Update log message below status line (like livesync)
+            if (this.logMessage) {
+                this.logMessage.innerText = newLog;
             }
         });
-        
-        // Schedule status log clear
-        setTimeout(() => {
-            this.statusLog.value = "";
-        }, 3000);
     }
     
     /**
-     * Add a log message
+     * Add a log message (matching livesync's __addLog behavior)
+     * - ALL log messages are displayed in logMessage area (below status line)
+     * - Only LOG_LEVEL_NOTICE (64) and above show Notice popup
+     * 
+     * @param message - The log message
+     * @param level - Log level (LOG_LEVEL_INFO = 32, LOG_LEVEL_NOTICE = 64)
+     * @param key - Optional key for Notice grouping
      */
-    addLog(message: string, level: number = 0) {
-        const now = new Date();
-        const timestamp = now.toLocaleString();
-        const newMessage = timestamp + " -> " + message;
-        
-        console.log(`[Friday Sync] ${message}`);
-        
+    addLog(message: string, level: number = 0, key?: string) {
+        // Update statusLog to display in logMessage area (below status line)
+        // This matches livesync's behavior: statusLog.value = messageContent
         this.statusLog.value = message;
-        this.logLines.push({ ttl: now.getTime() + 3000, message: newMessage });
         this.applyStatusBarText();
         
-        // Show notice for important messages
-        if (level >= 2) { // LOG_LEVEL_NOTICE
-            this.showNotice(message);
+        // Schedule log message clear after 3 seconds (like livesync)
+        if (this.logHideTimer) {
+            clearTimeout(this.logHideTimer);
+        }
+        this.logHideTimer = setTimeout(() => {
+            this.statusLog.value = "";
+            this.applyStatusBarText();
+        }, 3000);
+        
+        // Only show Notice for LOG_LEVEL_NOTICE (64) and above
+        if (level >= 64) {
+            this.showNotice(message, key);
         }
     }
     
