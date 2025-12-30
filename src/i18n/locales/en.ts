@@ -29,6 +29,7 @@ export const en: TranslationNamespace = {
 		plan: "Plan",
 		valid_until: "Valid Until",
 		devices: "Devices",
+		devices_registered: "Registered devices on this license",
 		sync: "Sync",
 		publish: "Publish",
 		enabled: "Enabled",

@@ -1404,139 +1404,100 @@ class FridaySettingTab extends PluginSettingTab {
 
 		if (license && !isLicenseExpired(license.expiresAt)) {
 			// ========== License Active State ==========
-			const section = containerEl.createDiv({cls: 'friday-license-section'});
 			
-			// Header with checkmark
-			const header = section.createDiv({cls: 'friday-license-active-header'});
-			header.createSpan({cls: 'checkmark', text: '✓'});
-			header.createSpan({text: this.plugin.i18n.t('settings.license_active')});
-
-			// Status grid
-			const statusGrid = section.createDiv({cls: 'friday-license-status'});
+			// Row 1: License Key (masked) + Valid Until + Plan Badge
+			const licenseKeySetting = new Setting(containerEl)
+				.setName(maskLicenseKey(license.key))
+				.setDesc(this.plugin.i18n.t('settings.valid_until') + ': ' + formatExpirationDate(license.expiresAt));
 			
-			// Plan
-			statusGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.plan')});
-			const planValue = statusGrid.createDiv({cls: 'friday-license-status-value'});
-			const planBadge = planValue.createSpan({cls: `friday-plan-badge ${license.plan.toLowerCase()}`});
-			planBadge.setText(formatPlanName(license.plan));
-
-			// Valid Until
-			statusGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.valid_until')});
-			statusGrid.createDiv({cls: 'friday-license-status-value', text: formatExpirationDate(license.expiresAt)});
-
-			// Details toggle (collapsible)
-			const detailsSection = section.createDiv({cls: 'friday-license-details'});
-			const toggle = detailsSection.createDiv({cls: 'friday-license-details-toggle'});
-			const chevron = toggle.createSpan({cls: 'chevron', text: '▶'});
-			toggle.createSpan({text: this.plugin.i18n.t('settings.details')});
-
-			const detailsContent = detailsSection.createDiv({cls: 'friday-license-details-content'});
-			
-			// Details grid
-			const detailsGrid = detailsContent.createDiv({cls: 'friday-license-status'});
-			
-			// License Key (masked)
-			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.license_key')});
-			detailsGrid.createDiv({cls: 'friday-license-status-value', text: maskLicenseKey(license.key)});
-
-			// Devices
-			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.devices')});
-			detailsGrid.createDiv({cls: 'friday-license-status-value', text: `1 / ${license.features.max_devices}`});
-
-			// Sync
-			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.sync')});
-			detailsGrid.createDiv({cls: 'friday-license-status-value', 
-				text: license.features.sync_enabled ? this.plugin.i18n.t('settings.enabled') : this.plugin.i18n.t('settings.disabled')
+			// Add plan badge to the right
+			const planBadge = licenseKeySetting.controlEl.createSpan({
+				cls: `friday-plan-badge ${license.plan.toLowerCase()}`,
+				text: formatPlanName(license.plan)
 			});
 
-			// Publish
-			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.publish')});
-			detailsGrid.createDiv({cls: 'friday-license-status-value', 
-				text: license.features.publish_enabled ? this.plugin.i18n.t('settings.enabled') : this.plugin.i18n.t('settings.disabled')
-			});
-
-			// Toggle click handler
-			let isExpanded = false;
-			toggle.addEventListener('click', () => {
-				isExpanded = !isExpanded;
-				if (isExpanded) {
-					chevron.addClass('expanded');
-					toggle.addClass('expanded');
-					detailsContent.addClass('visible');
-				} else {
-					chevron.removeClass('expanded');
-					toggle.removeClass('expanded');
-					detailsContent.removeClass('visible');
-				}
+			// Row 2: Devices
+			const devicesSetting = new Setting(containerEl)
+				.setName(this.plugin.i18n.t('settings.devices'))
+				.setDesc(this.plugin.i18n.t('settings.devices_registered'));
+			
+			// Add device count to the right
+			devicesSetting.controlEl.createSpan({
+				cls: 'friday-device-count',
+				text: `1 / ${license.features.max_devices}`
 			});
 
 		} else {
 			// ========== License Input State ==========
-			const section = containerEl.createDiv({cls: 'friday-license-section'});
-			
-			// License Key input
-			const inputGroup = section.createDiv({cls: 'friday-license-input-group'});
-			
-			const input = inputGroup.createEl('input', {
-				type: 'text',
-				placeholder: this.plugin.i18n.t('settings.license_key_placeholder'),
-			});
-			input.value = '';
+			let inputEl: HTMLInputElement;
+			let activateBtn: HTMLButtonElement;
+			let statusEl: HTMLElement;
 
-			const activateBtn = inputGroup.createEl('button', {
-				cls: 'friday-activate-btn primary',
-				text: this.plugin.i18n.t('settings.activate')
-			});
+			const licenseSetting = new Setting(containerEl)
+				.setName(this.plugin.i18n.t('settings.license_key'))
+				.setDesc(this.plugin.i18n.t('settings.license_key_placeholder'))
+				.addText((text) => {
+					inputEl = text.inputEl;
+					text
+						.setPlaceholder(this.plugin.i18n.t('settings.license_key_placeholder'))
+						.onChange((value) => {
+							// Auto uppercase
+							text.setValue(value.toUpperCase());
+						});
+				})
+				.addButton((button) => {
+					activateBtn = button.buttonEl;
+					button
+						.setButtonText(this.plugin.i18n.t('settings.activate'))
+						.setCta()
+						.onClick(async () => {
+							const licenseKey = inputEl.value.trim().toUpperCase();
 
-			// Error/Success message container
-			let messageEl: HTMLElement | null = null;
+							// Clear previous status
+							if (statusEl) {
+								statusEl.setText('');
+								statusEl.removeClass('friday-license-error', 'friday-license-success');
+							}
 
-			// Activate button click handler
-			activateBtn.addEventListener('click', async () => {
-				const licenseKey = input.value.trim().toUpperCase();
+							// Validate format
+							if (!isValidLicenseKeyFormat(licenseKey)) {
+								statusEl.setText(this.plugin.i18n.t('settings.license_invalid_format'));
+								statusEl.addClass('friday-license-error');
+								return;
+							}
 
-				// Clear previous messages
-				if (messageEl) {
-					messageEl.remove();
-					messageEl = null;
-				}
+							// Start activation
+							activateBtn.setText(this.plugin.i18n.t('settings.activating'));
+							activateBtn.disabled = true;
+							inputEl.disabled = true;
 
-				// Validate format
-				if (!isValidLicenseKeyFormat(licenseKey)) {
-					messageEl = section.createDiv({cls: 'friday-license-error'});
-					messageEl.setText(this.plugin.i18n.t('settings.license_invalid_format'));
-					return;
-				}
+							try {
+								await this.activateLicense(licenseKey);
+								
+								// Success - refresh the entire settings display
+								new Notice(this.plugin.i18n.t('settings.license_activated_success'));
+								this.display();
+							} catch (error) {
+								// Show error
+								statusEl.setText(this.plugin.i18n.t('settings.license_activation_failed'));
+								statusEl.addClass('friday-license-error');
+								console.error('License activation error:', error);
+							} finally {
+								activateBtn.setText(this.plugin.i18n.t('settings.activate'));
+								activateBtn.disabled = false;
+								inputEl.disabled = false;
+							}
+						});
+				});
 
-				// Start activation
-				this.isActivating = true;
-				activateBtn.setText(this.plugin.i18n.t('settings.activating'));
-				activateBtn.disabled = true;
-				input.disabled = true;
-
-				try {
-					await this.activateLicense(licenseKey);
-					
-					// Success - refresh the entire settings display
-					new Notice(this.plugin.i18n.t('settings.license_activated_success'));
-					this.display();
-				} catch (error) {
-					// Show error
-					messageEl = section.createDiv({cls: 'friday-license-error'});
-					messageEl.setText(this.plugin.i18n.t('settings.license_activation_failed'));
-					console.error('License activation error:', error);
-				} finally {
-					this.isActivating = false;
-					activateBtn.setText(this.plugin.i18n.t('settings.activate'));
-					activateBtn.disabled = false;
-					input.disabled = false;
-				}
-			});
+			// Add status element
+			statusEl = licenseSetting.descEl.createSpan({cls: 'friday-license-status-text'});
 		}
 	}
 
 	/**
 	 * Render Sync Section (only shown when license is activated)
+	 * Includes Security subsection with Netlify-style container
 	 */
 	private renderSyncSection(containerEl: HTMLElement): void {
 		const license = this.plugin.settings.license;
@@ -1544,25 +1505,13 @@ class FridaySettingTab extends PluginSettingTab {
 
 		if (!license || !licenseSync?.enabled) return;
 
-		const section = containerEl.createDiv({cls: 'friday-sync-section'});
+		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.sync')});
 
-		// Header with checkmark
-		const header = section.createDiv({cls: 'friday-sync-header'});
-		header.createSpan({cls: 'checkmark', text: '✓'});
-		header.createSpan({text: this.plugin.i18n.t('settings.sync_enabled')});
-
-		// Description
-		section.createDiv({
-			cls: 'friday-sync-description',
-			text: this.plugin.i18n.t('settings.sync_description')
-		});
-
-		// First time sync notice
+		// First time sync - Upload option
 		if (this.firstTimeSync) {
-			const firstTimeNotice = section.createDiv({cls: 'friday-sync-first-time'});
-			firstTimeNotice.createEl('p', {text: this.plugin.i18n.t('settings.sync_first_time_title')});
-			
-			new Setting(firstTimeNotice)
+			new Setting(containerEl)
+				.setName(this.plugin.i18n.t('settings.sync_first_time_title'))
+				.setDesc(this.plugin.i18n.t('settings.sync_description'))
 				.addButton((button) => {
 					button
 						.setButtonText(this.plugin.i18n.t('settings.upload_local_to_cloud'))
@@ -1586,11 +1535,10 @@ class FridaySettingTab extends PluginSettingTab {
 						});
 				});
 		} else {
-			// Show download option for non-first-time users
-			const dataNotice = section.createDiv({cls: 'friday-sync-first-time'});
-			dataNotice.createEl('p', {text: this.plugin.i18n.t('settings.sync_data_available')});
-			
-			new Setting(dataNotice)
+			// Non-first-time - Download option
+			new Setting(containerEl)
+				.setName(this.plugin.i18n.t('settings.sync_data_available'))
+				.setDesc(this.plugin.i18n.t('settings.sync_description'))
 				.addButton((button) => {
 					button
 						.setButtonText(this.plugin.i18n.t('settings.download_from_cloud'))
@@ -1612,50 +1560,47 @@ class FridaySettingTab extends PluginSettingTab {
 						});
 				});
 		}
+
+		// ========== Security Subsection (Netlify-style container) ==========
+		const encryptionPassphrase = this.plugin.settings.encryptionPassphrase;
+		if (encryptionPassphrase) {
+			const securityContainer = containerEl.createDiv('friday-security-container');
+			securityContainer.createEl("h3", {text: this.plugin.i18n.t('settings.security')});
+
+			// Encryption Password (with show/hide toggle)
+			let passwordVisible = false;
+			new Setting(securityContainer)
+				.setName(this.plugin.i18n.t('settings.encryption_password'))
+				.setDesc(this.plugin.i18n.t('settings.encryption_enabled'))
+				.addText((text) => {
+					text.inputEl.type = 'password';
+					text.inputEl.readOnly = true;
+					text.setValue(encryptionPassphrase);
+				})
+				.addButton((button) => {
+					button
+						.setButtonText(this.plugin.i18n.t('settings.show_password'))
+						.onClick(() => {
+							passwordVisible = !passwordVisible;
+							const inputEl = button.buttonEl.parentElement?.querySelector('input');
+							if (inputEl) {
+								inputEl.type = passwordVisible ? 'text' : 'password';
+							}
+							button.setButtonText(passwordVisible 
+								? this.plugin.i18n.t('settings.hide_password') 
+								: this.plugin.i18n.t('settings.show_password')
+							);
+						});
+				});
+		}
 	}
 
 	/**
-	 * Render Security Section (only shown when license is activated)
+	 * Render Security Section - Now integrated into Sync Section
+	 * This method is kept for backwards compatibility but does nothing
 	 */
 	private renderSecuritySection(containerEl: HTMLElement): void {
-		const encryptionPassphrase = this.plugin.settings.encryptionPassphrase;
-
-		if (!encryptionPassphrase) return;
-
-		const section = containerEl.createDiv({cls: 'friday-security-section'});
-
-		// Header with checkmark
-		const header = section.createDiv({cls: 'friday-security-header'});
-		header.createSpan({cls: 'checkmark', text: '✓'});
-		header.createSpan({text: this.plugin.i18n.t('settings.encryption_enabled')});
-
-		// Password field
-		const passwordContainer = section.createDiv({cls: 'friday-password-field'});
-		const label = passwordContainer.createSpan({text: this.plugin.i18n.t('settings.encryption_password') + ':'});
-		label.style.marginRight = '12px';
-		label.style.fontSize = '13px';
-		label.style.color = 'var(--text-muted)';
-
-		const passwordInput = passwordContainer.createEl('input', {
-			type: 'password',
-			value: encryptionPassphrase
-		});
-		passwordInput.readOnly = true;
-
-		const toggleBtn = passwordContainer.createEl('button', {
-			cls: 'friday-password-toggle',
-			text: this.plugin.i18n.t('settings.show_password')
-		});
-
-		let isVisible = false;
-		toggleBtn.addEventListener('click', () => {
-			isVisible = !isVisible;
-			passwordInput.type = isVisible ? 'text' : 'password';
-			toggleBtn.setText(isVisible 
-				? this.plugin.i18n.t('settings.hide_password') 
-				: this.plugin.i18n.t('settings.show_password')
-			);
-		});
+		// Security is now part of Sync section
 	}
 
 	/**

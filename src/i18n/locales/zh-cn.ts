@@ -29,6 +29,7 @@ export const zhCn: TranslationNamespace = {
 		plan: "套餐",
 		valid_until: "有效期至",
 		devices: "设备",
+		devices_registered: "已注册设备数",
 		sync: "同步",
 		publish: "发布",
 		enabled: "已启用",
