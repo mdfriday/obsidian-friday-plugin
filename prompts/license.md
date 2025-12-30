@@ -68,7 +68,7 @@ curl -X POST http://127.0.0.1:1314/api/license/activate \
 	"data": [
 		{
 			"activated": true,
-			"firstTimeActivated": true,
+			"first_time": true,
 			"expires_at": 1798600713142,
 			"features": {
 				"max_devices": 3,
@@ -117,7 +117,7 @@ Sync 栏现在已经实现，但要参照发布方式栏的样式，所有 sync 
 默认帮且用户配置好 sync 相关的配置项，例如 db_endpoint, db_name, username - email, db_password。 
 Enable Encryption 选项默认打开，表示启用加密传输。并提示用户输入加密密码。右侧有一个眼睛图标，点击可以显示/隐藏密码内容。
 
-通过 firstTimeActivated 可以判断，用户是否是第一次激活 License 。
+通过 first_time 可以判断，用户是否是第一次激活 License 。
 如果是第一次激活，则在Enable CouchDB Sync 选项下方，显示新的一行，左边是提示文件，告诉用户识到到这是第一次激活，右边提供一个按钮，用于同步本地数据到云端 CouchDB 数据库。
 
 如果不是第一次激活，则显示 Fetch From Cloud 按钮，用户点击后，可以从云端 CouchDB 数据库拉取数据到本地。
