@@ -599,6 +599,153 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             return false;
         }
     }
+
+    /**
+     * Rebuild remote database from local files
+     * 
+     * This method is used for first-time sync from a device that has local files.
+     * It will:
+     * 1. Scan all local vault files and store them in local PouchDB
+     * 2. Reset the remote database
+     * 3. Push all local data to the remote server
+     * 
+     * WARNING: This will overwrite the remote database!
+     * Other devices will need to fetch from server after this operation.
+     * 
+     * Based on livesync's ModuleRebuilder.rebuildRemote()
+     */
+    async rebuildRemote(): Promise<boolean> {
+        if (!this._replicator || !this._localDatabase) {
+            this.setStatus("ERRORED", "Sync not initialized");
+            return false;
+        }
+
+        try {
+            this.setStatus("STARTED", "Rebuilding remote database from local files...");
+            Logger("Rebuilding remote database from local files...", LOG_LEVEL_NOTICE);
+            
+            // Step 1: Scan local vault and store all files to local database
+            Logger("Step 1: Scanning local vault and storing to database...", LOG_LEVEL_INFO);
+            const scanResult = await this.scanAndStoreVaultToDB();
+            if (!scanResult) {
+                Logger("Failed to scan and store vault files", LOG_LEVEL_NOTICE);
+                this.setStatus("ERRORED", "Failed to scan vault files");
+                return false;
+            }
+            
+            // Step 2: Reset remote database
+            Logger("Step 2: Resetting remote database...", LOG_LEVEL_INFO);
+            Logger("Resetting remote database...", LOG_LEVEL_NOTICE);
+            try {
+                await this._replicator.tryResetRemoteDatabase(this._settings);
+            } catch (error) {
+                console.log("Reset remote database error (may be expected if DB doesn't exist):", error);
+            }
+            
+            // Step 3: Create remote database (in case it was destroyed)
+            Logger("Step 3: Creating remote database...", LOG_LEVEL_INFO);
+            try {
+                await this._replicator.tryCreateRemoteDatabase(this._settings);
+            } catch (error) {
+                console.log("Create remote database error:", error);
+            }
+            
+            // Small delay to ensure database is ready
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Step 4: Push all local data to remote (first pass)
+            Logger("Step 4: Pushing all data to remote server...", LOG_LEVEL_INFO);
+            Logger("Pushing all data to server (this may take a while)...", LOG_LEVEL_NOTICE);
+            let result = await this._replicator.replicateAllToServer(this._settings, true);
+            
+            if (!result) {
+                Logger("First push attempt failed, retrying...", LOG_LEVEL_INFO);
+            }
+            
+            // Small delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Step 5: Push again to ensure all data is synced (livesync does this twice)
+            Logger("Step 5: Final push to ensure all data is synced...", LOG_LEVEL_INFO);
+            result = await this._replicator.replicateAllToServer(this._settings, true);
+            
+            if (result) {
+                this.setStatus("COMPLETED", "Remote database rebuilt successfully");
+                Logger("Remote database rebuilt successfully!", LOG_LEVEL_NOTICE);
+                Logger("Other devices should now use 'Fetch from Server' to sync", LOG_LEVEL_INFO);
+            } else {
+                this.setStatus("ERRORED", "Rebuild remote failed");
+                Logger("Rebuild remote failed", LOG_LEVEL_NOTICE);
+            }
+            
+            return result;
+        } catch (error) {
+            console.error("Rebuild remote failed:", error);
+            this.setStatus("ERRORED", `Rebuild remote failed: ${error}`);
+            Logger(`Rebuild remote error: ${error}`, LOG_LEVEL_NOTICE);
+            return false;
+        }
+    }
+
+    /**
+     * Scan all vault files and store them to local PouchDB database
+     * 
+     * This prepares local database for pushing to remote.
+     */
+    private async scanAndStoreVaultToDB(): Promise<boolean> {
+        if (!this._localDatabase || !this._storageEventManager) {
+            return false;
+        }
+
+        try {
+            const vault = this.plugin.app.vault;
+            const files = vault.getFiles();
+            
+            Logger(`Found ${files.length} files in vault`, LOG_LEVEL_INFO);
+            
+            let stored = 0;
+            let skipped = 0;
+            let errors = 0;
+            
+            for (const file of files) {
+                try {
+                    // Skip hidden files and plugin config
+                    if (file.path.startsWith(".")) {
+                        skipped++;
+                        continue;
+                    }
+                    
+                    // Use storage event manager to store file (handles encryption, chunking, etc.)
+                    // Create a fake "CHANGED" event to trigger storage
+                    const result = await this._storageEventManager.processFileEventDirect({
+                        type: "CHANGED",
+                        path: file.path as FilePath,
+                        file: file,
+                    });
+                    
+                    if (result) {
+                        stored++;
+                        if (stored % 50 === 0) {
+                            Logger(`Stored ${stored}/${files.length} files...`, LOG_LEVEL_INFO);
+                        }
+                    } else {
+                        errors++;
+                    }
+                } catch (error) {
+                    console.error(`Error storing file ${file.path}:`, error);
+                    errors++;
+                }
+            }
+            
+            Logger(`Vault scan complete: ${stored} stored, ${skipped} skipped, ${errors} errors`, LOG_LEVEL_INFO);
+            Logger(`Stored ${stored} files to local database`, LOG_LEVEL_NOTICE);
+            
+            return errors === 0 || stored > 0;
+        } catch (error) {
+            console.error("Vault scan failed:", error);
+            return false;
+        }
+    }
     
     /**
      * Rebuild vault from local PouchDB database

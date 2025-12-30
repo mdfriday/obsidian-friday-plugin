@@ -255,6 +255,26 @@ export class FridayStorageEventManager {
             return false;
         }
     }
+
+    /**
+     * Process a file event directly, bypassing queue and debounce
+     * 
+     * Used by rebuildRemote() to scan and store all vault files at once.
+     * This is a public method that allows direct file processing.
+     */
+    async processFileEventDirect(event: FileEvent): Promise<boolean> {
+        // Skip if file is being processed (to prevent circular sync)
+        if (this.isFileProcessing(event.path)) {
+            return true;
+        }
+        
+        // Filter out files that should be ignored
+        if (shouldBeIgnored(event.path)) {
+            return true;
+        }
+        
+        return await this.processEvent(event);
+    }
     
     // ==================== Database Operations ====================
     

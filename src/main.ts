@@ -1123,6 +1123,64 @@ class FridaySettingTab extends PluginSettingTab {
 
 			syncTestStatus = syncTestSetting.descEl.createSpan({cls: "sync-test-status"});
 
+			// Rebuild Remote Button (for first-time upload to server)
+			const syncRebuildRemoteSetting = new Setting(containerEl)
+				.setName("Rebuild Remote from Local")
+				.setDesc("Upload all local files to server (use this to initialize server from this device). WARNING: This will reset the remote database!");
+
+			let syncRebuildRemoteButton: HTMLButtonElement;
+			let syncRebuildRemoteStatus: HTMLElement;
+
+			syncRebuildRemoteSetting.addButton((button) => {
+				syncRebuildRemoteButton = button.buttonEl;
+				button
+					.setButtonText("Rebuild Remote")
+					.setWarning()
+					.onClick(async () => {
+						// Confirm dangerous operation
+						const confirmed = confirm(
+							"WARNING: This will reset the remote database and upload all local files.\n\n" +
+							"Other devices will need to use 'Fetch from Server' after this operation.\n\n" +
+							"Are you sure you want to continue?"
+						);
+						
+						if (!confirmed) {
+							return;
+						}
+
+						syncRebuildRemoteButton.disabled = true;
+						syncRebuildRemoteButton.setText("Rebuilding...");
+						syncRebuildRemoteStatus.setText("");
+						syncRebuildRemoteStatus.removeClass("sync-test-success", "sync-test-error");
+
+						try {
+							// Initialize sync service if not already
+							if (!this.plugin.syncService.isInitialized) {
+								await this.plugin.syncService.initialize(this.plugin.settings.syncConfig);
+							}
+							
+							const result = await this.plugin.syncService.rebuildRemote();
+							
+							if (result) {
+								syncRebuildRemoteStatus.setText("Rebuild remote completed! Other devices should now fetch from server.");
+								syncRebuildRemoteStatus.addClass("sync-test-success");
+							} else {
+								syncRebuildRemoteStatus.setText("Rebuild remote failed. Check console for details.");
+								syncRebuildRemoteStatus.addClass("sync-test-error");
+							}
+						} catch (error) {
+							const errorMessage = error instanceof Error ? error.message : String(error);
+							syncRebuildRemoteStatus.setText(errorMessage);
+							syncRebuildRemoteStatus.addClass("sync-test-error");
+						} finally {
+							syncRebuildRemoteButton.disabled = false;
+							syncRebuildRemoteButton.setText("Rebuild Remote");
+						}
+					});
+			});
+
+			syncRebuildRemoteStatus = syncRebuildRemoteSetting.descEl.createSpan({cls: "sync-test-status"});
+
 			// Fetch from Server Button (for first-time sync)
 			const syncFetchSetting = new Setting(containerEl)
 				.setName("Fetch from Server")

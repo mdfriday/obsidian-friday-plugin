@@ -233,6 +233,22 @@ export class SyncService {
     }
 
     /**
+     * Rebuild remote database from local files
+     * 
+     * Use this for first-time sync when you want to upload all local files to an empty server.
+     * WARNING: This will reset the remote database and upload all local files.
+     * Other devices will need to use "Fetch from Server" after this operation.
+     */
+    async rebuildRemote(): Promise<boolean> {
+        if (!this.core) {
+            new Notice("Sync: Not initialized. Please initialize first.");
+            return false;
+        }
+
+        return await this.core.rebuildRemote();
+    }
+
+    /**
      * Stop synchronization
      */
     async stopSync(): Promise<void> {
