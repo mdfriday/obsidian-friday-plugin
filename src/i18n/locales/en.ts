@@ -19,6 +19,47 @@ export const en: TranslationNamespace = {
 		login: "Login",
 		logout: "Logout",
 
+		// License Settings
+		license: "License",
+		license_key: "License Key",
+		license_key_placeholder: "MDF-XXXX-XXXX-XXXX",
+		activate: "Activate",
+		activating: "Activating…",
+		license_active: "License Active",
+		plan: "Plan",
+		valid_until: "Valid Until",
+		devices: "Devices",
+		sync: "Sync",
+		publish: "Publish",
+		enabled: "Enabled",
+		disabled: "Disabled",
+		details: "Details",
+		hide_details: "Hide Details",
+		license_invalid_format: "Invalid license key format. Expected: MDF-XXXX-XXXX-XXXX",
+		license_activation_failed: "License activation failed. Please check your license key.",
+		license_activated_success: "License activated successfully!",
+
+		// Sync Settings (License-based)
+		sync_enabled: "Sync is enabled",
+		sync_description: "Your data is securely synced across devices.",
+		sync_first_time_title: "This is your first time using sync.",
+		sync_first_time_desc: "Choose how you want to set up sync on this device.",
+		upload_local_to_cloud: "Upload local data to cloud",
+		download_from_cloud: "Download data from cloud",
+		sync_data_available: "Data is available in the cloud.",
+		sync_uploading: "Uploading...",
+		sync_downloading: "Downloading...",
+		sync_upload_success: "Local data uploaded to cloud successfully!",
+		sync_download_success: "Cloud data downloaded successfully!",
+		sync_operation_failed: "Sync operation failed. Please try again.",
+
+		// Security Settings
+		security: "Security",
+		encryption_enabled: "End-to-end encryption is enabled",
+		encryption_password: "Encryption Password",
+		show_password: "Show",
+		hide_password: "Hide",
+
 		// Publish settings
 		publish_settings: "Publish Settings",
 		publish_method: "Publish Method",

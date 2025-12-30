@@ -14,7 +14,7 @@ if you want to view the source, please visit the github repository of this plugi
 `
 
 const prod = process.argv[2] === 'production'
-const pluginDir = '/Users/sunwei/Desktop/mdf-sync/.obsidian/plugins/mdfriday';
+const pluginDir = '/Users/sunwei/Desktop/mdf-upload/.obsidian/plugins/mdfriday';
 
 // 复制项目根目录的 styles.css 到插件目录
 const copyStylesCss = () => {

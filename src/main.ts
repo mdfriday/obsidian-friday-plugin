@@ -4,6 +4,7 @@ import {User} from "./user";
 import './styles/theme-modal.css';
 import './styles/publish-settings.css';
 import './styles/project-modal.css';
+import './styles/license-settings.css';
 import {ThemeSelectionModal} from "./theme/modal";
 import {Hugoverse} from "./hugoverse";
 import {NetlifyAPI} from "./netlify";
@@ -15,11 +16,29 @@ import {ProjectManagementModal} from "./projects/modal";
 import {ProjectService} from "./projects/service";
 import type {ProjectConfig} from "./projects/types";
 import {SyncService, SyncStatusDisplay, type SyncConfig} from "./sync";
+import {
+    type StoredLicenseData,
+    type StoredSyncData,
+    type StoredUserData,
+    isValidLicenseKeyFormat,
+    licenseKeyToEmail,
+    licenseKeyToPassword,
+    maskLicenseKey,
+    formatExpirationDate,
+    formatPlanName,
+    isLicenseExpired,
+    generateEncryptionPassphrase
+} from "./license";
 
 interface FridaySettings {
 	username: string;
 	password: string;
 	userToken: string;
+	// License Settings
+	license: StoredLicenseData | null;
+	licenseSync: StoredSyncData | null;
+	licenseUser: StoredUserData | null;
+	encryptionPassphrase: string;
 	// General Settings
 	downloadServer: 'global' | 'east';
 	// Publish Settings
@@ -32,7 +51,7 @@ interface FridaySettings {
 	ftpPassword: string;
 	ftpRemoteDir: string;
 	ftpIgnoreCert: boolean;
-	// CouchDB Sync Settings
+	// CouchDB Sync Settings (legacy, to be replaced by license-based sync)
 	syncEnabled: boolean;
 	syncConfig: SyncConfig;
 }
@@ -41,6 +60,11 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	username: '',
 	password: '',
 	userToken: '',
+	// License Settings defaults
+	license: null,
+	licenseSync: null,
+	licenseUser: null,
+	encryptionPassphrase: '',
 	// General Settings defaults
 	downloadServer: 'global',
 	// Publish Settings defaults
@@ -666,6 +690,9 @@ export default class FridayPlugin extends Plugin {
 
 class FridaySettingTab extends PluginSettingTab {
 	plugin: FridayPlugin;
+	private isActivating: boolean = false;
+	private activationError: string = '';
+	private firstTimeSync: boolean = false;
 
 	constructor(app: App, plugin: FridayPlugin) {
 		super(app, plugin);
@@ -677,9 +704,22 @@ class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		const {username, password, userToken, downloadServer, publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
+		const {license, licenseSync, downloadServer, publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
 
+		// =========================================
+		// License Section (Always at top)
+		// =========================================
+		this.renderLicenseSection(containerEl);
+
+		// If license is activated, show Sync and Security sections
+		if (license && licenseSync?.enabled) {
+			this.renderSyncSection(containerEl);
+			this.renderSecuritySection(containerEl);
+		}
+
+		// =========================================
 		// General Settings Section
+		// =========================================
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.general_settings')});
 		
 		// Download Server Setting
@@ -1275,75 +1315,447 @@ class FridaySettingTab extends PluginSettingTab {
 			syncRebuildStatus = syncRebuildSetting.descEl.createSpan({cls: "sync-test-status"});
 		}
 
-		// MDFriday Account Section (optional for advanced features)
-		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.mdfriday_account')});
-		
-		if (userToken) {
-			// 用户已登录的界面
-			containerEl.createEl("p", {text: this.plugin.i18n.t('settings.logged_in_as', { username })});
+		// MDFriday Account Section (only show if no license activated)
+		if (!this.plugin.settings.license) {
+			containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.mdfriday_account')});
+			
+			const userToken = this.plugin.settings.userToken;
+			const username = this.plugin.settings.username;
+			const password = this.plugin.settings.password;
+			
+			if (userToken) {
+				// 用户已登录的界面
+				containerEl.createEl("p", {text: this.plugin.i18n.t('settings.logged_in_as', { username })});
 
-			new Setting(containerEl)
-				.addButton((button) =>
+				new Setting(containerEl)
+					.addButton((button) =>
+						button
+							.setButtonText(this.plugin.i18n.t('settings.logout'))
+							.setCta()
+							.onClick(async () => {
+								await this.plugin.user.logout(); // 处理登出逻辑
+								this.display(); // 刷新界面
+							})
+					);
+			} else {
+				// 用户未登录的界面
+				containerEl.createEl("p", {text: this.plugin.i18n.t('settings.mdfriday_account_desc')});
+
+				// Email 输入框
+				new Setting(containerEl)
+					.setName(this.plugin.i18n.t('settings.email'))
+					.setDesc(this.plugin.i18n.t('settings.email_desc'))
+					.addText((text) =>
+						text
+							.setPlaceholder(this.plugin.i18n.t('settings.email_placeholder'))
+							.setValue(username || "") // 填充现有用户名
+							.onChange(async (value) => {
+								this.plugin.settings.username = value;
+								await this.plugin.saveSettings();
+							})
+					);
+
+				// Password 输入框
+				new Setting(containerEl)
+					.setName(this.plugin.i18n.t('settings.password'))
+					.setDesc(this.plugin.i18n.t('settings.password_desc'))
+					.addText((text) => {
+						text
+							.setPlaceholder(this.plugin.i18n.t('settings.password_placeholder'))
+							.setValue(password || "") // 填充现有密码
+							.onChange(async (value) => {
+								this.plugin.settings.password = value;
+								await this.plugin.saveSettings();
+							})
+						text.inputEl.type = "password";
+					});
+
+				// Register 按钮
+				new Setting(containerEl)
+					.addButton((button) =>
+						button
+							.setButtonText(this.plugin.i18n.t('settings.register'))
+							.setCta()
+							.onClick(async () => {
+								await this.plugin.user.register(); // 处理注册逻辑
+								this.display(); // 刷新界面
+							})
+					).addButton((button) =>
 					button
-						.setButtonText(this.plugin.i18n.t('settings.logout'))
+						.setButtonText(this.plugin.i18n.t('settings.login'))
 						.setCta()
 						.onClick(async () => {
-							await this.plugin.user.logout(); // 处理登出逻辑
+							await this.plugin.user.login(); // 处理登录逻辑
 							this.display(); // 刷新界面
 						})
 				);
+			}
+		}
+	}
+
+	/**
+	 * Render License Section
+	 * Shows license key input when not activated, or license status when activated
+	 */
+	private renderLicenseSection(containerEl: HTMLElement): void {
+		const license = this.plugin.settings.license;
+
+		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.license')});
+
+		if (license && !isLicenseExpired(license.expiresAt)) {
+			// ========== License Active State ==========
+			const section = containerEl.createDiv({cls: 'friday-license-section'});
+			
+			// Header with checkmark
+			const header = section.createDiv({cls: 'friday-license-active-header'});
+			header.createSpan({cls: 'checkmark', text: '✓'});
+			header.createSpan({text: this.plugin.i18n.t('settings.license_active')});
+
+			// Status grid
+			const statusGrid = section.createDiv({cls: 'friday-license-status'});
+			
+			// Plan
+			statusGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.plan')});
+			const planValue = statusGrid.createDiv({cls: 'friday-license-status-value'});
+			const planBadge = planValue.createSpan({cls: `friday-plan-badge ${license.plan.toLowerCase()}`});
+			planBadge.setText(formatPlanName(license.plan));
+
+			// Valid Until
+			statusGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.valid_until')});
+			statusGrid.createDiv({cls: 'friday-license-status-value', text: formatExpirationDate(license.expiresAt)});
+
+			// Details toggle (collapsible)
+			const detailsSection = section.createDiv({cls: 'friday-license-details'});
+			const toggle = detailsSection.createDiv({cls: 'friday-license-details-toggle'});
+			const chevron = toggle.createSpan({cls: 'chevron', text: '▶'});
+			toggle.createSpan({text: this.plugin.i18n.t('settings.details')});
+
+			const detailsContent = detailsSection.createDiv({cls: 'friday-license-details-content'});
+			
+			// Details grid
+			const detailsGrid = detailsContent.createDiv({cls: 'friday-license-status'});
+			
+			// License Key (masked)
+			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.license_key')});
+			detailsGrid.createDiv({cls: 'friday-license-status-value', text: maskLicenseKey(license.key)});
+
+			// Devices
+			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.devices')});
+			detailsGrid.createDiv({cls: 'friday-license-status-value', text: `1 / ${license.features.max_devices}`});
+
+			// Sync
+			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.sync')});
+			detailsGrid.createDiv({cls: 'friday-license-status-value', 
+				text: license.features.sync_enabled ? this.plugin.i18n.t('settings.enabled') : this.plugin.i18n.t('settings.disabled')
+			});
+
+			// Publish
+			detailsGrid.createDiv({cls: 'friday-license-status-label', text: this.plugin.i18n.t('settings.publish')});
+			detailsGrid.createDiv({cls: 'friday-license-status-value', 
+				text: license.features.publish_enabled ? this.plugin.i18n.t('settings.enabled') : this.plugin.i18n.t('settings.disabled')
+			});
+
+			// Toggle click handler
+			let isExpanded = false;
+			toggle.addEventListener('click', () => {
+				isExpanded = !isExpanded;
+				if (isExpanded) {
+					chevron.addClass('expanded');
+					toggle.addClass('expanded');
+					detailsContent.addClass('visible');
+				} else {
+					chevron.removeClass('expanded');
+					toggle.removeClass('expanded');
+					detailsContent.removeClass('visible');
+				}
+			});
+
 		} else {
-			// 用户未登录的界面
-			containerEl.createEl("p", {text: this.plugin.i18n.t('settings.mdfriday_account_desc')});
+			// ========== License Input State ==========
+			const section = containerEl.createDiv({cls: 'friday-license-section'});
+			
+			// License Key input
+			const inputGroup = section.createDiv({cls: 'friday-license-input-group'});
+			
+			const input = inputGroup.createEl('input', {
+				type: 'text',
+				placeholder: this.plugin.i18n.t('settings.license_key_placeholder'),
+			});
+			input.value = '';
 
-			// Email 输入框
-			new Setting(containerEl)
-				.setName(this.plugin.i18n.t('settings.email'))
-				.setDesc(this.plugin.i18n.t('settings.email_desc'))
-				.addText((text) =>
-					text
-						.setPlaceholder(this.plugin.i18n.t('settings.email_placeholder'))
-						.setValue(username || "") // 填充现有用户名
-						.onChange(async (value) => {
-							this.plugin.settings.username = value;
-							await this.plugin.saveSettings();
-						})
-				);
+			const activateBtn = inputGroup.createEl('button', {
+				cls: 'friday-activate-btn primary',
+				text: this.plugin.i18n.t('settings.activate')
+			});
 
-			// Password 输入框
-			new Setting(containerEl)
-				.setName(this.plugin.i18n.t('settings.password'))
-				.setDesc(this.plugin.i18n.t('settings.password_desc'))
-				.addText((text) => {
-					text
-						.setPlaceholder(this.plugin.i18n.t('settings.password_placeholder'))
-						.setValue(password || "") // 填充现有密码
-						.onChange(async (value) => {
-							this.plugin.settings.password = value;
-							await this.plugin.saveSettings();
-						})
-					text.inputEl.type = "password";
-				});
+			// Error/Success message container
+			let messageEl: HTMLElement | null = null;
 
-			// Register 按钮
-			new Setting(containerEl)
-				.addButton((button) =>
+			// Activate button click handler
+			activateBtn.addEventListener('click', async () => {
+				const licenseKey = input.value.trim().toUpperCase();
+
+				// Clear previous messages
+				if (messageEl) {
+					messageEl.remove();
+					messageEl = null;
+				}
+
+				// Validate format
+				if (!isValidLicenseKeyFormat(licenseKey)) {
+					messageEl = section.createDiv({cls: 'friday-license-error'});
+					messageEl.setText(this.plugin.i18n.t('settings.license_invalid_format'));
+					return;
+				}
+
+				// Start activation
+				this.isActivating = true;
+				activateBtn.setText(this.plugin.i18n.t('settings.activating'));
+				activateBtn.disabled = true;
+				input.disabled = true;
+
+				try {
+					await this.activateLicense(licenseKey);
+					
+					// Success - refresh the entire settings display
+					new Notice(this.plugin.i18n.t('settings.license_activated_success'));
+					this.display();
+				} catch (error) {
+					// Show error
+					messageEl = section.createDiv({cls: 'friday-license-error'});
+					messageEl.setText(this.plugin.i18n.t('settings.license_activation_failed'));
+					console.error('License activation error:', error);
+				} finally {
+					this.isActivating = false;
+					activateBtn.setText(this.plugin.i18n.t('settings.activate'));
+					activateBtn.disabled = false;
+					input.disabled = false;
+				}
+			});
+		}
+	}
+
+	/**
+	 * Render Sync Section (only shown when license is activated)
+	 */
+	private renderSyncSection(containerEl: HTMLElement): void {
+		const license = this.plugin.settings.license;
+		const licenseSync = this.plugin.settings.licenseSync;
+
+		if (!license || !licenseSync?.enabled) return;
+
+		const section = containerEl.createDiv({cls: 'friday-sync-section'});
+
+		// Header with checkmark
+		const header = section.createDiv({cls: 'friday-sync-header'});
+		header.createSpan({cls: 'checkmark', text: '✓'});
+		header.createSpan({text: this.plugin.i18n.t('settings.sync_enabled')});
+
+		// Description
+		section.createDiv({
+			cls: 'friday-sync-description',
+			text: this.plugin.i18n.t('settings.sync_description')
+		});
+
+		// First time sync notice
+		if (this.firstTimeSync) {
+			const firstTimeNotice = section.createDiv({cls: 'friday-sync-first-time'});
+			firstTimeNotice.createEl('p', {text: this.plugin.i18n.t('settings.sync_first_time_title')});
+			
+			new Setting(firstTimeNotice)
+				.addButton((button) => {
 					button
-						.setButtonText(this.plugin.i18n.t('settings.register'))
+						.setButtonText(this.plugin.i18n.t('settings.upload_local_to_cloud'))
 						.setCta()
 						.onClick(async () => {
-							await this.plugin.user.register(); // 处理注册逻辑
-							this.display(); // 刷新界面
-						})
-				).addButton((button) =>
-				button
-					.setButtonText(this.plugin.i18n.t('settings.login'))
-					.setCta()
-					.onClick(async () => {
-						await this.plugin.user.login(); // 处理登录逻辑
-						this.display(); // 刷新界面
-					})
+							button.setButtonText(this.plugin.i18n.t('settings.sync_uploading'));
+							button.setDisabled(true);
+							try {
+								if (!this.plugin.syncService.isInitialized) {
+									await this.plugin.syncService.initialize(this.plugin.settings.syncConfig);
+								}
+								await this.plugin.syncService.rebuildRemote();
+								new Notice(this.plugin.i18n.t('settings.sync_upload_success'));
+								this.firstTimeSync = false;
+								this.display();
+							} catch (error) {
+								new Notice(this.plugin.i18n.t('settings.sync_operation_failed'));
+								button.setButtonText(this.plugin.i18n.t('settings.upload_local_to_cloud'));
+								button.setDisabled(false);
+							}
+						});
+				});
+		} else {
+			// Show download option for non-first-time users
+			const dataNotice = section.createDiv({cls: 'friday-sync-first-time'});
+			dataNotice.createEl('p', {text: this.plugin.i18n.t('settings.sync_data_available')});
+			
+			new Setting(dataNotice)
+				.addButton((button) => {
+					button
+						.setButtonText(this.plugin.i18n.t('settings.download_from_cloud'))
+						.onClick(async () => {
+							button.setButtonText(this.plugin.i18n.t('settings.sync_downloading'));
+							button.setDisabled(true);
+							try {
+								if (!this.plugin.syncService.isInitialized) {
+									await this.plugin.syncService.initialize(this.plugin.settings.syncConfig);
+								}
+								await this.plugin.syncService.fetchFromServer();
+								new Notice(this.plugin.i18n.t('settings.sync_download_success'));
+								this.display();
+							} catch (error) {
+								new Notice(this.plugin.i18n.t('settings.sync_operation_failed'));
+								button.setButtonText(this.plugin.i18n.t('settings.download_from_cloud'));
+								button.setDisabled(false);
+							}
+						});
+				});
+		}
+	}
+
+	/**
+	 * Render Security Section (only shown when license is activated)
+	 */
+	private renderSecuritySection(containerEl: HTMLElement): void {
+		const encryptionPassphrase = this.plugin.settings.encryptionPassphrase;
+
+		if (!encryptionPassphrase) return;
+
+		const section = containerEl.createDiv({cls: 'friday-security-section'});
+
+		// Header with checkmark
+		const header = section.createDiv({cls: 'friday-security-header'});
+		header.createSpan({cls: 'checkmark', text: '✓'});
+		header.createSpan({text: this.plugin.i18n.t('settings.encryption_enabled')});
+
+		// Password field
+		const passwordContainer = section.createDiv({cls: 'friday-password-field'});
+		const label = passwordContainer.createSpan({text: this.plugin.i18n.t('settings.encryption_password') + ':'});
+		label.style.marginRight = '12px';
+		label.style.fontSize = '13px';
+		label.style.color = 'var(--text-muted)';
+
+		const passwordInput = passwordContainer.createEl('input', {
+			type: 'password',
+			value: encryptionPassphrase
+		});
+		passwordInput.readOnly = true;
+
+		const toggleBtn = passwordContainer.createEl('button', {
+			cls: 'friday-password-toggle',
+			text: this.plugin.i18n.t('settings.show_password')
+		});
+
+		let isVisible = false;
+		toggleBtn.addEventListener('click', () => {
+			isVisible = !isVisible;
+			passwordInput.type = isVisible ? 'text' : 'password';
+			toggleBtn.setText(isVisible 
+				? this.plugin.i18n.t('settings.hide_password') 
+				: this.plugin.i18n.t('settings.show_password')
 			);
+		});
+	}
+
+	/**
+	 * Activate license key
+	 * This is the main license activation flow:
+	 * 1. Convert license key to email/password
+	 * 2. Login with credentials
+	 * 3. Activate license with device info
+	 * 4. Store license data and configure sync
+	 */
+	private async activateLicense(licenseKey: string): Promise<void> {
+		// Import required functions
+		const { getDeviceId, getDeviceName, getDeviceType } = await import('./license');
+
+		// Step 1: Convert license key to credentials
+		const email = licenseKeyToEmail(licenseKey);
+		const password = licenseKeyToPassword(licenseKey);
+
+		// Step 2: Login with credentials
+		const token = await this.plugin.user.loginWithCredentials(email, password);
+		if (!token) {
+			throw new Error('Login failed');
+		}
+
+		// Step 3: Get device info
+		const deviceId = await getDeviceId();
+		const deviceName = getDeviceName();
+		const deviceType = getDeviceType();
+
+		// Step 4: Activate license
+		const response = await this.plugin.hugoverse.activateLicense(
+			token,
+			licenseKey,
+			deviceId,
+			deviceName,
+			deviceType
+		);
+
+		if (!response || !response.success) {
+			throw new Error('License activation failed');
+		}
+
+		// Step 5: Store license data
+		this.plugin.settings.license = {
+			key: licenseKey,
+			plan: response.plan,
+			expiresAt: response.expires_at,
+			features: response.features,
+			activatedAt: Date.now()
+		};
+
+		// Step 6: Store sync configuration
+		if (response.sync && response.features.sync_enabled) {
+			this.plugin.settings.licenseSync = {
+				enabled: true,
+				endpoint: response.sync.db_endpoint,
+				dbName: response.sync.db_name,
+				email: response.sync.email,
+				dbPassword: response.sync.db_password
+			};
+
+			// Configure the actual sync config
+			this.plugin.settings.syncEnabled = true;
+			this.plugin.settings.syncConfig = {
+				...this.plugin.settings.syncConfig,
+				couchDB_URI: response.sync.db_endpoint.replace(`/${response.sync.db_name}`, ''),
+				couchDB_DBNAME: response.sync.db_name,
+				couchDB_USER: response.sync.email,
+				couchDB_PASSWORD: response.sync.db_password,
+				encrypt: true,
+				syncOnStart: true,
+				syncOnSave: true,
+				liveSync: true
+			};
+		}
+
+		// Step 7: Store user data
+		if (response.user) {
+			this.plugin.settings.licenseUser = {
+				email: response.user.email,
+				userDir: response.user.user_dir
+			};
+		}
+
+		// Step 8: Generate encryption passphrase if not exists
+		if (!this.plugin.settings.encryptionPassphrase) {
+			this.plugin.settings.encryptionPassphrase = generateEncryptionPassphrase();
+			// Set in sync config too
+			this.plugin.settings.syncConfig.passphrase = this.plugin.settings.encryptionPassphrase;
+		}
+
+		// Step 9: Save all settings
+		await this.plugin.saveSettings();
+
+		// Step 10: Set first time flag
+		this.firstTimeSync = response.first_time;
+
+		// Step 11: Initialize sync service
+		if (this.plugin.settings.syncEnabled) {
+			await this.plugin.initializeSyncService();
 		}
 	}
 }

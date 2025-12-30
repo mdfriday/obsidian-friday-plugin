@@ -1,0 +1,371 @@
+/* License Settings Styles - Obsidian Native Design */
+
+/* License Section Container */
+.friday-license-section {
+    margin-bottom: 24px;
+    padding: 20px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background-color: var(--background-secondary);
+}
+
+/* Active License Header */
+.friday-license-active-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.friday-license-active-header .checkmark {
+    color: var(--color-green);
+    font-size: 18px;
+}
+
+/* License Status Grid */
+.friday-license-status {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    margin-bottom: 16px;
+}
+
+.friday-license-status-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.friday-license-status-value {
+    font-size: 13px;
+    color: var(--text-normal);
+}
+
+/* License Details Collapsible */
+.friday-license-details {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.friday-license-details-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.friday-license-details-toggle:hover {
+    color: var(--text-normal);
+}
+
+.friday-license-details-toggle .chevron {
+    transition: transform 0.2s ease;
+}
+
+.friday-license-details-toggle.expanded .chevron {
+    transform: rotate(90deg);
+}
+
+.friday-license-details-content {
+    display: none;
+    margin-top: 12px;
+}
+
+.friday-license-details-content.visible {
+    display: block;
+}
+
+/* Sync Section */
+.friday-sync-section {
+    margin-top: 24px;
+    padding: 20px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background-color: var(--background-secondary);
+}
+
+.friday-sync-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.friday-sync-header .checkmark {
+    color: var(--color-green);
+    font-size: 18px;
+}
+
+.friday-sync-description {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+/* First Time Sync Notice */
+.friday-sync-first-time {
+    padding: 12px 16px;
+    background-color: var(--background-modifier-info);
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+.friday-sync-first-time p {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    color: var(--text-normal);
+}
+
+/* Security Section */
+.friday-security-section {
+    margin-top: 24px;
+    padding: 20px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background-color: var(--background-secondary);
+}
+
+.friday-security-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.friday-security-header .checkmark {
+    color: var(--color-green);
+    font-size: 18px;
+}
+
+/* Password Field with Toggle */
+.friday-password-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.friday-password-field input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 13px;
+    font-family: var(--font-monospace);
+}
+
+.friday-password-field input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+}
+
+.friday-password-toggle {
+    padding: 6px 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.friday-password-toggle:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+/* License Input Group */
+.friday-license-input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.friday-license-input-group input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+    font-family: var(--font-monospace);
+    letter-spacing: 1px;
+}
+
+.friday-license-input-group input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+.friday-license-input-group input::placeholder {
+    color: var(--text-faint);
+    letter-spacing: normal;
+}
+
+.friday-license-input-group input:disabled {
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* Activate Button States */
+.friday-activate-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.friday-activate-btn.primary {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.friday-activate-btn.primary:hover:not(:disabled) {
+    background: var(--interactive-accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.friday-activate-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.friday-activate-btn.activating {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* Error Message */
+.friday-license-error {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background-color: rgba(var(--color-red-rgb), 0.1);
+    border: 1px solid rgba(var(--color-red-rgb), 0.3);
+    border-radius: 6px;
+    color: var(--color-red);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Success Message */
+.friday-license-success {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background-color: rgba(var(--color-green-rgb), 0.1);
+    border: 1px solid rgba(var(--color-green-rgb), 0.3);
+    border-radius: 6px;
+    color: var(--color-green);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Sync Test Status */
+.sync-test-status {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 12px;
+}
+
+.sync-test-success {
+    color: var(--color-green);
+}
+
+.sync-test-error {
+    color: var(--color-red);
+}
+
+/* Section Divider */
+.friday-settings-divider {
+    height: 1px;
+    background: var(--background-modifier-border);
+    margin: 24px 0;
+}
+
+/* Feature Pills */
+.friday-feature-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.friday-feature-pill {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.friday-feature-pill.enabled {
+    background: rgba(var(--color-green-rgb), 0.15);
+    color: var(--color-green);
+}
+
+.friday-feature-pill.disabled {
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+/* Plan Badge */
+.friday-plan-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.friday-plan-badge.starter {
+    background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+    color: var(--text-on-accent);
+}
+
+.friday-plan-badge.pro {
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    color: #1a1a1a;
+}
+
+.friday-plan-badge.team {
+    background: linear-gradient(135deg, #9333EA, #7C3AED);
+    color: white;
+}
+
+/* Collapsible Arrow Animation */
+.friday-collapse-arrow {
+    display: inline-block;
+    transition: transform 0.2s ease;
+    font-size: 10px;
+}
+
+.friday-collapse-arrow.expanded {
+    transform: rotate(90deg);
+}
+

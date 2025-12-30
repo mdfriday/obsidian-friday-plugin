@@ -19,6 +19,47 @@ export const zhCn: TranslationNamespace = {
 		login: "登录",
 		logout: "退出登录",
 
+		// License Settings
+		license: "许可证",
+		license_key: "许可证密钥",
+		license_key_placeholder: "MDF-XXXX-XXXX-XXXX",
+		activate: "激活",
+		activating: "激活中…",
+		license_active: "许可证已激活",
+		plan: "套餐",
+		valid_until: "有效期至",
+		devices: "设备",
+		sync: "同步",
+		publish: "发布",
+		enabled: "已启用",
+		disabled: "未启用",
+		details: "详情",
+		hide_details: "隐藏详情",
+		license_invalid_format: "许可证密钥格式无效。正确格式：MDF-XXXX-XXXX-XXXX",
+		license_activation_failed: "许可证激活失败，请检查您的许可证密钥。",
+		license_activated_success: "许可证激活成功！",
+
+		// Sync Settings (License-based)
+		sync_enabled: "同步已启用",
+		sync_description: "您的数据已安全同步至各设备。",
+		sync_first_time_title: "这是您首次使用同步功能。",
+		sync_first_time_desc: "请选择如何在此设备上设置同步。",
+		upload_local_to_cloud: "上传本地数据到云端",
+		download_from_cloud: "从云端下载数据",
+		sync_data_available: "云端已有数据可供下载。",
+		sync_uploading: "上传中...",
+		sync_downloading: "下载中...",
+		sync_upload_success: "本地数据已成功上传到云端！",
+		sync_download_success: "云端数据已成功下载！",
+		sync_operation_failed: "同步操作失败，请重试。",
+
+		// Security Settings
+		security: "安全",
+		encryption_enabled: "端到端加密已启用",
+		encryption_password: "加密密码",
+		show_password: "显示",
+		hide_password: "隐藏",
+
 		// Publish settings
 		publish_settings: "发布设置",
 		publish_method: "发布方式",

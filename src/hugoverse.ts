@@ -3,6 +3,7 @@ import type {RequestUrlResponse} from "obsidian";
 import type {User} from "./user";
 import type FridayPlugin from "./main";
 import * as path from "path";
+import type { LicenseActivationResponse } from "./license";
 
 const NEW_ID = "-1"
 const COUNTER_REQUEST_ID_KEY = "friday_counter_request_id"
@@ -233,6 +234,68 @@ export class Hugoverse {
 		} catch (error) {
 			console.warn("Failed to send counter:", error.toString());
 			return false;
+		}
+	}
+
+	/**
+	 * Activate a license key
+	 * 
+	 * POST /api/license/activate
+	 * Authorization: Bearer <token>
+	 * 
+	 * FormData:
+	 * - license_key
+	 * - device_id
+	 * - device_name
+	 * - device_type
+	 */
+	async activateLicense(
+		token: string,
+		licenseKey: string,
+		deviceId: string,
+		deviceName: string,
+		deviceType: string
+	): Promise<LicenseActivationResponse | null> {
+		try {
+			const activateUrl = `${this.apiUrl}/api/license/activate`;
+
+			// Create FormData
+			const body: FormData = new FormData();
+			body.append("license_key", licenseKey);
+			body.append("device_id", deviceId);
+			body.append("device_name", deviceName);
+			body.append("device_type", deviceType);
+
+			// Convert FormData to ArrayBuffer
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+
+			const response: RequestUrlResponse = await requestUrl({
+				url: activateUrl,
+				method: "POST",
+				headers: {
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+					"Authorization": `Bearer ${token}`,
+				},
+				body: arrayBufferBody,
+			});
+
+			// Check response status
+			if (response.status !== 200 && response.status !== 201) {
+				console.error(`License activation failed: ${response.text}`);
+				throw new Error(`License activation failed: ${response.status}`);
+			}
+
+			// Parse response
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0] as LicenseActivationResponse;
+			}
+
+			throw new Error("Invalid activation response format");
+		} catch (error) {
+			console.error("Failed to activate license:", error);
+			throw error;
 		}
 	}
 

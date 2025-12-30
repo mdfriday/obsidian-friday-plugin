@@ -74,6 +74,53 @@ export class User {
 		}
 	}
 
+	/**
+	 * Login with provided credentials (programmatic login)
+	 * Used for license activation flow where credentials are derived from license key
+	 * 
+	 * @param email - User email
+	 * @param password - User password
+	 * @returns Token if successful, null otherwise
+	 */
+	async loginWithCredentials(email: string, password: string): Promise<string | null> {
+		try {
+			const loginUrl = `${this.apiUrl}/api/login`;
+			const response: RequestUrlResponse = await requestUrl({
+				url: loginUrl,
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded"
+				},
+				body: `email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
+			});
+
+			// Check response status
+			if (response.status !== 201) {
+				console.error(`Login failed with status ${response.status}: ${response.text}`);
+				return null;
+			}
+
+			// Parse token from response
+			const token = response.json.data[0];
+			
+			// Update plugin state
+			this.name = email;
+			this.password = password;
+			this.token = token;
+			
+			// Save to settings
+			this.plugin.settings.username = email;
+			this.plugin.settings.password = password;
+			this.plugin.settings.userToken = token;
+			await this.plugin.saveSettings();
+
+			return token;
+		} catch (error) {
+			console.error("Failed to login with credentials:", error);
+			return null;
+		}
+	}
+
 	async register() {
 		this.name = this.plugin.settings.username
 		this.password = this.plugin.settings.password
