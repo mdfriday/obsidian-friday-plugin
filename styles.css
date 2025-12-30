@@ -1070,3 +1070,56 @@ div.workspace-leaf-content[data-type=bases] .livesync-status {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* src/styles/license-settings.css */
+.friday-license-status-text {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.friday-license-status-text.friday-license-error {
+  color: var(--text-error);
+}
+.friday-license-status-text.friday-license-success {
+  color: var(--color-green);
+}
+.friday-plan-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.friday-plan-badge.starter {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.friday-plan-badge.pro {
+  background: linear-gradient(135deg, #FFD700, #FFA500);
+  color: #1a1a1a;
+}
+.friday-plan-badge.team {
+  background: linear-gradient(135deg, #9333EA, #7C3AED);
+  color: white;
+}
+.friday-device-count {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+.friday-security-container {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+}
+.friday-security-container h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: var(--text-normal);
+  font-size: 16px;
+  font-weight: 600;
+}
