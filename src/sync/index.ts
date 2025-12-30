@@ -12,7 +12,10 @@ export { SyncService, type SyncConfig, type SyncStatus, type SyncStatusCallback 
 export { FridaySyncCore } from "./FridaySyncCore";
 
 // Export the status display component
-export { SyncStatusDisplay, type ReplicationStat } from "./SyncStatusDisplay";
+export { SyncStatusDisplay } from "./SyncStatusDisplay";
+
+// Export the storage event manager (for watching local file changes)
+export { FridayStorageEventManager, type FileEvent, type FileEventType } from "./FridayStorageEventManager";
 
 // Export types from the core library
 export * from "./types";

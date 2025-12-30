@@ -463,17 +463,22 @@ export const enableEncryption = (
     getPBKDF2Salt: () => Promise<Uint8Array<ArrayBuffer>>,
     algorithm: E2EEAlgorithm
 ) => {
+    console.log(`[Friday Sync] enableEncryption called with algorithm: ${algorithm}`);
     const decrypted = new Map();
 
-    const incoming = (doc: AnyEntry | EntryLeaf) =>
-        algorithm === E2EEAlgorithms.V2
+    const incoming = (doc: AnyEntry | EntryLeaf) => {
+        console.log(`[Friday Sync] Encryption incoming transform called for doc: ${doc._id?.substring(0, 30)}...`);
+        return algorithm === E2EEAlgorithms.V2
             ? incomingEncryptHKDF(doc, passphrase, useDynamicIterationCount, getPBKDF2Salt)
             : incomingEncryptV1(doc, passphrase, useDynamicIterationCount);
+    };
     // If unless specified algorithm is ForceV1, then use HKDF decryption for forward compatibility.
-    const outgoing = (doc: EntryDoc) =>
-        algorithm !== E2EEAlgorithms.ForceV1
+    const outgoing = (doc: EntryDoc) => {
+        console.log(`[Friday Sync] Decryption outgoing transform called for doc: ${doc._id?.substring(0, 30)}...`);
+        return algorithm !== E2EEAlgorithms.ForceV1
             ? outgoingDecryptHKDF(doc, migrationDecrypt, decrypted, passphrase, useDynamicIterationCount, getPBKDF2Salt)
             : outgoingDecryptV1(doc, migrationDecrypt, decrypted, passphrase, useDynamicIterationCount);
+    };
     preprocessOutgoing = incoming;
     preprocessIncoming = outgoing;
     //@ts-ignore
@@ -481,6 +486,7 @@ export const enableEncryption = (
         incoming,
         outgoing,
     });
+    console.log(`[Friday Sync] enableEncryption: transform registered on database`);
 };
 
 export function disableEncryption() {

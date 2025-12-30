@@ -38,9 +38,18 @@ import { readContent, isTextDocument } from "./core/common/utils";
 // Import services
 import { FridayServiceHub } from "./FridayServiceHub";
 import type { SyncConfig, SyncStatus, SyncStatusCallback } from "./SyncService";
+import { FridayStorageEventManager } from "./FridayStorageEventManager";
 
 // PouchDB imports - use the configured PouchDB with all plugins (including transform-pouch)
 import { PouchDB } from "./core/pouchdb/pouchdb-browser";
+
+// Import encryption utilities for local database
+import { enableEncryption, disableEncryption } from "./core/pouchdb/encryption";
+import { replicationFilter } from "./core/pouchdb/compress";
+import { E2EEAlgorithms } from "./core/common/types";
+
+// Import path utilities for correct document ID generation
+import { path2id_base, id2path_base } from "./core/string_and_binary/path";
 
 /**
  * Simple KeyValue Database implementation using localStorage
@@ -178,6 +187,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     
     // Log callback for status display integration
     private _logCallback?: (message: string, level: number, key?: string) => void;
+    
+    // Storage event manager for watching file changes
+    private _storageEventManager: FridayStorageEventManager | null = null;
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -342,6 +354,65 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 },
             });
 
+            // CRITICAL: Register database initialization handler BEFORE creating database
+            // This handler sets up encryption for the local database (matching livesync's pattern)
+            // The getPBKDF2Salt function is passed as a callback and called when encryption is needed
+            console.log("[Friday Sync] Registering database initialization handler for encryption...");
+            this._services.databaseEvents.handleOnDatabaseInitialisation(async (db: LiveSyncLocalDB) => {
+                console.log("[Friday Sync] onDatabaseInitialisation event triggered!");
+                console.log("[Friday Sync] db.localDatabase exists:", !!db.localDatabase);
+                console.log("[Friday Sync] db.localDatabase.transform exists:", typeof (db.localDatabase as any).transform);
+                
+                // Set up compression filter
+                replicationFilter(db.localDatabase, false);
+                
+                // Reset encryption state first
+                disableEncryption();
+                
+                // Check if encryption should be enabled
+                console.log("[Friday Sync] Settings - encrypt:", this._settings.encrypt);
+                console.log("[Friday Sync] Settings - passphrase exists:", !!this._settings.passphrase);
+                
+                // Enable encryption if passphrase is configured
+                if (this._settings.passphrase && this._settings.encrypt) {
+                    console.log("[Friday Sync] Enabling encryption for local database...");
+                    
+                    // Get E2EE algorithm from settings
+                    const e2eeAlgorithm = this._settings.E2EEAlgorithm || E2EEAlgorithms.V2;
+                    console.log("[Friday Sync] E2EE algorithm:", e2eeAlgorithm);
+                    
+                    enableEncryption(
+                        db.localDatabase,
+                        this._settings.passphrase,
+                        false, // useDynamicIterationCount
+                        false, // migrationDecrypt
+                        async () => {
+                            // This callback is called when PBKDF2 salt is needed
+                            // The replicator must be initialized first (happens after db init)
+                            console.log("[Friday Sync] getPBKDF2Salt callback invoked!");
+                            if (!this._replicator) {
+                                console.log("[Friday Sync] Warning: Replicator not ready, creating temporary for salt retrieval");
+                                // Create a temporary replicator just for salt retrieval
+                                const tempReplicator = new LiveSyncCouchDBReplicator(this);
+                                const salt = await tempReplicator.getReplicationPBKDF2Salt(this._settings);
+                                console.log("[Friday Sync] Salt retrieved via temp replicator, length:", salt.length);
+                                return salt;
+                            }
+                            const salt = await this._replicator.getReplicationPBKDF2Salt(this._settings);
+                            console.log("[Friday Sync] Salt retrieved via replicator, length:", salt.length);
+                            return salt;
+                        },
+                        e2eeAlgorithm
+                    );
+                    console.log("[Friday Sync] Local database encryption setup complete");
+                } else {
+                    console.log("[Friday Sync] No passphrase configured or encryption disabled - skipping encryption");
+                }
+                
+                return true;
+            });
+            console.log("[Friday Sync] Database initialization handler registered");
+
             // Initialize local database
             const vaultName = this.getVaultName();
             this._localDatabase = new LiveSyncLocalDB(vaultName, this);
@@ -351,9 +422,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 this.setStatus("ERRORED", "Failed to initialize local database");
                 return false;
             }
-
-            // Initialize replicator
+            
+            // Initialize replicator first (needed for salt retrieval)
+            // Note: Encryption will be set up when startSync is called
             this._replicator = new LiveSyncCouchDBReplicator(this);
+            
+            // Initialize storage event manager for watching file changes
+            this._storageEventManager = new FridayStorageEventManager(this.plugin, this);
 
             // Set up status monitoring for debugging
             this.setupStatusMonitoring();
@@ -397,6 +472,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 false,       // showResult: false for LiveSync (matches livesync)
                 false        // ignoreCleanLock
             );
+            
+            // Start watching for local file changes (for upload to server)
+            // This enables bidirectional sync: server->local and local->server
+            if (this._storageEventManager) {
+                this._storageEventManager.beginWatch();
+                Logger("File watcher started - local changes will sync to server", LOG_LEVEL_INFO);
+            }
             
             // Status will be updated by replicator via updateInfo
             return true;
@@ -640,6 +722,11 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      * Stop synchronization
      */
     async stopSync(): Promise<void> {
+        // Stop watching for file changes
+        if (this._storageEventManager) {
+            this._storageEventManager.stopWatch();
+        }
+        
         if (this._replicator) {
             this._replicator.closeReplication();
         }
@@ -655,6 +742,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             await this._localDatabase.close();
         }
     }
+    
+    /**
+     * Get the storage event manager (for external access if needed)
+     */
+    get storageEventManager(): FridayStorageEventManager | null {
+        return this._storageEventManager;
+    }
 
     // ==================== Helper Methods ====================
 
@@ -666,26 +760,40 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     /**
      * Convert document ID to file path
      */
+    /**
+     * Convert document ID to file path
+     * This uses id2path_base from livesync's path utilities to ensure consistency
+     */
     id2path(id: DocumentID, entry?: EntryHasPath, stripPrefix?: boolean): FilePathWithPrefix {
-        // Simple implementation - document ID is the path
-        if (entry?.path) {
-            return entry.path as FilePathWithPrefix;
-        }
-        // Remove any prefix like "f:" from the ID
-        let path = id as string;
-        if (path.startsWith("f:")) {
-            path = path.substring(2);
-        }
-        return path as FilePathWithPrefix;
+        return id2path_base(id, entry);
     }
 
     /**
      * Convert file path to document ID
+     * This uses path2id_base from livesync's path utilities to ensure consistency
+     * 
+     * CRITICAL: The document ID format must match livesync's format exactly:
+     * - If usePathObfuscation is false: ID = file path (e.g., "未命名.md")
+     * - If usePathObfuscation is true: ID = "f:" + hash (e.g., "f:abc123...")
      */
     async path2id(filename: FilePathWithPrefix | FilePath, prefix?: string): Promise<DocumentID> {
-        // Simple implementation - use path as ID with prefix
-        const p = prefix || "f:";
-        return `${p}${filename}` as DocumentID;
+        // Use path2id_base to match livesync's exact behavior
+        // obfuscatePassphrase: if usePathObfuscation is enabled, use passphrase; otherwise false
+        const obfuscatePassphrase = this._settings.usePathObfuscation 
+            ? this._settings.passphrase 
+            : false;
+        
+        // caseInsensitive: false by default (matching livesync's default)
+        const caseInsensitive = false;
+        
+        const baseId = await path2id_base(filename, obfuscatePassphrase, caseInsensitive);
+        
+        // If a prefix is explicitly provided, add it (used for internal files like "i:")
+        if (prefix) {
+            return `${prefix}${baseId}` as DocumentID;
+        }
+        
+        return baseId;
     }
 
     /**

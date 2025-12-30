@@ -305,73 +305,96 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 return false;
             }
             
-            // Check if document is deleted
-            const isDeleted = doc._deleted === true || ("deleted" in doc && (doc as any).deleted === true);
+            // Mark file as being processed to prevent sync loop
+            // (When we write the file, vault will emit 'modify' event, 
+            //  which should NOT trigger another upload to server)
+            const storageEventManager = this.core.storageEventManager;
+            if (storageEventManager) {
+                storageEventManager.markFileProcessing(path);
+            }
             
-            if (isDeleted) {
-                // Handle deletion
-                console.log(`[Friday Sync] Deleting file: ${path}`);
+            try {
+                // Check if document is deleted
+                const isDeleted = doc._deleted === true || ("deleted" in doc && (doc as any).deleted === true);
+                
+                if (isDeleted) {
+                    // Handle deletion
+                    console.log(`[Friday Sync] Deleting file: ${path}`);
+                    const vault = this.core.plugin.app.vault;
+                    const existingFile = vault.getAbstractFileByPath(path);
+                    if (existingFile) {
+                        await vault.delete(existingFile);
+                    }
+                    return true;
+                }
+                
+                // Get full document content from local database
+                const localDB = this.core.localDatabase;
+                if (!localDB) {
+                    console.error("[Friday Sync] Local database not available");
+                    return false;
+                }
+                
+                // Fetch the full entry with data
+                const fullEntry = await localDB.getDBEntryFromMeta(doc, false, true);
+                if (!fullEntry) {
+                    console.log(`[Friday Sync] Could not get full entry for: ${path}`);
+                    return false;
+                }
+                
+                // Get content using readContent (same as livesync)
+                // This correctly handles:
+                // - Text documents: joins string[] chunks into a single string  
+                // - Binary documents: decodes base64 data to ArrayBuffer
+                const content = readContent(fullEntry);
+                const isText = isTextDocument(fullEntry);
+                
+                // Write to vault
                 const vault = this.core.plugin.app.vault;
                 const existingFile = vault.getAbstractFileByPath(path);
+                
+                // Ensure parent directories exist
+                const dirPath = path.substring(0, path.lastIndexOf("/"));
+                if (dirPath) {
+                    const existingDir = vault.getAbstractFileByPath(dirPath);
+                    if (!existingDir) {
+                        await vault.createFolder(dirPath).catch(() => {});
+                    }
+                }
+                
                 if (existingFile) {
-                    await vault.delete(existingFile);
+                    // Modify existing file
+                    if (isText) {
+                        await vault.modify(existingFile as any, content as string);
+                    } else {
+                        await vault.modifyBinary(existingFile as any, content as ArrayBuffer);
+                    }
+                    console.log(`[Friday Sync] Updated file: ${path}`);
+                } else {
+                    // Create new file
+                    if (isText) {
+                        await vault.create(path, content as string);
+                    } else {
+                        await vault.createBinary(path, content as ArrayBuffer);
+                    }
+                    console.log(`[Friday Sync] Created file: ${path}`);
                 }
+                
+                // Update counter for UI
+                this.core.replicationStat.value = {
+                    ...this.core.replicationStat.value,
+                    arrived: this.core.replicationStat.value.arrived + 1,
+                };
+                
                 return true;
-            }
-            
-            // Get full document content from local database
-            const localDB = this.core.localDatabase;
-            if (!localDB) {
-                console.error("[Friday Sync] Local database not available");
-                return false;
-            }
-            
-            // Fetch the full entry with data
-            const fullEntry = await localDB.getDBEntryFromMeta(doc, false, true);
-            if (!fullEntry) {
-                console.log(`[Friday Sync] Could not get full entry for: ${path}`);
-                return false;
-            }
-            
-            // Get content using readContent (same as livesync)
-            // This correctly handles:
-            // - Text documents: joins string[] chunks into a single string  
-            // - Binary documents: decodes base64 data to ArrayBuffer
-            const content = readContent(fullEntry);
-            const isText = isTextDocument(fullEntry);
-            
-            // Write to vault
-            const vault = this.core.plugin.app.vault;
-            const existingFile = vault.getAbstractFileByPath(path);
-            
-            // Ensure parent directories exist
-            const dirPath = path.substring(0, path.lastIndexOf("/"));
-            if (dirPath) {
-                const existingDir = vault.getAbstractFileByPath(dirPath);
-                if (!existingDir) {
-                    await vault.createFolder(dirPath).catch(() => {});
+            } finally {
+                // Unmark file after a short delay to allow vault events to settle
+                if (storageEventManager) {
+                    setTimeout(() => {
+                        storageEventManager.unmarkFileProcessing(path);
+                    }, 1000);
                 }
             }
-            
-            if (existingFile) {
-                // Modify existing file
-                if (isText) {
-                    await vault.modify(existingFile as any, content as string);
-                } else {
-                    await vault.modifyBinary(existingFile as any, content as ArrayBuffer);
-                }
-                console.log(`[Friday Sync] Updated file: ${path}`);
-            } else {
-                // Create new file
-                if (isText) {
-                    await vault.create(path, content as string);
-                } else {
-                    await vault.createBinary(path, content as ArrayBuffer);
-                }
-                console.log(`[Friday Sync] Created file: ${path}`);
-            }
-            
-            return true;
         } catch (error) {
             console.error(`[Friday Sync] Error processing document:`, error);
             return false;
