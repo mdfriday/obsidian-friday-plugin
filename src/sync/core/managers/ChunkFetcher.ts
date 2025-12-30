@@ -87,13 +87,13 @@ export class ChunkFetcher {
             if (timeToWait > 0) await delay(timeToWait);
             const replicator = this.options.getActiveReplicator();
             if (!replicator) {
-                Logger("No active replicator was found to request missing chunks.");
+                Logger("No active replicator was found to request missing chunks.", LOG_LEVEL_VERBOSE);
                 return;
             }
             // Request the replicator to fetch the missing chunks.
             const fetched = await replicator.fetchRemoteChunks(requestIDs, false);
             if (!fetched) {
-                Logger(`No chunks were found for the following IDs: ${requestIDs.join(", ")}`);
+                Logger(`No chunks were found for the following IDs: ${requestIDs.join(", ")}`, LOG_LEVEL_VERBOSE);
                 for (const chunkID of requestIDs) {
                     this.chunkManager.emitEvent(EVENT_MISSING_CHUNK_REMOTE, chunkID);
                 }
@@ -116,14 +116,15 @@ export class ChunkFetcher {
                 }
             }
             if (chunks.length === 0) {
-                Logger(`No valid chunks were found for the following IDs: ${requestIDs.join(", ")}`);
+                Logger(`No valid chunks were found for the following IDs: ${requestIDs.join(", ")}`, LOG_LEVEL_VERBOSE);
             }
             const missingIDs = requestIDs.filter((id) => !chunks.some((chunk) => chunk._id === id));
             try {
                 if (chunks.length === 0) {
                     return;
                 }
-                Logger(`Writing fetched chunks (${chunks.length}) to the database...`);
+                // Use VERBOSE level for technical messages - not shown to users
+                Logger(`Writing fetched chunks (${chunks.length}) to the database...`, LOG_LEVEL_VERBOSE);
                 const result = await this.chunkManager.write(
                     chunks,
                     {

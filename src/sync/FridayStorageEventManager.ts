@@ -330,7 +330,9 @@ export class FridayStorageEventManager {
             
             if (result !== false) {
                 console.log(`[Friday Sync] storeFileToDB: SUCCESS - ${path} stored with rev=${result.rev}`);
-                Logger(`STORAGE -> DB: ${path}`, LOG_LEVEL_VERBOSE);
+                // Match livesync's log format: "STORAGE -> DB (datatype) path"
+                // Use LOG_LEVEL_INFO (default) so it shows in the UI status area
+                Logger(`STORAGE -> DB (${datatype}) ${path}`);
                 // Update counter for UI
                 this.core.replicationStat.value = {
                     ...this.core.replicationStat.value,
@@ -339,7 +341,7 @@ export class FridayStorageEventManager {
                 return true;
             } else {
                 console.log(`[Friday Sync] storeFileToDB: FAILED - ${path}`);
-                Logger(`Failed to store: ${path}`, LOG_LEVEL_VERBOSE);
+                Logger(`Failed to store: ${path}`, LOG_LEVEL_INFO);
                 return false;
             }
         } catch (error) {

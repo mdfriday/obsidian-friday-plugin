@@ -28,7 +28,7 @@ import {
 import { ServiceBackend } from "./core/services/ServiceBackend";
 import type { FridaySyncCore } from "./FridaySyncCore";
 import type { FetchHttpHandler } from "@smithy/fetch-http-handler";
-import type { LOG_LEVEL } from "octagonal-wheels/common/logger";
+import { Logger, type LOG_LEVEL, LOG_LEVEL_INFO, LOG_LEVEL_VERBOSE } from "octagonal-wheels/common/logger";
 import type {
     DocumentID,
     EntryDoc,
@@ -369,7 +369,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                     } else {
                         await vault.modifyBinary(existingFile as any, content as ArrayBuffer);
                     }
-                    console.log(`[Friday Sync] Updated file: ${path}`);
                 } else {
                     // Create new file
                     if (isText) {
@@ -377,8 +376,13 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                     } else {
                         await vault.createBinary(path, content as ArrayBuffer);
                     }
-                    console.log(`[Friday Sync] Created file: ${path}`);
                 }
+                
+                // Log business message (visible to user) - matching livesync's format:
+                // "Processing xxx (doc_id :rev) : Done"
+                const shortId = doc._id?.substring(0, 8) || "unknown";
+                const shortRev = doc._rev?.substring(0, 5) || "new";
+                Logger(`Processing ${path} (${shortId} :${shortRev}) : Done`, LOG_LEVEL_INFO);
                 
                 // Update counter for UI
                 this.core.replicationStat.value = {
