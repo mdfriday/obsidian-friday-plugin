@@ -991,82 +991,9 @@ class FridaySettingTab extends PluginSettingTab {
 		// Settings fields (syncEnabled, syncConfig) are still stored and used
 		// Sync is now configured automatically through License activation
 
-		// MDFriday Account Section (only show if no license activated)
-		if (!this.plugin.settings.license) {
-			containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.mdfriday_account')});
-			
-			const userToken = this.plugin.settings.userToken;
-			const username = this.plugin.settings.username;
-			const password = this.plugin.settings.password;
-			
-			if (userToken) {
-				// 用户已登录的界面
-				containerEl.createEl("p", {text: this.plugin.i18n.t('settings.logged_in_as', { username })});
-
-				new Setting(containerEl)
-					.addButton((button) =>
-						button
-							.setButtonText(this.plugin.i18n.t('settings.logout'))
-							.setCta()
-							.onClick(async () => {
-								await this.plugin.user.logout(); // 处理登出逻辑
-								this.display(); // 刷新界面
-							})
-					);
-			} else {
-				// 用户未登录的界面
-				containerEl.createEl("p", {text: this.plugin.i18n.t('settings.mdfriday_account_desc')});
-
-				// Email 输入框
-				new Setting(containerEl)
-					.setName(this.plugin.i18n.t('settings.email'))
-					.setDesc(this.plugin.i18n.t('settings.email_desc'))
-					.addText((text) =>
-						text
-							.setPlaceholder(this.plugin.i18n.t('settings.email_placeholder'))
-							.setValue(username || "") // 填充现有用户名
-							.onChange(async (value) => {
-								this.plugin.settings.username = value;
-								await this.plugin.saveSettings();
-							})
-					);
-
-				// Password 输入框
-				new Setting(containerEl)
-					.setName(this.plugin.i18n.t('settings.password'))
-					.setDesc(this.plugin.i18n.t('settings.password_desc'))
-					.addText((text) => {
-						text
-							.setPlaceholder(this.plugin.i18n.t('settings.password_placeholder'))
-							.setValue(password || "") // 填充现有密码
-							.onChange(async (value) => {
-								this.plugin.settings.password = value;
-								await this.plugin.saveSettings();
-							})
-						text.inputEl.type = "password";
-					});
-
-				// Register 按钮
-				new Setting(containerEl)
-					.addButton((button) =>
-						button
-							.setButtonText(this.plugin.i18n.t('settings.register'))
-							.setCta()
-							.onClick(async () => {
-								await this.plugin.user.register(); // 处理注册逻辑
-								this.display(); // 刷新界面
-							})
-					).addButton((button) =>
-					button
-						.setButtonText(this.plugin.i18n.t('settings.login'))
-						.setCta()
-						.onClick(async () => {
-							await this.plugin.user.login(); // 处理登录逻辑
-							this.display(); // 刷新界面
-						})
-				);
-			}
-		}
+		// MDFriday Account Section - Hidden from UI
+		// Users should only use License Key activation, not direct login
+		// Login functionality is preserved but not exposed in settings
 	}
 
 	/**
