@@ -18,17 +18,22 @@
 
 /* Plan Badge */
 .friday-plan-badge {
-    display: inline-block;
-    padding: 4px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 16px;
     border-radius: 4px;
     font-size: 12px;
     font-weight: 600;
     text-transform: capitalize;
+    min-height: 28px;
+    line-height: 1;
 }
 
 .friday-plan-badge.starter {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
+	padding-top: 6px! important
 }
 
 .friday-plan-badge.pro {
