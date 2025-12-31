@@ -99,7 +99,7 @@
 	let publishProgress = 0;
 	let publishSuccess = false;
 	let publishUrl = '';
-	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-preview' = plugin.settings.publishMethod || 'netlify';
+	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' = plugin.settings.publishMethod || 'netlify';
 	
 	// Netlify configuration (project-specific)
 	let netlifyAccessToken = '';
@@ -125,15 +125,19 @@
 	let sampleDownloadProgress = 0;
 	let currentThemeWithSample: any = null;
 	
+	// Check if MDFriday Share is available (license activated with user_dir)
+	$: userDir = plugin.settings.licenseUser?.userDir || '';
+	$: isMDFShareAvailable = !!(plugin.settings.license && userDir && sitePath.startsWith(`/s/${userDir}/`));
+
 	// Reactive publish options
 	$: publishOptions = [
 		{ value: 'netlify', label: t('ui.publish_option_netlify') },
 		{ value: 'ftp', label: t('ui.publish_option_ftp') },
-		...(sitePath.startsWith('/preview/') ? [{ value: 'mdf-preview', label: t('ui.publish_option_mdfriday') }] : []),
+		...(isMDFShareAvailable ? [{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') }] : []),
 	];
 
-	// Auto-switch to netlify if mdf-preview is not available when sitePath changes
-	$: if (!sitePath.startsWith('/preview/') && selectedPublishOption === 'mdf-preview') {
+	// Auto-switch to netlify if mdf-share is not available when sitePath changes
+	$: if (!isMDFShareAvailable && selectedPublishOption === 'mdf-share') {
 		selectedPublishOption = plugin.settings.publishMethod || 'netlify';
 	}
 
@@ -916,8 +920,11 @@
 			buildProgress = 5;
 
 			// Create config file
-			if (sitePath.startsWith("/preview")){
-				sitePath = `/preview/${previewId}`;
+			// Update sitePath for MDFriday Share if license is activated with user_dir
+			if (plugin.settings.license && userDir) {
+				if (sitePath.startsWith(`/s/${userDir}/`) || sitePath === '/' || !sitePath.startsWith('/s/')) {
+					sitePath = `/s/${userDir}/${previewId}`;
+				}
 			}
 			await createConfigFile(previewDir);
 			buildProgress = 10;
@@ -1145,7 +1152,7 @@
 				// FTP deployment
 				await publishToFTP(publicDir);
 			} else {
-				// MDFriday Preview deployment
+				// MDFriday Share deployment
 				const zipContent = await createZipFromDirectory(publicDir);
 				publishProgress = 50;
 
@@ -1179,14 +1186,14 @@
 							timestamp: Date.now(),
 							success: true,
 							type: 'publish',
-							publishMethod: 'mdf-preview',
+							publishMethod: 'mdf-share',
 							url: publishUrl
 						});
 					}
 				}
 
 				// Send counter for publish (don't wait for result)
-				plugin.hugoverse.sendCounter('mdf-preview').catch(error => {
+				plugin.hugoverse.sendCounter('mdf-share').catch(error => {
 					console.warn('Counter request failed (non-critical):', error);
 				});
 			}
@@ -2408,10 +2415,10 @@
 			{/if}
 
 			<!-- MDFriday Preview Info -->
-			{#if selectedPublishOption === 'mdf-preview'}
+			{#if selectedPublishOption === 'mdf-share'}
 				<div class="publish-config">
 					<div class="field-hint">
-						{t('ui.mdfriday_preview_hint')}
+						{t('ui.mdfriday_share_hint')}
 					</div>
 				</div>
 			{/if}

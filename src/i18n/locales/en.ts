@@ -179,10 +179,10 @@ export const en: TranslationNamespace = {
 		// Publish section
 		publish: "Publish",
 		publish_method: "Publish Method",
-		publish_option_mdfriday: "MDFriday Preview",
+		publish_option_mdfriday_share: "MDFriday Share",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP Upload",
-		mdfriday_preview_hint: "MDFriday Preview provides instant hosting without additional configuration. Your site will be published directly to our preview service.",
+		mdfriday_share_hint: "MDFriday Share allows you to share your site instantly. Your site will be published to your personal MDFriday space.",
 		publish_building: "Publishing...",
 		publish_success: "Published successfully!",
 		publish_failed: "Publish failed",

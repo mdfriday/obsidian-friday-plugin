@@ -170,10 +170,10 @@ export const zhCn: TranslationNamespace = {
 		// Publish section
 		publish: "发布",
 		publish_method: "发布方式",
-		publish_option_mdfriday: "MDFriday 预览",
+		publish_option_mdfriday_share: "MDFriday 分享",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP 上传",
-		mdfriday_preview_hint: "MDFriday 预览提供即时托管服务，无需额外配置。您的站点将直接发布到我们的预览服务。",
+		mdfriday_share_hint: "MDFriday 分享允许您即时分享站点。您的站点将发布到您的个人 MDFriday 空间。",
 		publish_building: "正在发布...",
 		publish_success: "发布成功！",
 		publish_failed: "发布失败",

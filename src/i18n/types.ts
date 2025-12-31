@@ -147,10 +147,10 @@ export interface TranslationNamespace {
 		// Publish section
 		publish: string;
 		publish_method: string;
-		publish_option_mdfriday: string;
+		publish_option_mdfriday_share: string;
 		publish_option_netlify: string;
 		publish_option_ftp: string;
-		mdfriday_preview_hint: string;
+		mdfriday_share_hint: string;
 		publish_building: string;
 		publish_success: string;
 		publish_failed: string;

@@ -9,7 +9,7 @@ export interface ProjectLanguageContent {
 }
 
 export interface ProjectPublishConfig {
-	method: 'netlify' | 'ftp' | 'mdf-preview';
+	method: 'netlify' | 'ftp' | 'mdf-share';
 	netlify?: {
 		accessToken?: string;
 		projectId?: string;
@@ -64,7 +64,7 @@ export interface ProjectBuildHistory {
 	timestamp: number;
 	success: boolean;
 	type: 'preview' | 'publish';
-	publishMethod?: 'netlify' | 'ftp' | 'mdf-preview';
+	publishMethod?: 'netlify' | 'ftp' | 'mdf-share';
 	url?: string;
 	error?: string;
 	previewId?: string; // Preview directory ID for exporting

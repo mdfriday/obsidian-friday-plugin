@@ -62,8 +62,9 @@ export class Hugoverse {
 
 	/*
 	* curl -X POST "http://127.0.0.1:1314/api/mdf/preview/deploy?type=MDFPreview&id=1" \
+	* -H "Authorization: Bearer <token>" \
 	* -F "type=MDFPreview" \
-	* -F "host_name=MDFriday Preview"
+	* -F "host_name=MDFriday Share"
 	*/
 	async deployMDFridayPreview(id: string): Promise<string> {
 		try {
@@ -84,6 +85,7 @@ export class Hugoverse {
 				method: "POST",
 				headers: {
 					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+					"Authorization": `Bearer ${this.user.token}`,
 				},
 				body: arrayBufferBody,
 			});
@@ -114,7 +116,7 @@ export class Hugoverse {
 
 			// 创建 FormData 并添加基本字段
 			let body: FormData = new FormData();
-			body.append("type", "MDFPreview");
+			body.append("type", "share");
 			body.append("id", NEW_ID);
 			body.append("name", name);
 			body.append("size", content.byteLength.toString());
@@ -133,6 +135,7 @@ export class Hugoverse {
 				method: "POST",
 				headers: {
 					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+					"Authorization": `Bearer ${this.user.token}`,
 				},
 				body: arrayBufferBody,
 			});
