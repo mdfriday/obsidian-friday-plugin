@@ -30,6 +30,8 @@ export const en: TranslationNamespace = {
 		valid_until: "Valid Until",
 		devices: "Devices",
 		devices_registered: "Registered devices on this license",
+		storage_usage: "Storage Usage",
+		storage_usage_desc: "Total disk space usage",
 		sync: "Sync",
 		publish: "Publish",
 		enabled: "Enabled",

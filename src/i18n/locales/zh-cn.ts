@@ -30,6 +30,8 @@ export const zhCn: TranslationNamespace = {
 		valid_until: "有效期至",
 		devices: "设备",
 		devices_registered: "已注册设备数",
+		storage_usage: "存储用量",
+		storage_usage_desc: "总磁盘空间使用量",
 		sync: "同步",
 		publish: "发布",
 		enabled: "已启用",

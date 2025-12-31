@@ -3,7 +3,7 @@ import type {RequestUrlResponse} from "obsidian";
 import type {User} from "./user";
 import type FridayPlugin from "./main";
 import * as path from "path";
-import type { LicenseActivationResponse } from "./license";
+import type { LicenseActivationResponse, LicenseUsageResponse } from "./license";
 
 const NEW_ID = "-1"
 const COUNTER_REQUEST_ID_KEY = "friday_counter_request_id"
@@ -295,6 +295,46 @@ export class Hugoverse {
 			throw new Error("Invalid activation response format");
 		} catch (error) {
 			console.error("Failed to activate license:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Get license usage information
+	 * 
+	 * GET /api/license/usage?key=<license_key>
+	 * Authorization: Bearer <token>
+	 */
+	async getLicenseUsage(
+		token: string,
+		licenseKey: string
+	): Promise<LicenseUsageResponse | null> {
+		try {
+			const usageUrl = `${this.apiUrl}/api/license/usage?key=${licenseKey}`;
+
+			const response: RequestUrlResponse = await requestUrl({
+				url: usageUrl,
+				method: "GET",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+				},
+			});
+
+			// Check response status
+			if (response.status !== 200) {
+				console.error(`License usage fetch failed: ${response.text}`);
+				throw new Error(`License usage fetch failed: ${response.status}`);
+			}
+
+			// Parse response
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0] as LicenseUsageResponse;
+			}
+
+			throw new Error("Invalid usage response format");
+		} catch (error) {
+			console.error("Failed to get license usage:", error);
 			throw error;
 		}
 	}

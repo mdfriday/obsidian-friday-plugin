@@ -20,6 +20,7 @@ import {
     type StoredLicenseData,
     type StoredSyncData,
     type StoredUserData,
+    type StoredUsageData,
     isValidLicenseKeyFormat,
     licenseKeyToEmail,
     licenseKeyToPassword,
@@ -38,6 +39,7 @@ interface FridaySettings {
 	license: StoredLicenseData | null;
 	licenseSync: StoredSyncData | null;
 	licenseUser: StoredUserData | null;
+	licenseUsage: StoredUsageData | null;
 	encryptionPassphrase: string;
 	// General Settings
 	downloadServer: 'global' | 'east';
@@ -64,6 +66,7 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	license: null,
 	licenseSync: null,
 	licenseUser: null,
+	licenseUsage: null,
 	encryptionPassphrase: '',
 	// General Settings defaults
 	downloadServer: 'global',
@@ -110,7 +113,10 @@ export default class FridayPlugin extends Plugin {
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
 		await this.loadSettings();
-		await this.initFriday()
+		await this.initFriday();
+
+		// Fetch usage information if license is active
+		await this.refreshLicenseUsage();
 
 		// Initialize FTP uploader
 		this.initializeFTP();
@@ -562,6 +568,80 @@ export default class FridayPlugin extends Plugin {
 		this.previousDownloadServer = this.settings.downloadServer;
 	}
 
+	/**
+	 * Refresh license usage information from API
+	 * Automatically re-login with license key if token is expired
+	 */
+	async refreshLicenseUsage() {
+		// Check if dependencies are initialized
+		if (!this.hugoverse || !this.user) {
+			console.log('[Friday] Skipping usage refresh: hugoverse or user not initialized yet');
+			return;
+		}
+
+		const { license, userToken } = this.settings;
+		
+		// Only fetch usage if license is active and not expired
+		if (!license || isLicenseExpired(license.expiresAt)) {
+			return;
+		}
+
+		let currentToken = userToken;
+
+		try {
+			// Try to fetch usage with current token
+			const usageResponse = await this.hugoverse.getLicenseUsage(currentToken, license.key);
+			if (usageResponse && usageResponse.disks) {
+				// Parse disk usage (convert string to number)
+				const totalDiskUsage = parseFloat(usageResponse.disks.total_disk_usage) || 0;
+				const maxStorage = license.features.max_storage || 1024;
+				
+				this.settings.licenseUsage = {
+					totalDiskUsage,
+					maxStorage,
+					unit: usageResponse.disks.unit || 'MB',
+					lastUpdated: Date.now()
+				};
+				
+				await this.saveData(this.settings);
+			}
+		} catch (error) {
+			// If failed, try to re-login with license key (token might be expired)
+			console.log('[Friday] Failed to fetch usage, attempting to refresh token...');
+			
+			try {
+				// Re-login with license key
+				const email = licenseKeyToEmail(license.key);
+				const password = licenseKeyToPassword(license.key);
+				const newToken = await this.user.loginWithCredentials(email, password);
+				
+				if (newToken) {
+					console.log('[Friday] Token refreshed successfully, retrying usage fetch...');
+					// Retry with new token
+					const usageResponse = await this.hugoverse.getLicenseUsage(newToken, license.key);
+					if (usageResponse && usageResponse.disks) {
+						const totalDiskUsage = parseFloat(usageResponse.disks.total_disk_usage) || 0;
+						const maxStorage = license.features.max_storage || 1024;
+						
+						this.settings.licenseUsage = {
+							totalDiskUsage,
+							maxStorage,
+							unit: usageResponse.disks.unit || 'MB',
+							lastUpdated: Date.now()
+						};
+						
+						await this.saveData(this.settings);
+					}
+				} else {
+					console.warn('[Friday] Failed to refresh token, usage fetch skipped');
+				}
+			} catch (retryError) {
+				console.warn('[Friday] Failed to fetch license usage after token refresh:', retryError);
+				// Don't throw error, just log it - usage is not critical for plugin functionality
+			}
+		}
+	}
+
 	async saveSettings() {
 		// Check if download server changed
 		const downloadServerChanged = this.previousDownloadServer !== this.settings.downloadServer;
@@ -697,6 +777,18 @@ class FridaySettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: FridayPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	/**
+	 * Format storage size for display
+	 * @param sizeMB Size in MB
+	 * @returns Formatted string (e.g. "6.16 MB", "1.5 GB")
+	 */
+	private formatStorageSize(sizeMB: number): string {
+		if (sizeMB >= 1024) {
+			return `${(sizeMB / 1024).toFixed(2)} GB`;
+		}
+		return `${sizeMB.toFixed(2)} MB`;
 	}
 
 	display(): void {
@@ -1019,16 +1111,27 @@ class FridaySettingTab extends PluginSettingTab {
 				text: formatPlanName(license.plan)
 			});
 
-			// Row 2: Devices
-			const devicesSetting = new Setting(containerEl)
-				.setName(this.plugin.i18n.t('settings.devices'))
-				.setDesc(this.plugin.i18n.t('settings.devices_registered'));
+			// Row 2: Storage Usage
+			const usage = this.plugin.settings.licenseUsage;
+			const usedStorage = usage?.totalDiskUsage || 0;
+			const maxStorage = license.features.max_storage || 1024;
+			const usagePercentage = maxStorage > 0 ? (usedStorage / maxStorage) * 100 : 0;
 			
-			// Add device count to the right
-			devicesSetting.controlEl.createSpan({
-				cls: 'friday-device-count',
-				text: `1 / ${license.features.max_devices}`
-			});
+			const storageSetting = new Setting(containerEl)
+				.setName(this.plugin.i18n.t('settings.storage_usage'))
+				.setDesc(this.plugin.i18n.t('settings.storage_usage_desc'));
+			
+			// Create progress bar container
+			const progressContainer = storageSetting.controlEl.createDiv({ cls: 'friday-storage-progress-container' });
+			
+			// Usage text
+			const usageText = progressContainer.createDiv({ cls: 'friday-storage-usage-text' });
+			usageText.setText(this.formatStorageSize(usedStorage) + ' / ' + this.formatStorageSize(maxStorage));
+			
+			// Progress bar
+			const progressBarOuter = progressContainer.createDiv({ cls: 'friday-storage-progress-bar' });
+			const progressBarInner = progressBarOuter.createDiv({ cls: 'friday-storage-progress-fill' });
+			progressBarInner.style.width = `${Math.min(usagePercentage, 100).toFixed(1)}%`;
 
 		} else {
 			// ========== License Input State ==========
@@ -1298,10 +1401,13 @@ class FridaySettingTab extends PluginSettingTab {
 		// Step 9: Save all settings
 		await this.plugin.saveSettings();
 
-		// Step 10: Set first time flag
+		// Step 10: Fetch license usage information
+		await this.plugin.refreshLicenseUsage();
+
+		// Step 11: Set first time flag
 		this.firstTimeSync = response.first_time;
 
-		// Step 11: Initialize sync service
+		// Step 12: Initialize sync service
 		if (this.plugin.settings.syncEnabled) {
 			await this.plugin.initializeSyncService();
 		}

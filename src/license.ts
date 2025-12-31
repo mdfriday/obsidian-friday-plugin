@@ -92,6 +92,61 @@ export interface StoredUserData {
 }
 
 /**
+ * Disk usage information
+ */
+export interface DiskUsage {
+    couchdb_disk_usage: string;
+    publish_disk_usage: string;
+    total_disk_usage: string;
+    unit: string;
+}
+
+/**
+ * License usage response
+ */
+export interface LicenseUsageResponse {
+    devices: {
+        count: number;
+        devices: Array<{
+            access_count: number;
+            device_id: string;
+            device_name: string;
+            device_type: string;
+            first_seen_at: number;
+            last_seen_at: number;
+            status: string;
+        }>;
+    };
+    disks: DiskUsage;
+    features: LicenseFeatures;
+    ips: {
+        count: number;
+        ips: Array<{
+            access_count: number;
+            city: string;
+            country: string;
+            first_seen_at: number;
+            ip_address: string;
+            last_seen_at: number;
+            region: string;
+            status: string;
+        }>;
+    };
+    license_key: string;
+    plan: string;
+}
+
+/**
+ * Stored usage data
+ */
+export interface StoredUsageData {
+    totalDiskUsage: number; // in MB
+    maxStorage: number; // in MB
+    unit: string;
+    lastUpdated: number; // timestamp
+}
+
+/**
  * Convert license key to email
  * License Key format: MDF-XXXX-XXXX-XXXX
  */
