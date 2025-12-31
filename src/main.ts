@@ -1,4 +1,4 @@
-import {App, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice} from 'obsidian';
+import {App, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice, MarkdownView, setIcon} from 'obsidian';
 import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
 import {User} from "./user";
 import './styles/theme-modal.css';
@@ -149,6 +149,23 @@ export default class FridayPlugin extends Plugin {
 				);
 			}
 		})
+
+		// Add internet icon to markdown view header
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', (leaf) => {
+				if (leaf?.view instanceof MarkdownView) {
+					this.addInternetIconToView(leaf.view);
+				}
+			})
+		);
+
+		// Also add to currently active view on load
+		this.app.workspace.onLayoutReady(() => {
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (activeView) {
+				this.addInternetIconToView(activeView);
+			}
+		});
 
 		// Register export HTML command
 		this.addCommand({
@@ -536,6 +553,33 @@ export default class FridayPlugin extends Plugin {
 	) {
 		const modal = new ProjectManagementModal(this.app, this, this.projectService, onApply, onExport, onClearHistory);
 		modal.open();
+	}
+
+	/**
+	 * Add internet icon to markdown view header (left of the book icon)
+	 */
+	private addInternetIconToView(view: MarkdownView) {
+		const viewActionsEl = view.containerEl.querySelector('.view-actions');
+		if (!viewActionsEl) return;
+
+		// Check if icon already exists
+		const existingIcon = viewActionsEl.querySelector('.friday-internet-icon');
+		if (existingIcon) return;
+
+		// Create the internet icon button
+		const iconEl = document.createElement('a');
+		iconEl.className = 'clickable-icon view-action friday-internet-icon';
+		iconEl.setAttribute('aria-label', 'Internet');
+		setIcon(iconEl, 'globe');
+
+		// Add click handler
+		iconEl.addEventListener('click', (e) => {
+			e.preventDefault();
+			new Notice('Hello World');
+		});
+
+		// Insert at the beginning of view-actions (left side)
+		viewActionsEl.insertBefore(iconEl, viewActionsEl.firstChild);
 	}
 
 	async initFriday(): Promise<void> {
