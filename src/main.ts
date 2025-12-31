@@ -108,6 +108,8 @@ export default class FridayPlugin extends Plugin {
 	syncService: SyncService
 	syncStatusDisplay: SyncStatusDisplay | null = null
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
+	exportHistoryBuild: ((previewId: string) => Promise<void>) | null = null
+	clearPreviewHistory: ((projectId: string) => Promise<void>) | null = null
 	private previousDownloadServer: 'global' | 'east' = 'global'
 
 	async onload() {
@@ -135,6 +137,18 @@ export default class FridayPlugin extends Plugin {
 			console.log('[Friday] View already registered, skipping');
 		}
 		this.app.workspace.onLayoutReady(() => this.initLeaf())
+
+		// Add ribbon icon for project management
+		this.addRibbonIcon(FRIDAY_ICON, this.i18n.t('projects.manage_projects'), async () => {
+			// Get callbacks from Site component
+			if (this.applyProjectConfigurationToPanel && this.exportHistoryBuild && this.clearPreviewHistory) {
+				this.showProjectManagementModal(
+					this.applyProjectConfigurationToPanel,
+					this.exportHistoryBuild,
+					this.clearPreviewHistory
+				);
+			}
+		})
 
 		// Register export HTML command
 		this.addCommand({

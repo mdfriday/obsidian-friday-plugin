@@ -152,8 +152,10 @@
 			basePath = adapter.getBasePath()
 		}
 		
-		// Register applyProjectConfiguration method so it can be called from main.ts
+		// Register methods so they can be called from main.ts
 		plugin.applyProjectConfigurationToPanel = applyProjectConfiguration;
+		plugin.exportHistoryBuild = exportHistoryBuild;
+		plugin.clearPreviewHistory = clearPreviewHistory;
 	});
 
 	onDestroy(() => {
@@ -367,11 +369,6 @@
 				}
 			}
 		}, isForSingleFile);
-	}
-
-	function openProjectsModal() {
-		// Call plugin method to show project management modal
-		plugin.showProjectManagementModal(applyProjectConfiguration, exportHistoryBuild, clearPreviewHistory);
 	}
 
 	async function exportHistoryBuild(previewId: string) {
@@ -2043,17 +2040,6 @@
 </script>
 
 <div class="site-builder">
-	<!-- Projects Management Button -->
-	<div class="section advanced-settings">
-		<button 
-			class="advanced-toggle" 
-			on:click={openProjectsModal}
-			aria-label={t('projects.manage_projects')}
-		>
-			{t('projects.manage_projects')}
-		</button>
-	</div>
-
 	<!-- Multi-language Content Section -->
 	<div class="section">
 		<div class="section-label">{t('ui.multilingual_content')}</div>
