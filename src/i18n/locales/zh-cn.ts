@@ -189,6 +189,7 @@ export const zhCn: TranslationNamespace = {
 	menu: {
 		publish_to_web: "发布到网络",
 		set_as_site_assets: "设为站点资源",
+		quick_share: "快速分享",
 	},
 
 	commands: {},
@@ -290,6 +291,14 @@ export const zhCn: TranslationNamespace = {
 	ftp_upload_success: "站点已成功上传到 FTP 服务器！",
 	ftp_fallback_to_plain: "服务器不支持加密，已切换到普通 FTP",
 	ftp_fallback_to_full: "⚠️ 增量上传失败，正在尝试完整上传作为备选方案...",
+
+	// Quick share messages
+	no_markdown_file: "请先打开一个 Markdown 文件",
+	license_required_for_share: "请先激活许可证以使用快速分享功能",
+	quick_share_starting: "🚀 正在准备快速分享...",
+	preview_failed_generic: "预览生成失败",
+	quick_share_ready: "✅ 准备就绪！点击「发布」即可分享您的笔记",
+	quick_share_failed: "快速分享失败：{{error}}",
 
 		// User messages
 		enter_email_password: "请输入您的邮箱和密码",

@@ -198,6 +198,7 @@ export const en: TranslationNamespace = {
 	menu: {
 		publish_to_web: "Publish to Web",
 		set_as_site_assets: "Set as Site Assets",
+		quick_share: "Quick Share",
 	},
 
 	commands: {},
@@ -302,6 +303,14 @@ export const en: TranslationNamespace = {
 		"Server does not support encryption, switched to plain FTP",
 	ftp_fallback_to_full:
 		"⚠️ Incremental upload failed, trying full upload as fallback...",
+
+	// Quick share messages
+	no_markdown_file: "Please open a Markdown file first",
+	license_required_for_share: "Please activate your license to use Quick Share",
+	quick_share_starting: "🚀 Preparing quick share...",
+	preview_failed_generic: "Preview generation failed",
+	quick_share_ready: "✅ Ready to share! Click 'Publish' to share your note",
+	quick_share_failed: "Quick share failed: {{error}}",
 
 		// User messages
 		enter_email_password: "Please enter your email and password",

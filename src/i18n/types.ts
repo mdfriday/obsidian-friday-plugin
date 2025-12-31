@@ -167,6 +167,7 @@ export interface TranslationNamespace {
 	menu: {
 		publish_to_web: string;
 		set_as_site_assets: string;
+		quick_share: string;
 	};
 
 	// Commands
@@ -292,6 +293,14 @@ export interface TranslationNamespace {
 	ftp_fallback_to_plain: string;
 	ftp_fallback_to_full: string;
 	incremental_upload_stats: string;
+	
+	// Quick share messages
+	no_markdown_file: string;
+	license_required_for_share: string;
+	quick_share_starting: string;
+	preview_failed_generic: string;
+	quick_share_ready: string;
+	quick_share_failed: string;
 	};
 
 	// Info and descriptions

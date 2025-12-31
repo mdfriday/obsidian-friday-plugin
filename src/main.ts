@@ -110,6 +110,10 @@ export default class FridayPlugin extends Plugin {
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
 	exportHistoryBuild: ((previewId: string) => Promise<void>) | null = null
 	clearPreviewHistory: ((projectId: string) => Promise<void>) | null = null
+	// Quick share methods for internet icon
+	setSitePath: ((path: string) => void) | null = null
+	startPreviewAndWait: (() => Promise<boolean>) | null = null
+	selectMDFShare: (() => void) | null = null
 	private previousDownloadServer: 'global' | 'east' = 'global'
 
 	async onload() {
@@ -557,29 +561,97 @@ export default class FridayPlugin extends Plugin {
 
 	/**
 	 * Add internet icon to markdown view header (left of the book icon)
+	 * Clicking this icon will automatically:
+	 * 1. Open publish panel with current file
+	 * 2. Set sitePath to "/s" for MDFriday Share
+	 * 3. Generate preview
+	 * 4. Select MDFriday Share publish option
 	 */
 	private addInternetIconToView(view: MarkdownView) {
 		const viewActionsEl = view.containerEl.querySelector('.view-actions');
 		if (!viewActionsEl) return;
 
-		// Check if icon already exists
+		// Remove existing icon if present (ensures click handler is updated)
 		const existingIcon = viewActionsEl.querySelector('.friday-internet-icon');
-		if (existingIcon) return;
+		if (existingIcon) {
+			existingIcon.remove();
+		}
 
 		// Create the internet icon button
 		const iconEl = document.createElement('a');
 		iconEl.className = 'clickable-icon view-action friday-internet-icon';
-		iconEl.setAttribute('aria-label', 'Internet');
+		iconEl.setAttribute('aria-label', this.i18n.t('menu.quick_share'));
 		setIcon(iconEl, 'globe');
 
-		// Add click handler
-		iconEl.addEventListener('click', (e) => {
+		// Add click handler for quick share
+		iconEl.addEventListener('click', async (e) => {
 			e.preventDefault();
-			new Notice('Hello World');
+			await this.quickShareCurrentFile(view);
 		});
 
 		// Insert at the beginning of view-actions (left side)
 		viewActionsEl.insertBefore(iconEl, viewActionsEl.firstChild);
+	}
+
+	/**
+	 * Quick share current file - automated workflow
+	 * 1. Open publish panel with current file
+	 * 2. Set sitePath to "/s"
+	 * 3. Generate preview
+	 * 4. Select MDFriday Share publish option
+	 */
+	private async quickShareCurrentFile(view: MarkdownView) {
+		const file = view.file;
+		if (!file || file.extension !== 'md') {
+			new Notice(this.i18n.t('messages.no_markdown_file'), 3000);
+			return;
+		}
+
+		// Check if license is activated
+		if (!this.settings.license || !this.settings.licenseUser?.userDir) {
+			new Notice(this.i18n.t('messages.license_required_for_share'), 5000);
+			return;
+		}
+
+		try {
+			// Show starting notice
+			new Notice(this.i18n.t('messages.quick_share_starting'), 2000);
+
+			// Step 1: Open publish panel with current file (simulates right-click -> publish)
+			await this.openPublishPanel(null, file);
+
+			// Wait a bit for the panel to initialize
+			await new Promise(resolve => setTimeout(resolve, 500));
+
+			// Step 2: Set sitePath to "/s" for MDFriday Share
+			if (this.setSitePath) {
+				this.setSitePath('/s');
+			}
+
+			// Wait a bit for sitePath to be set
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			// Step 3: Generate preview
+			if (this.startPreviewAndWait) {
+				const previewSuccess = await this.startPreviewAndWait();
+				if (!previewSuccess) {
+					new Notice(this.i18n.t('messages.preview_failed_generic'), 5000);
+					return;
+				}
+			}
+
+			// Step 4: Select MDFriday Share publish option
+			if (this.selectMDFShare) {
+				this.selectMDFShare();
+			}
+
+			// Show completion notice
+			new Notice(this.i18n.t('messages.quick_share_ready'), 3000);
+
+		} catch (error) {
+			console.error('Quick share failed:', error);
+			new Notice(this.i18n.t('messages.quick_share_failed', { error: error.message }), 5000);
+		}
 	}
 
 	async initFriday(): Promise<void> {

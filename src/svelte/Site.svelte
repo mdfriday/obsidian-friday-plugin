@@ -160,7 +160,35 @@
 		plugin.applyProjectConfigurationToPanel = applyProjectConfiguration;
 		plugin.exportHistoryBuild = exportHistoryBuild;
 		plugin.clearPreviewHistory = clearPreviewHistory;
+		
+		// Register quick share methods for internet icon
+		plugin.setSitePath = setSitePathExternal;
+		plugin.startPreviewAndWait = startPreviewAndWait;
+		plugin.selectMDFShare = selectMDFShare;
 	});
+	
+	// External method to set site path
+	function setSitePathExternal(newPath: string) {
+		sitePath = newPath;
+	}
+	
+	// Start preview and return a promise that resolves when done
+	async function startPreviewAndWait(): Promise<boolean> {
+		try {
+			await startPreview();
+			return hasPreview;
+		} catch (error) {
+			console.error('Preview failed:', error);
+			return false;
+		}
+	}
+	
+	// Select MDFriday Share publish option
+	function selectMDFShare() {
+		if (isMDFShareAvailable) {
+			selectedPublishOption = 'mdf-share';
+		}
+	}
 
 	onDestroy(() => {
 		if (serverRunning) {
