@@ -302,21 +302,27 @@ export class Hugoverse {
 	/**
 	 * Get license usage information
 	 * 
-	 * GET /api/license/usage?key=<license_key>
+	 * GET /api/license/usage?key=<license_key>&_t=<timestamp>
 	 * Authorization: Bearer <token>
+	 * 
+	 * Note: Adds timestamp parameter to prevent HTTP caching
 	 */
 	async getLicenseUsage(
 		token: string,
 		licenseKey: string
 	): Promise<LicenseUsageResponse | null> {
 		try {
-			const usageUrl = `${this.apiUrl}/api/license/usage?key=${licenseKey}`;
+			// Add timestamp to prevent caching
+			const timestamp = Date.now();
+			const usageUrl = `${this.apiUrl}/api/license/usage?key=${licenseKey}&_t=${timestamp}`;
 
 			const response: RequestUrlResponse = await requestUrl({
 				url: usageUrl,
 				method: "GET",
 				headers: {
 					"Authorization": `Bearer ${token}`,
+					"Cache-Control": "no-cache",
+					"Pragma": "no-cache"
 				},
 			});
 

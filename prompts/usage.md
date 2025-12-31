@@ -9,8 +9,8 @@
 后端现在实现了一个接口，用来获取所有的用量：
 
 ```bash
-curl -X GET "http://127.0.0.1:1314/api/license/usage?key=MDF-LW2Y-WPSL-GDRJ" \
--H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOm51bGwsImV4cCI6IjIwMjYtMDEtMzBUMDk6MTk6NTUuNDEwOTgrMDg6MDAiLCJpYXQiOm51bGwsImlzcyI6bnVsbCwianRpIjpudWxsLCJuYmYiOm51bGwsInN1YiI6bnVsbCwidXNlciI6Imx3Mnktd3BzbC1nZHJqQG1kZnJpZGF5LmNvbSJ9.dxYYdbXUPkDPCKfq-kBlwQfhN0kRFUWaFE2c4swSy4E"
+curl -X GET "http://127.0.0.1:1314/api/license/usage?key=MDF-72HK-A5DF-P7BU" \
+-H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOm51bGwsImV4cCI6IjIwMjYtMDEtMjlUMTY6MTg6NTYuNjgwNzQ5KzA4OjAwIiwiaWF0IjpudWxsLCJpc3MiOm51bGwsImp0aSI6bnVsbCwibmJmIjpudWxsLCJzdWIiOm51bGwsInVzZXIiOiI3MmhrLWE1ZGYtcDdidUBtZGZyaWRheS5jb20ifQ.X-MbrTQi4FcA9wr-VS5NagPG9COQ-bgHSotTLd7koAA"
 ```
 
 ```json
