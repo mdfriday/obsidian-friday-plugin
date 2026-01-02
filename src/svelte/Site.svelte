@@ -1198,8 +1198,7 @@
 				publishProgress = 100;
 
 				// Step 4: Construct final publish URL
-				const baseUrl = GetBaseUrl();
-				publishUrl = `${baseUrl}${deployPath}`;
+				publishUrl = deployPath;
 				publishSuccess = true;
 
 				new Notice(t('messages.site_published_successfully'), 3000);
