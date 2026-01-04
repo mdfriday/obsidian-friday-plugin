@@ -849,6 +849,50 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
+	 * Clear sync database (IndexedDB) to start fresh
+	 * This is useful when switching to a new vault or re-downloading from cloud
+	 */
+	async clearSyncDatabase(): Promise<void> {
+		try {
+			// Get the database name from config
+			const dbName = this.settings.syncConfig?.couchDB_DBNAME;
+			if (!dbName) {
+				console.warn('[Friday] No database name found in config');
+				return;
+			}
+
+			// Construct the IndexedDB name (matches the pattern used by livesync)
+			const indexedDBName = `obsidian-livesync-${dbName}`;
+			
+			console.log(`[Friday] Clearing IndexedDB: ${indexedDBName}`);
+
+			// Delete the IndexedDB database
+			return new Promise((resolve, reject) => {
+				const deleteRequest = indexedDB.deleteDatabase(indexedDBName);
+				
+				deleteRequest.onsuccess = () => {
+					console.log(`[Friday] Successfully deleted IndexedDB: ${indexedDBName}`);
+					resolve();
+				};
+				
+				deleteRequest.onerror = (event) => {
+					console.error(`[Friday] Error deleting IndexedDB: ${indexedDBName}`, event);
+					reject(new Error(`Failed to delete database: ${indexedDBName}`));
+				};
+				
+				deleteRequest.onblocked = () => {
+					console.warn(`[Friday] Delete blocked for IndexedDB: ${indexedDBName}`);
+					// Try to resolve anyway as the next initialization will handle it
+					resolve();
+				};
+			});
+		} catch (error) {
+			console.error('[Friday] Error in clearSyncDatabase:', error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Test CouchDB Sync connection
 	 */
 	async testSyncConnection(): Promise<{ success: boolean; message: string }> {
@@ -1343,6 +1387,72 @@ class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.sync')});
 
+		// ========== Security Subsection (Netlify-style container) ==========
+		// Show encryption passphrase field first, especially for non-first-time scenario
+		const securityContainer = containerEl.createDiv('friday-security-container');
+		securityContainer.createEl("h3", {text: this.plugin.i18n.t('settings.security')});
+
+		// Encryption Password (editable for non-first-time, readonly for first-time with show/hide)
+		let passwordVisible = false;
+		const encryptionPassphrase = this.plugin.settings.encryptionPassphrase;
+		
+		if (this.firstTimeSync && encryptionPassphrase) {
+			// First time: show readonly password with show/hide toggle
+			new Setting(securityContainer)
+				.setName(this.plugin.i18n.t('settings.encryption_password'))
+				.setDesc(this.plugin.i18n.t('settings.encryption_enabled'))
+				.addText((text) => {
+					text.inputEl.type = 'password';
+					text.inputEl.readOnly = true;
+					text.setValue(encryptionPassphrase);
+				})
+				.addButton((button) => {
+					button
+						.setButtonText(this.plugin.i18n.t('settings.show_password'))
+						.onClick(() => {
+							passwordVisible = !passwordVisible;
+							const inputEl = button.buttonEl.parentElement?.querySelector('input');
+							if (inputEl) {
+								inputEl.type = passwordVisible ? 'text' : 'password';
+							}
+							button.setButtonText(passwordVisible 
+								? this.plugin.i18n.t('settings.hide_password') 
+								: this.plugin.i18n.t('settings.show_password')
+							);
+						});
+				});
+		} else {
+			// Non-first-time: editable password field
+			new Setting(securityContainer)
+				.setName(this.plugin.i18n.t('settings.encryption_password'))
+				.setDesc('Enter the encryption password from your first activation to decrypt cloud data')
+				.addText((text) => {
+					text.inputEl.type = 'password';
+					text.inputEl.placeholder = 'Enter encryption password';
+					text.setValue(encryptionPassphrase || '');
+					text.onChange(async (value) => {
+						this.plugin.settings.encryptionPassphrase = value;
+						this.plugin.settings.syncConfig.passphrase = value;
+						await this.plugin.saveSettings();
+					});
+				})
+				.addButton((button) => {
+					button
+						.setButtonText(this.plugin.i18n.t('settings.show_password'))
+						.onClick(() => {
+							passwordVisible = !passwordVisible;
+							const inputEl = button.buttonEl.parentElement?.querySelector('input');
+							if (inputEl) {
+								inputEl.type = passwordVisible ? 'text' : 'password';
+							}
+							button.setButtonText(passwordVisible 
+								? this.plugin.i18n.t('settings.hide_password') 
+								: this.plugin.i18n.t('settings.show_password')
+							);
+						});
+				});
+		}
+
 		// First time sync - Upload option
 		if (this.firstTimeSync) {
 			new Setting(containerEl)
@@ -1371,61 +1481,49 @@ class FridaySettingTab extends PluginSettingTab {
 						});
 				});
 		} else {
-			// Non-first-time - Download option
+			// Non-first-time - Download option with IndexedDB cleanup
 			new Setting(containerEl)
 				.setName(this.plugin.i18n.t('settings.sync_data_available'))
 				.setDesc(this.plugin.i18n.t('settings.sync_description'))
 				.addButton((button) => {
 					button
 						.setButtonText(this.plugin.i18n.t('settings.download_from_cloud'))
+						.setCta()
 						.onClick(async () => {
+							// Validate passphrase is entered
+							if (!this.plugin.settings.encryptionPassphrase) {
+								new Notice('Please enter the encryption password first');
+								return;
+							}
+
 							button.setButtonText(this.plugin.i18n.t('settings.sync_downloading'));
 							button.setDisabled(true);
 							try {
-								if (!this.plugin.syncService.isInitialized) {
-									await this.plugin.syncService.initialize(this.plugin.settings.syncConfig);
+								// Close existing sync service if initialized
+								if (this.plugin.syncService?.isInitialized) {
+									await this.plugin.syncService.close();
 								}
-								await this.plugin.syncService.fetchFromServer();
-								new Notice(this.plugin.i18n.t('settings.sync_download_success'));
-								this.display();
+
+								// Clear IndexedDB to start fresh
+								await this.plugin.clearSyncDatabase();
+
+								// Re-initialize sync service with the passphrase
+								await this.plugin.initializeSyncService();
+
+								// Fetch from server
+								if (this.plugin.syncService.isInitialized) {
+									await this.plugin.syncService.fetchFromServer();
+									new Notice(this.plugin.i18n.t('settings.sync_download_success'));
+									this.display();
+								} else {
+									throw new Error('Sync service initialization failed');
+								}
 							} catch (error) {
-								new Notice(this.plugin.i18n.t('settings.sync_operation_failed'));
+								console.error('Download failed:', error);
+								new Notice(`${this.plugin.i18n.t('settings.sync_operation_failed')}: ${error.message || error}`);
 								button.setButtonText(this.plugin.i18n.t('settings.download_from_cloud'));
 								button.setDisabled(false);
 							}
-						});
-				});
-		}
-
-		// ========== Security Subsection (Netlify-style container) ==========
-		const encryptionPassphrase = this.plugin.settings.encryptionPassphrase;
-		if (encryptionPassphrase) {
-			const securityContainer = containerEl.createDiv('friday-security-container');
-			securityContainer.createEl("h3", {text: this.plugin.i18n.t('settings.security')});
-
-			// Encryption Password (with show/hide toggle)
-			let passwordVisible = false;
-			new Setting(securityContainer)
-				.setName(this.plugin.i18n.t('settings.encryption_password'))
-				.setDesc(this.plugin.i18n.t('settings.encryption_enabled'))
-				.addText((text) => {
-					text.inputEl.type = 'password';
-					text.inputEl.readOnly = true;
-					text.setValue(encryptionPassphrase);
-				})
-				.addButton((button) => {
-					button
-						.setButtonText(this.plugin.i18n.t('settings.show_password'))
-						.onClick(() => {
-							passwordVisible = !passwordVisible;
-							const inputEl = button.buttonEl.parentElement?.querySelector('input');
-							if (inputEl) {
-								inputEl.type = passwordVisible ? 'text' : 'password';
-							}
-							button.setButtonText(passwordVisible 
-								? this.plugin.i18n.t('settings.hide_password') 
-								: this.plugin.i18n.t('settings.show_password')
-							);
 						});
 				});
 		}
@@ -1521,8 +1619,9 @@ class FridaySettingTab extends PluginSettingTab {
 			};
 		}
 
-		// Step 8: Generate encryption passphrase if not exists
-		if (!this.plugin.settings.encryptionPassphrase) {
+		// Step 8: Generate encryption passphrase if not exists (only for first time)
+		// For non-first-time activation, user needs to manually input the passphrase
+		if (!this.plugin.settings.encryptionPassphrase && response.first_time) {
 			this.plugin.settings.encryptionPassphrase = generateEncryptionPassphrase();
 			// Set in sync config too
 			this.plugin.settings.syncConfig.passphrase = this.plugin.settings.encryptionPassphrase;
@@ -1537,8 +1636,9 @@ class FridaySettingTab extends PluginSettingTab {
 		// Step 11: Set first time flag
 		this.firstTimeSync = response.first_time;
 
-		// Step 12: Initialize sync service
-		if (this.plugin.settings.syncEnabled) {
+		// Step 12: Initialize sync service only for first-time activation
+		// For non-first-time, user needs to input passphrase first, then manually download
+		if (this.plugin.settings.syncEnabled && response.first_time) {
 			await this.plugin.initializeSyncService();
 		}
 	}
