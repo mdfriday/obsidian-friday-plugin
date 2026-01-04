@@ -125,16 +125,26 @@
 	let sampleDownloadProgress = 0;
 	let currentThemeWithSample: any = null;
 	
-	// Check if MDFriday Share is available (license activated with user_dir)
-	$: userDir = plugin.settings.licenseUser?.userDir || '';
-	$: isMDFShareAvailable = !!(plugin.settings.license && userDir && sitePath.startsWith(`/s/${userDir}/`));
+	// Local variables for license-based features
+	let userDir = '';
+	let isMDFShareAvailable = false;
+	let publishOptions: Array<{ value: string; label: string }> = [];
 
-	// Reactive publish options
-	$: publishOptions = [
-		{ value: 'netlify', label: t('ui.publish_option_netlify') },
-		{ value: 'ftp', label: t('ui.publish_option_ftp') },
-		...(isMDFShareAvailable ? [{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') }] : []),
-	];
+	// Reactive block to update license-related state (similar to theme selection at line 64-79)
+	$: {
+		// Update userDir from settings
+		userDir = plugin.settings.licenseUser?.userDir || '';
+		
+		// Check if MDFriday Share is available
+		isMDFShareAvailable = !!(plugin.settings.license && userDir && sitePath.startsWith(`/s/${userDir}/`));
+		
+		// Update publish options based on license availability
+		publishOptions = [
+			{ value: 'netlify', label: t('ui.publish_option_netlify') },
+			{ value: 'ftp', label: t('ui.publish_option_ftp') },
+			...(isMDFShareAvailable ? [{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') }] : []),
+		];
+	}
 
 	// Auto-switch to netlify if mdf-share is not available when sitePath changes
 	$: if (!isMDFShareAvailable && selectedPublishOption === 'mdf-share') {
