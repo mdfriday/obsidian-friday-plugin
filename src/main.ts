@@ -854,15 +854,17 @@ export default class FridayPlugin extends Plugin {
 	 */
 	async clearSyncDatabase(): Promise<void> {
 		try {
-			// Get the database name from config
-			const dbName = this.settings.syncConfig?.couchDB_DBNAME;
-			if (!dbName) {
-				console.warn('[Friday] No database name found in config');
-				return;
-			}
-
-			// Construct the IndexedDB name (matches the pattern used by livesync)
-			const indexedDBName = `obsidian-livesync-${dbName}`;
+			// Get vault name (e.g., "ob-d12")
+			// @ts-ignore - accessing internal Obsidian API
+			const vaultName = this.app.vault.getName() || "friday-vault";
+			
+			// Construct the database name following livesync's pattern:
+			// vaultName + "-livesync-v2"
+			// Then PouchDB idb adapter adds "_pouch_" prefix
+			// Final IndexedDB name: "_pouch_" + vaultName + "-livesync-v2"
+			// Example: "_pouch_ob-d12-livesync-v2"
+			const SuffixDatabaseName = "-livesync-v2";
+			const indexedDBName = `_pouch_${vaultName}${SuffixDatabaseName}`;
 			
 			console.log(`[Friday] Clearing IndexedDB: ${indexedDBName}`);
 
