@@ -1,5 +1,5 @@
 <script lang="ts">
-	import {App, Platform, TFolder, TFile, Notice} from "obsidian";
+	import {App} from "obsidian";
 	import Info from "./Info.svelte"
 	import Site from "./Site.svelte"
 	import {onMount, onDestroy} from "svelte";
@@ -8,19 +8,15 @@
 	// 接收 props
 	export let app: App;
 	export let plugin: FridayPlugin;
-
-	let isClientSupported = false;
 	
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
 
-	onMount(async () => {
-		isClientSupported = Platform.isDesktop;
+	// Note: This component is only loaded on desktop (via dynamic import in main.ts)
+	// No platform check needed here
 
-		if (!isClientSupported) {
-			new Notice(t('messages.desktop_only_notice'), 5000);
-			return;
-		}
+	onMount(async () => {
+		// Desktop-only initialization can go here
 	});
 
 	onDestroy(() => {
@@ -30,32 +26,22 @@
 
 
 <div class="friday-plugin-main">
-	{#if !isClientSupported}
-		<div>
-			<p>
-				{t('ui.desktop_only_message')}
-				<br/>
-				{t('ui.mobile_coming_soon')}
-			</p>
+	<section id="friday-plugin-main">
+		<!-- 标签页内容 -->
+		<div class="friday-tab-content">
+				<div
+					role="tabpanel" 
+					id="panel-site" 
+					aria-labelledby="tab-site" 
+					tabindex="0"
+				>
+					<Site {app} {plugin} />
+					
+					<hr class="centered-line">
+					<Info {plugin}/>
+				</div>
 		</div>
-	{:else}
-		<section id="friday-plugin-main">
-			<!-- 标签页内容 -->
-			<div class="friday-tab-content">
-					<div
-						role="tabpanel" 
-						id="panel-site" 
-						aria-labelledby="tab-site" 
-						tabindex="0"
-					>
-						<Site {app} {plugin} />
-						
-						<hr class="centered-line">
-						<Info {plugin}/>
-					</div>
-			</div>
-		</section>
-	{/if}
+	</section>
 </div>
 
 <style>

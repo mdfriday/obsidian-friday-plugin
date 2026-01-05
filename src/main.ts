@@ -1,20 +1,7 @@
-import {App, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice, MarkdownView, setIcon} from 'obsidian';
-import ServerView, {FRIDAY_SERVER_VIEW_TYPE} from './server';
+import {App, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice, MarkdownView, setIcon, Platform} from 'obsidian';
 import {User} from "./user";
-import './styles/theme-modal.css';
-import './styles/publish-settings.css';
-import './styles/project-modal.css';
 import './styles/license-settings.css';
-import {ThemeSelectionModal} from "./theme/modal";
-import {Hugoverse} from "./hugoverse";
-import {NetlifyAPI} from "./netlify";
 import {I18nService} from "./i18n";
-import {FTPUploader} from "./ftp";
-import {Site} from "./site";
-import {themeApiService} from "./theme/themeApiService";
-import {ProjectManagementModal} from "./projects/modal";
-import {ProjectService} from "./projects/service";
-import type {ProjectConfig} from "./projects/types";
 import {SyncService, SyncStatusDisplay, type SyncConfig} from "./sync";
 import {
     type StoredLicenseData,
@@ -30,6 +17,20 @@ import {
     isLicenseExpired,
     generateEncryptionPassphrase
 } from "./license";
+
+// PC-only module types (dynamically imported)
+import type {Hugoverse} from "./hugoverse";
+import type {NetlifyAPI} from "./netlify";
+import type {FTPUploader} from "./ftp";
+import type {Site} from "./site";
+import type {ProjectService} from "./projects/service";
+import type {ProjectConfig} from "./projects/types";
+import type {ThemeSelectionModal} from "./theme/modal";
+import type {ProjectManagementModal} from "./projects/modal";
+import type ServerView from './server';
+
+// Export view type for dynamic import
+export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
 
 interface FridaySettings {
 	username: string;
@@ -98,53 +99,138 @@ export default class FridayPlugin extends Plugin {
 
 	pluginDir: string
 	apiUrl: string
+	
+	// Core services (always available)
 	user: User
-	hugoverse: Hugoverse
-	netlify: NetlifyAPI
 	i18n: I18nService
-	ftp: FTPUploader | null = null
-	site: Site
-	projectService: ProjectService
 	syncService: SyncService
 	syncStatusDisplay: SyncStatusDisplay | null = null
+	
+	// PC-only services (optional, only loaded on desktop)
+	hugoverse?: Hugoverse
+	netlify?: NetlifyAPI
+	ftp?: FTPUploader | null
+	site?: Site
+	projectService?: ProjectService
+	
+	// PC-only callbacks (optional)
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
 	exportHistoryBuild: ((previewId: string) => Promise<void>) | null = null
 	clearPreviewHistory: ((projectId: string) => Promise<void>) | null = null
-	// Quick share methods for internet icon
+	// Quick share methods for internet icon (PC-only)
 	setSitePath: ((path: string) => void) | null = null
 	startPreviewAndWait: (() => Promise<boolean>) | null = null
 	selectMDFShare: (() => void) | null = null
+	
+	// PC-only state
 	private previousDownloadServer: 'global' | 'east' = 'global'
+	
+	// Dynamic module references for PC-only features
+	private ThemeSelectionModalClass?: typeof ThemeSelectionModal
+	private ProjectManagementModalClass?: typeof ProjectManagementModal
+	private themeApiService?: typeof import("./theme/themeApiService").themeApiService
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
 		await this.loadSettings();
-		await this.initFriday();
-
-		// Fetch usage information if license is active
-		await this.refreshLicenseUsage();
-
-		// Initialize FTP uploader
-		this.initializeFTP();
-
-		// Initialize Sync Service
-		this.initializeSyncService();
+		
+		// Initialize core services (always needed)
+		await this.initCore();
+		
+		// Platform-specific initialization
+		if (Platform.isDesktop) {
+			await this.initDesktopFeatures();
+		} else {
+			await this.initMobileFeatures();
+		}
+		
+		// Initialize Sync Service (common for both platforms)
+		await this.initializeSyncService();
+		
+		// Register sync commands (common for both platforms)
+		this.registerSyncCommands();
 
 		this.statusBar = this.addStatusBarItem();
-
 		this.addSettingTab(new FridaySettingTab(this.app, this));
+	}
 
-		// Register view with protection against duplicate registration (can happen during hot reload)
+	/**
+	 * Initialize core services (common for all platforms)
+	 */
+	private async initCore(): Promise<void> {
+		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+		
+		// Initialize i18n service first
+		this.i18n = new I18nService(this);
+		await this.i18n.init();
+		
+		this.user = new User(this);
+		
+		// Fetch usage information if license is active
+		await this.refreshLicenseUsage();
+	}
+
+	/**
+	 * Initialize desktop-only features
+	 */
+	private async initDesktopFeatures(): Promise<void> {
+		console.log('[Friday] Desktop mode: Loading full features...');
+		
+		// Dynamically import PC-only modules
+		const [
+			{ default: ServerView },
+			{ ThemeSelectionModal },
+			{ ProjectManagementModal },
+			{ ProjectService },
+			{ Site },
+			{ Hugoverse },
+			{ NetlifyAPI },
+			{ FTPUploader },
+			{ themeApiService }
+		] = await Promise.all([
+			import('./server'),
+			import('./theme/modal'),
+			import('./projects/modal'),
+			import('./projects/service'),
+			import('./site'),
+			import('./hugoverse'),
+			import('./netlify'),
+			import('./ftp'),
+			import('./theme/themeApiService')
+		]);
+		
+		// Import PC-only styles
+		await Promise.all([
+			import('./styles/theme-modal.css'),
+			import('./styles/publish-settings.css'),
+			import('./styles/project-modal.css')
+		]);
+		
+		// Store dynamic module references
+		this.ThemeSelectionModalClass = ThemeSelectionModal;
+		this.ProjectManagementModalClass = ProjectManagementModal;
+		this.themeApiService = themeApiService;
+		
+		// Initialize PC-only services
+		this.hugoverse = new Hugoverse(this);
+		this.netlify = new NetlifyAPI(this);
+		this.site = new Site(this);
+		this.projectService = new ProjectService(this);
+		await this.projectService.initialize();
+		
+		// Initialize FTP uploader
+		this.initializeFTP();
+		
+		// Register view with protection against duplicate registration
 		try {
-			this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this))
+			this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this));
 		} catch (e) {
 			console.log('[Friday] View already registered, skipping');
 		}
-		this.app.workspace.onLayoutReady(() => this.initLeaf())
-
+		this.app.workspace.onLayoutReady(() => this.initLeaf());
+		
 		// Add ribbon icon for project management
 		this.addRibbonIcon(FRIDAY_ICON, this.i18n.t('projects.manage_projects'), async () => {
-			// Get callbacks from Site component
 			if (this.applyProjectConfigurationToPanel && this.exportHistoryBuild && this.clearPreviewHistory) {
 				this.showProjectManagementModal(
 					this.applyProjectConfigurationToPanel,
@@ -152,8 +238,8 @@ export default class FridayPlugin extends Plugin {
 					this.clearPreviewHistory
 				);
 			}
-		})
-
+		});
+		
 		// Add internet icon to markdown view header
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', (leaf) => {
@@ -162,7 +248,7 @@ export default class FridayPlugin extends Plugin {
 				}
 			})
 		);
-
+		
 		// Also add to currently active view on load
 		this.app.workspace.onLayoutReady(() => {
 			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -170,8 +256,8 @@ export default class FridayPlugin extends Plugin {
 				this.addInternetIconToView(activeView);
 			}
 		});
-
-		// Register export HTML command
+		
+		// Register export HTML command (PC-only)
 		this.addCommand({
 			id: "export-current-note-with-css",
 			name: this.i18n.t('menu.publish_to_web'),
@@ -186,8 +272,59 @@ export default class FridayPlugin extends Plugin {
 				return false;
 			}
 		});
+		
+		// Register context menu for files and folders (PC-only)
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu, file) => {
+				if (file instanceof TFolder) {
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_web'))
+							.setIcon(FRIDAY_ICON)
+							.onClick(async () => {
+								await this.openPublishPanel(file, null);
+							});
+					});
+					
+					// Add site assets menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.set_as_site_assets'))
+							.setIcon('folder-plus')
+							.onClick(async () => {
+								await this.setSiteAssets(file);
+							});
+					});
+				} else if (file instanceof TFile && file.extension === 'md') {
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_web'))
+							.setIcon(FRIDAY_ICON)
+							.onClick(async () => {
+								await this.openPublishPanel(null, file);
+							});
+					});
+				}
+			})
+		);
+		
+		console.log('[Friday] Desktop features loaded successfully');
+	}
 
-		// Register sync commands
+	/**
+	 * Initialize mobile-only features
+	 */
+	private async initMobileFeatures(): Promise<void> {
+		console.log('[Friday] Mobile mode: Sync-only features enabled');
+		// Mobile currently only needs sync functionality
+		// which is already handled by initializeSyncService()
+		// Additional mobile-specific UI can be added here in the future
+	}
+
+	/**
+	 * Register sync commands (common for both platforms)
+	 */
+	private registerSyncCommands(): void {
 		this.addCommand({
 			id: "sync-pull-from-server",
 			name: "Sync: Pull from Server",
@@ -229,7 +366,7 @@ export default class FridayPlugin extends Plugin {
 				if (!this.syncService.isInitialized) {
 					await this.syncService.initialize(this.settings.syncConfig);
 				}
-				await this.syncService.startSync(true); // continuous = true for live sync
+				await this.syncService.startSync(true);
 			}
 		});
 
@@ -242,45 +379,14 @@ export default class FridayPlugin extends Plugin {
 				}
 			}
 		});
-
-		// Register context menu for files and folders
-		this.registerEvent(
-			this.app.workspace.on('file-menu', (menu, file) => {
-				if (file instanceof TFolder) {
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_web'))
-							.setIcon(FRIDAY_ICON)
-							.onClick(async () => {
-								await this.openPublishPanel(file, null);
-							});
-					});
-					
-					// Add site assets menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.set_as_site_assets'))
-							.setIcon('folder-plus')
-							.onClick(async () => {
-								await this.setSiteAssets(file);
-							});
-					});
-				} else if (file instanceof TFile && file.extension === 'md') {
-					// Add publish option for markdown files (unified behavior)
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_web'))
-							.setIcon(FRIDAY_ICON)
-							.onClick(async () => {
-								await this.openPublishPanel(null, file);
-							});
-					});
-				}
-			})
-		);
 	}
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
+		if (!Platform.isDesktop || !this.site || !this.projectService) {
+			new Notice('Publishing is only available on desktop');
+			return;
+		}
+		
 		const rightSplit = this.app.workspace.rightSplit;
 		if (!rightSplit) {
 			return;
@@ -403,8 +509,13 @@ export default class FridayPlugin extends Plugin {
 
 	/**
 	 * Process a structured folder by automatically adding content directories and static folder
+	 * (Desktop only)
 	 */
 	async processStructuredFolder(folder: TFolder) {
+		if (!Platform.isDesktop || !this.site) {
+			return;
+		}
+		
 		try {
 			const children = folder.children;
 			const contentFolders: { folder: TFolder; languageCode: string; weight: number }[] = [];
@@ -516,6 +627,11 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	async setSiteAssets(folder: TFolder) {
+		if (!Platform.isDesktop || !this.site) {
+			new Notice('Setting site assets is only available on desktop');
+			return;
+		}
+		
 		// Set the site assets folder
 		const success = this.site.setSiteAssets(folder);
 		
@@ -546,7 +662,11 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	showThemeSelectionModal(selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void, isForSingleFile: boolean = false) {
-		const modal = new ThemeSelectionModal(this.app, selectedTheme, onSelect, this, isForSingleFile);
+		if (!Platform.isDesktop || !this.ThemeSelectionModalClass) {
+			new Notice('Theme selection is only available on desktop');
+			return;
+		}
+		const modal = new this.ThemeSelectionModalClass(this.app, selectedTheme, onSelect, this, isForSingleFile);
 		modal.open();
 	}
 
@@ -555,7 +675,11 @@ export default class FridayPlugin extends Plugin {
 		onExport: (previewId: string) => Promise<void>,
 		onClearHistory: (projectId: string) => Promise<void>
 	) {
-		const modal = new ProjectManagementModal(this.app, this, this.projectService, onApply, onExport, onClearHistory);
+		if (!Platform.isDesktop || !this.ProjectManagementModalClass || !this.projectService) {
+			new Notice('Project management is only available on desktop');
+			return;
+		}
+		const modal = new this.ProjectManagementModalClass(this.app, this, this.projectService, onApply, onExport, onClearHistory);
 		modal.open();
 	}
 
@@ -594,13 +718,18 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Quick share current file - automated workflow
+	 * Quick share current file - automated workflow (Desktop only)
 	 * 1. Open publish panel with current file
 	 * 2. Set sitePath to "/s"
 	 * 3. Generate preview
 	 * 4. Select MDFriday Share publish option
 	 */
 	private async quickShareCurrentFile(view: MarkdownView) {
+		if (!Platform.isDesktop) {
+			new Notice('Quick share is only available on desktop');
+			return;
+		}
+		
 		const file = view.file;
 		if (!file || file.extension !== 'md') {
 			new Notice(this.i18n.t('messages.no_markdown_file'), 3000);
@@ -650,26 +779,10 @@ export default class FridayPlugin extends Plugin {
 
 		} catch (error) {
 			console.error('Quick share failed:', error);
-			new Notice(this.i18n.t('messages.quick_share_failed', { error: error.message }), 5000);
+			new Notice(this.i18n.t('messages.quick_share_failed', { error: (error as Error).message }), 5000);
 		}
 	}
 
-	async initFriday(): Promise<void> {
-		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
-		
-		// Initialize i18n service first
-		this.i18n = new I18nService(this);
-		await this.i18n.init();
-		
-		this.user = new User(this);
-		this.hugoverse = new Hugoverse(this);
-		this.netlify = new NetlifyAPI(this);
-		this.site = new Site(this);
-		
-		// Initialize project service
-		this.projectService = new ProjectService(this);
-		await this.projectService.initialize();
-	}
 
 	initLeaf(): void {
 		if (this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE).length > 0) return
@@ -704,8 +817,20 @@ export default class FridayPlugin extends Plugin {
 	 */
 	async refreshLicenseUsage() {
 		// Check if dependencies are initialized
-		if (!this.hugoverse || !this.user) {
-			console.log('[Friday] Skipping usage refresh: hugoverse or user not initialized yet');
+		if (!this.user) {
+			console.log('[Friday] Skipping usage refresh: user not initialized yet');
+			return;
+		}
+
+		// On mobile, we need to dynamically import hugoverse for license usage check
+		let hugoverse = this.hugoverse;
+		if (!hugoverse && Platform.isMobile) {
+			const { Hugoverse } = await import('./hugoverse');
+			hugoverse = new Hugoverse(this);
+		}
+		
+		if (!hugoverse) {
+			console.log('[Friday] Skipping usage refresh: hugoverse not available');
 			return;
 		}
 
@@ -720,7 +845,7 @@ export default class FridayPlugin extends Plugin {
 
 		try {
 			// Try to fetch usage with current token
-			const usageResponse = await this.hugoverse.getLicenseUsage(currentToken, license.key);
+			const usageResponse = await hugoverse.getLicenseUsage(currentToken, license.key);
 			if (usageResponse && usageResponse.disks) {
 				// Parse disk usage (convert string to number)
 				const totalDiskUsage = parseFloat(usageResponse.disks.total_disk_usage) || 0;
@@ -748,7 +873,7 @@ export default class FridayPlugin extends Plugin {
 				if (newToken) {
 					console.log('[Friday] Token refreshed successfully, retrying usage fetch...');
 					// Retry with new token
-					const usageResponse = await this.hugoverse.getLicenseUsage(newToken, license.key);
+					const usageResponse = await hugoverse.getLicenseUsage(newToken, license.key);
 					if (usageResponse && usageResponse.disks) {
 						const totalDiskUsage = parseFloat(usageResponse.disks.total_disk_usage) || 0;
 						const maxStorage = license.features.max_storage || 1024;
@@ -778,23 +903,31 @@ export default class FridayPlugin extends Plugin {
 		
 		await this.saveData(this.settings);
 		
-		// Clear theme cache if download server changed
-		if (downloadServerChanged) {
-			themeApiService.clearCache();
+		// Clear theme cache if download server changed (desktop only)
+		if (downloadServerChanged && Platform.isDesktop && this.themeApiService) {
+			this.themeApiService.clearCache();
 			this.previousDownloadServer = this.settings.downloadServer;
 		}
 		
-		// Reinitialize FTP uploader when settings change
-		this.initializeFTP();
+		// Reinitialize FTP uploader when settings change (desktop only)
+		if (Platform.isDesktop) {
+			this.initializeFTP();
+		}
 	}
 
 	/**
-	 * Initialize FTP uploader with current settings
+	 * Initialize FTP uploader with current settings (desktop only)
 	 */
-	initializeFTP(preferredSecure?: boolean) {
+	async initializeFTP(preferredSecure?: boolean) {
+		if (!Platform.isDesktop) {
+			return;
+		}
+		
 		const { ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert } = this.settings;
 		
 		if (ftpServer && ftpUsername && ftpPassword) {
+			// Dynamically import FTPUploader if not already loaded
+			const { FTPUploader } = await import('./ftp');
 			this.ftp = new FTPUploader({
 				server: ftpServer,
 				username: ftpUsername,
@@ -907,9 +1040,16 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Test FTP connection
+	 * Test FTP connection (Desktop only)
 	 */
 	async testFTPConnection(): Promise<{ success: boolean; message: string }> {
+		if (!Platform.isDesktop) {
+			return {
+				success: false,
+				message: 'FTP is only available on desktop'
+			};
+		}
+		
 		if (!this.ftp) {
 			return {
 				success: false,
@@ -972,18 +1112,33 @@ class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		const {license, licenseSync, downloadServer, publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
+		const {license, licenseSync} = this.plugin.settings;
 
 		// =========================================
-		// License Section (Always at top)
+		// License Section (Always at top - both platforms)
 		// =========================================
 		this.renderLicenseSection(containerEl);
 
-		// If license is activated, show Sync and Security sections
+		// If license is activated, show Sync and Security sections (both platforms)
 		if (license && licenseSync?.enabled) {
 			this.renderSyncSection(containerEl);
 			this.renderSecuritySection(containerEl);
 		}
+
+		// =========================================
+		// Desktop-only settings
+		// =========================================
+		if (Platform.isDesktop) {
+			this.renderPublishSettings(containerEl);
+			this.renderGeneralSettings(containerEl);
+		}
+	}
+
+	/**
+	 * Render Publish Settings Section (Desktop only)
+	 */
+	private renderPublishSettings(containerEl: HTMLElement): void {
+		const {publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
 
 		// Publish Settings Section
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.publish_settings')});
@@ -1234,6 +1389,13 @@ class FridaySettingTab extends PluginSettingTab {
 
 		// Initialize the display based on current publish method
 		showPublishSettings(publishMethod || 'netlify');
+	}
+
+	/**
+	 * Render General Settings Section (Desktop only)
+	 */
+	private renderGeneralSettings(containerEl: HTMLElement): void {
+		const {downloadServer} = this.plugin.settings;
 
 		// =========================================
 		// General Settings Section (at the bottom)

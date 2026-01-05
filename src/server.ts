@@ -1,8 +1,6 @@
 import {ItemView, WorkspaceLeaf, TFile, TFolder} from 'obsidian';
-import FridayPlugin, {FRIDAY_ICON} from "./main";
+import FridayPlugin, {FRIDAY_ICON, FRIDAY_SERVER_VIEW_TYPE} from "./main";
 import Server from './svelte/Server.svelte';
-
-export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
 
 export default class ServerView extends ItemView {
 	plugin: FridayPlugin;
