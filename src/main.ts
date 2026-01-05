@@ -166,6 +166,11 @@ export default class FridayPlugin extends Plugin {
 		
 		this.user = new User(this);
 		
+		// Initialize Hugoverse for license-related API calls (works on both platforms)
+		// Note: Some Hugoverse methods are desktop-only, but license activation works on mobile
+		const { Hugoverse } = await import('./hugoverse');
+		this.hugoverse = new Hugoverse(this);
+		
 		// Fetch usage information if license is active
 		await this.refreshLicenseUsage();
 	}
@@ -177,13 +182,13 @@ export default class FridayPlugin extends Plugin {
 		console.log('[Friday] Desktop mode: Loading full features...');
 		
 		// Dynamically import PC-only modules
+		// Note: Hugoverse is already initialized in initCore for license operations
 		const [
 			{ default: ServerView },
 			{ ThemeSelectionModal },
 			{ ProjectManagementModal },
 			{ ProjectService },
 			{ Site },
-			{ Hugoverse },
 			{ NetlifyAPI },
 			{ FTPUploader },
 			{ themeApiService }
@@ -193,7 +198,6 @@ export default class FridayPlugin extends Plugin {
 			import('./projects/modal'),
 			import('./projects/service'),
 			import('./site'),
-			import('./hugoverse'),
 			import('./netlify'),
 			import('./ftp'),
 			import('./theme/themeApiService')
@@ -211,8 +215,7 @@ export default class FridayPlugin extends Plugin {
 		this.ProjectManagementModalClass = ProjectManagementModal;
 		this.themeApiService = themeApiService;
 		
-		// Initialize PC-only services
-		this.hugoverse = new Hugoverse(this);
+		// Initialize PC-only services (hugoverse already initialized in initCore)
 		this.netlify = new NetlifyAPI(this);
 		this.site = new Site(this);
 		this.projectService = new ProjectService(this);
@@ -817,23 +820,12 @@ export default class FridayPlugin extends Plugin {
 	 */
 	async refreshLicenseUsage() {
 		// Check if dependencies are initialized
-		if (!this.user) {
-			console.log('[Friday] Skipping usage refresh: user not initialized yet');
+		if (!this.user || !this.hugoverse) {
+			console.log('[Friday] Skipping usage refresh: dependencies not initialized yet');
 			return;
 		}
 
-		// On mobile, we need to dynamically import hugoverse for license usage check
-		let hugoverse = this.hugoverse;
-		if (!hugoverse && Platform.isMobile) {
-			const { Hugoverse } = await import('./hugoverse');
-			hugoverse = new Hugoverse(this);
-		}
-		
-		if (!hugoverse) {
-			console.log('[Friday] Skipping usage refresh: hugoverse not available');
-			return;
-		}
-
+		const hugoverse = this.hugoverse;
 		const { license, userToken } = this.settings;
 		
 		// Only fetch usage if license is active and not expired

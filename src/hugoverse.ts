@@ -1,8 +1,7 @@
-import {App, FileSystemAdapter, Notice, requestUrl, TFile, TFolder, Vault} from "obsidian";
+import {App, FileSystemAdapter, Notice, Platform, requestUrl, TFile, TFolder, Vault} from "obsidian";
 import type {RequestUrlResponse} from "obsidian";
 import type {User} from "./user";
 import type FridayPlugin from "./main";
-import * as path from "path";
 import type { LicenseActivationResponse, LicenseUsageResponse } from "./license";
 
 const NEW_ID = "-1"
@@ -23,9 +22,13 @@ export class Hugoverse {
 		this.apiUrl = this.plugin.apiUrl;
 		this.user = this.plugin.user;
 
+		// basePath is only available on desktop (FileSystemAdapter)
+		// On mobile, we don't need it for license-related operations
 		const adapter = this.app.vault.adapter;
-		if (adapter instanceof FileSystemAdapter) {
+		if (Platform.isDesktop && adapter instanceof FileSystemAdapter) {
 			this.basePath = adapter.getBasePath();
+		} else {
+			this.basePath = '';
 		}
 	}
 
@@ -57,7 +60,15 @@ export class Hugoverse {
 	}
 
 	projectDirPath(filepath: string): string {
-		return path.dirname(filepath)
+		// Use simple string manipulation instead of Node.js path module
+		// This works on both desktop and mobile
+		const lastSlash = filepath.lastIndexOf('/');
+		if (lastSlash === -1) {
+			const lastBackslash = filepath.lastIndexOf('\\');
+			if (lastBackslash === -1) return '.';
+			return filepath.substring(0, lastBackslash);
+		}
+		return filepath.substring(0, lastSlash);
 	}
 
 	/*
