@@ -1,6 +1,5 @@
 import esbuild from 'esbuild'
 import process from 'process'
-import builtins from 'builtin-modules'
 import sveltePlugin from 'esbuild-svelte'
 import { sveltePreprocess } from 'svelte-preprocess'
 import inlineWorkerPlugin from 'esbuild-plugin-inline-worker'
@@ -55,6 +54,58 @@ const onBuildComplete = (result) => {
 	}
 };
 
+// External modules that should not be bundled
+// These are provided by Obsidian or the Electron runtime (desktop only)
+const externals = [
+	// Obsidian and Electron core
+	'obsidian',
+	'electron',
+	'crypto',
+	// CodeMirror (provided by Obsidian)
+	'@codemirror/autocomplete',
+	'@codemirror/closebrackets',
+	'@codemirror/collab',
+	'@codemirror/commands',
+	'@codemirror/comment',
+	'@codemirror/fold',
+	'@codemirror/gutter',
+	'@codemirror/highlight',
+	'@codemirror/history',
+	'@codemirror/language',
+	'@codemirror/lint',
+	'@codemirror/matchbrackets',
+	'@codemirror/panel',
+	'@codemirror/rangeset',
+	'@codemirror/rectangular-selection',
+	'@codemirror/search',
+	'@codemirror/state',
+	'@codemirror/stream-parser',
+	'@codemirror/text',
+	'@codemirror/tooltip',
+	'@codemirror/view',
+	'@lezer/common',
+	'@lezer/highlight',
+	'@lezer/lr',
+	// Node.js builtins used by desktop-only features (publish/ftp/foundry)
+	// These are available in Obsidian Desktop (Electron) but not on mobile
+	// The code using these is only executed on desktop (guarded by Platform.isDesktop)
+	'fs',
+	'fs/promises',
+	'path',
+	'net',
+	'tls',
+	'stream',
+	'stream/promises',
+	'http',
+	'https',
+	'util',
+	'os',
+	'node:fs',
+	'node:fs/promises',
+	'node:path',
+	'node:stream',
+];
+
 const buildOptions = {
 	banner: {
 		js: banner,
@@ -65,36 +116,11 @@ const buildOptions = {
 		'process.env.NODE_ENV': prod ? '"production"' : '"development"',
 		global: 'window',
 	},
-	external: [
-		'obsidian',
-		'electron',
-		'crypto',
-		'@codemirror/autocomplete',
-		'@codemirror/closebrackets',
-		'@codemirror/collab',
-		'@codemirror/commands',
-		'@codemirror/comment',
-		'@codemirror/fold',
-		'@codemirror/gutter',
-		'@codemirror/highlight',
-		'@codemirror/history',
-		'@codemirror/language',
-		'@codemirror/lint',
-		'@codemirror/matchbrackets',
-		'@codemirror/panel',
-		'@codemirror/rangeset',
-		'@codemirror/rectangular-selection',
-		'@codemirror/search',
-		'@codemirror/state',
-		'@codemirror/stream-parser',
-		'@codemirror/text',
-		'@codemirror/tooltip',
-		'@codemirror/view',
-		'@lezer/common',
-		'@lezer/highlight',
-		'@lezer/lr',
-		...builtins,
-	],
+	external: externals,
+	// Browser platform settings - critical for mobile support
+	// This ensures esbuild uses browser versions of packages instead of Node.js versions
+	platform: 'browser',
+	mainFields: ['browser', 'module', 'main'],
 	format: 'cjs',
 	target: 'es2018',
 	logLevel: 'info',
@@ -103,11 +129,7 @@ const buildOptions = {
 	metafile: true, // 启用元数据输出以便追踪生成的文件
 	plugins: [
 		inlineWorkerPlugin({
-			external: [
-				'obsidian',
-				'electron',
-				'crypto',
-			],
+			external: externals,
 			treeShaking: true,
 		}),
 		sveltePlugin({

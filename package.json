@@ -44,6 +44,7 @@
 		"esbuild": "0.25.0",
 		"esbuild-plugin-inline-worker": "^0.1.1",
 		"esbuild-svelte": "^0.9.3",
+		"events": "^3.3.0",
 		"obsidian": "^1.8.7",
 		"pouchdb-adapter-http": "^9.0.0",
 		"pouchdb-adapter-idb": "^9.0.0",
