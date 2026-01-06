@@ -5,51 +5,54 @@
  * to enable full CouchDB synchronization functionality.
  */
 
-import { Plugin, Notice, Platform, TFile, TFolder, normalizePath } from "obsidian";
-import { reactiveSource, type ReactiveSource } from "octagonal-wheels/dataobject/reactive";
+import {Plugin} from "obsidian";
+import {reactiveSource, type ReactiveSource} from "octagonal-wheels/dataobject/reactive";
 
 // Import core types
 import {
-    type EntryDoc,
-    type ObsidianLiveSyncSettings,
-    type RemoteDBSettings,
-    type DocumentID,
-    type FilePath,
-    type FilePathWithPrefix,
-    type EntryHasPath,
-    type DatabaseConnectingStatus,
-    DEFAULT_SETTINGS,
-    REMOTE_COUCHDB,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_NOTICE,
-    LOG_LEVEL_VERBOSE,
+	type DatabaseConnectingStatus,
+	DEFAULT_SETTINGS,
+	type DocumentID,
+	E2EEAlgorithms,
+	type EntryDoc,
+	type EntryHasPath,
+	type FilePath,
+	type FilePathWithPrefix,
+	LOG_LEVEL_INFO,
+	LOG_LEVEL_NOTICE,
+	LOG_LEVEL_VERBOSE,
+	type ObsidianLiveSyncSettings,
+	REMOTE_COUCHDB,
+	type RemoteDBSettings,
 } from "./core/common/types";
 
 // Import core components
-import { LiveSyncLocalDB, type LiveSyncLocalDBEnv } from "./core/pouchdb/LiveSyncLocalDB";
-import { LiveSyncCouchDBReplicator, type LiveSyncCouchDBReplicatorEnv } from "./core/replication/couchdb/LiveSyncReplicator";
-import { type LiveSyncAbstractReplicator, type ReplicationStat } from "./core/replication/LiveSyncAbstractReplicator";
-import { LiveSyncManagers } from "./core/managers/LiveSyncManagers";
-import { type KeyValueDatabase } from "./core/interfaces/KeyValueDatabase";
-import { type SimpleStore } from "octagonal-wheels/databases/SimpleStoreBase";
-import { Logger, setGlobalLogFunction } from "./core/common/logger";
-import { readContent, isTextDocument } from "./core/common/utils";
+import {LiveSyncLocalDB, type LiveSyncLocalDBEnv} from "./core/pouchdb/LiveSyncLocalDB";
+import {
+	LiveSyncCouchDBReplicator,
+	type LiveSyncCouchDBReplicatorEnv
+} from "./core/replication/couchdb/LiveSyncReplicator";
+import {type ReplicationStat} from "./core/replication/LiveSyncAbstractReplicator";
+import {LiveSyncManagers} from "./core/managers/LiveSyncManagers";
+import {type KeyValueDatabase} from "./core/interfaces/KeyValueDatabase";
+import {type SimpleStore} from "octagonal-wheels/databases/SimpleStoreBase";
+import {Logger, setGlobalLogFunction} from "./core/common/logger";
+import {isTextDocument, readContent} from "./core/common/utils";
 
 // Import services
-import { FridayServiceHub } from "./FridayServiceHub";
-import type { SyncConfig, SyncStatus, SyncStatusCallback } from "./SyncService";
-import { FridayStorageEventManager } from "./FridayStorageEventManager";
+import {FridayServiceHub} from "./FridayServiceHub";
+import type {SyncConfig, SyncStatus, SyncStatusCallback} from "./SyncService";
+import {FridayStorageEventManager} from "./FridayStorageEventManager";
 
 // PouchDB imports - use the configured PouchDB with all plugins (including transform-pouch)
-import { PouchDB } from "./core/pouchdb/pouchdb-browser";
+import {PouchDB} from "./core/pouchdb/pouchdb-browser";
 
 // Import encryption utilities for local database
-import { enableEncryption, disableEncryption } from "./core/pouchdb/encryption";
-import { replicationFilter } from "./core/pouchdb/compress";
-import { E2EEAlgorithms } from "./core/common/types";
+import {disableEncryption, enableEncryption} from "./core/pouchdb/encryption";
+import {replicationFilter} from "./core/pouchdb/compress";
 
 // Import path utilities for correct document ID generation
-import { path2id_base, id2path_base } from "./core/string_and_binary/path";
+import {id2path_base, path2id_base} from "./core/string_and_binary/path";
 
 /**
  * Simple KeyValue Database implementation using localStorage
@@ -204,13 +207,6 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             const msgStr = String(message);
             const logLevel = level ?? LOG_LEVEL_INFO;
             
-            // Console logging
-            if (logLevel >= LOG_LEVEL_INFO) {
-                console.log(`[Friday Sync] ${msgStr}`);
-            } else {
-                console.debug(`[Friday Sync] ${msgStr}`);
-            }
-            
             // Notify status display callback
             // All logs are displayed in logMessage area
             // Only LOG_LEVEL_NOTICE shows Notice popup
@@ -357,30 +353,18 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             // CRITICAL: Register database initialization handler BEFORE creating database
             // This handler sets up encryption for the local database (matching livesync's pattern)
             // The getPBKDF2Salt function is passed as a callback and called when encryption is needed
-            console.log("[Friday Sync] Registering database initialization handler for encryption...");
             this._services.databaseEvents.handleOnDatabaseInitialisation(async (db: LiveSyncLocalDB) => {
-                console.log("[Friday Sync] onDatabaseInitialisation event triggered!");
-                console.log("[Friday Sync] db.localDatabase exists:", !!db.localDatabase);
-                console.log("[Friday Sync] db.localDatabase.transform exists:", typeof (db.localDatabase as any).transform);
-                
                 // Set up compression filter
                 replicationFilter(db.localDatabase, false);
                 
                 // Reset encryption state first
                 disableEncryption();
-                
-                // Check if encryption should be enabled
-                console.log("[Friday Sync] Settings - encrypt:", this._settings.encrypt);
-                console.log("[Friday Sync] Settings - passphrase exists:", !!this._settings.passphrase);
-                
+
                 // Enable encryption if passphrase is configured
                 if (this._settings.passphrase && this._settings.encrypt) {
-                    console.log("[Friday Sync] Enabling encryption for local database...");
-                    
                     // Get E2EE algorithm from settings
                     const e2eeAlgorithm = this._settings.E2EEAlgorithm || E2EEAlgorithms.V2;
-                    console.log("[Friday Sync] E2EE algorithm:", e2eeAlgorithm);
-                    
+
                     enableEncryption(
                         db.localDatabase,
                         this._settings.passphrase,
@@ -389,29 +373,21 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                         async () => {
                             // This callback is called when PBKDF2 salt is needed
                             // The replicator must be initialized first (happens after db init)
-                            console.log("[Friday Sync] getPBKDF2Salt callback invoked!");
                             if (!this._replicator) {
-                                console.log("[Friday Sync] Warning: Replicator not ready, creating temporary for salt retrieval");
                                 // Create a temporary replicator just for salt retrieval
                                 const tempReplicator = new LiveSyncCouchDBReplicator(this);
-                                const salt = await tempReplicator.getReplicationPBKDF2Salt(this._settings);
-                                console.log("[Friday Sync] Salt retrieved via temp replicator, length:", salt.length);
-                                return salt;
+								return await tempReplicator.getReplicationPBKDF2Salt(this._settings);
                             }
-                            const salt = await this._replicator.getReplicationPBKDF2Salt(this._settings);
-                            console.log("[Friday Sync] Salt retrieved via replicator, length:", salt.length);
-                            return salt;
+							return await this._replicator.getReplicationPBKDF2Salt(this._settings);
                         },
                         e2eeAlgorithm
                     );
-                    console.log("[Friday Sync] Local database encryption setup complete");
                 } else {
-                    console.log("[Friday Sync] No passphrase configured or encryption disabled - skipping encryption");
+                    console.warn("[Friday Sync] No passphrase configured or encryption disabled - skipping encryption");
                 }
                 
                 return true;
             });
-            console.log("[Friday Sync] Database initialization handler registered");
 
             // Initialize local database
             const vaultName = this.getVaultName();
@@ -452,6 +428,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      * Note: Following livesync's pattern, continuous sync uses showResult=false
      * to avoid spamming users with Notice popups. Status is shown in the 
      * top-right corner display instead.
+     * 
+     * IMPORTANT: File watcher is started AFTER a delay to avoid capturing
+     * Obsidian's startup events as file changes.
      */
     async startSync(continuous: boolean = true): Promise<boolean> {
         if (!this._replicator) {
@@ -475,9 +454,22 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             // Start watching for local file changes (for upload to server)
             // This enables bidirectional sync: server->local and local->server
+            // IMPORTANT: Delay startup to avoid capturing Obsidian's startup events
+            // This matches livesync's pattern of waiting for the system to settle
             if (this._storageEventManager) {
-                this._storageEventManager.beginWatch();
-                Logger("File watcher started - local changes will sync to server", LOG_LEVEL_INFO);
+                // Wait a short time for:
+                // 1. OneShot sync to complete (pullOnly happens first in LiveSync)
+                // 2. Obsidian's startup file events to settle
+                // 3. Any cached file modifications to be processed
+                const WATCH_DELAY_MS = 1500;
+                Logger(`File watcher will start in ${WATCH_DELAY_MS}ms...`, LOG_LEVEL_VERBOSE);
+                
+                setTimeout(() => {
+                    if (this._storageEventManager) {
+                        this._storageEventManager.beginWatch();
+                        Logger("File watcher started - local changes will sync to server", LOG_LEVEL_INFO);
+                    }
+                }, WATCH_DELAY_MS);
             }
             
             // Status will be updated by replicator via updateInfo
@@ -845,6 +837,14 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                             await vault.createBinary(path, content as ArrayBuffer);
                         }
                         created++;
+                    }
+                    
+                    // Mark file as touched AFTER write (livesync pattern)
+                    // This prevents the vault event from triggering another sync
+                    const writtenFile = vault.getAbstractFileByPath(path);
+                    if (writtenFile && this._storageEventManager && 'stat' in writtenFile) {
+                        const stat = (writtenFile as any).stat;
+                        this._storageEventManager.touch(path, stat.mtime, stat.size);
                     }
                     
                     if (processed % 50 === 0) {

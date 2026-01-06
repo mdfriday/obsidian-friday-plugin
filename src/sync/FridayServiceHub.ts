@@ -378,6 +378,15 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                     }
                 }
                 
+                // Mark file as touched AFTER write (livesync pattern)
+                // This prevents the vault event from triggering another sync
+                // We need to get the file stat after write to get correct mtime/size
+                const writtenFile = vault.getAbstractFileByPath(path);
+                if (writtenFile && storageEventManager && 'stat' in writtenFile) {
+                    const stat = (writtenFile as any).stat;
+                    storageEventManager.touch(path, stat.mtime, stat.size);
+                }
+                
                 // Log business message (visible to user) - matching livesync's format:
                 // "Processing xxx (doc_id :rev) : Done"
                 const shortId = doc._id?.substring(0, 8) || "unknown";
