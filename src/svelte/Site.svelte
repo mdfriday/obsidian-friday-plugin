@@ -960,7 +960,7 @@
 			// Create config file
 			// Update sitePath for MDFriday Share if license is activated with user_dir
 			if (plugin.settings.license && userDir) {
-				if (sitePath.startsWith(`/s/${userDir}/`) || sitePath === '/' || !sitePath.startsWith('/s/')) {
+				if (sitePath.startsWith(`/s/${userDir}`) || !sitePath.startsWith('/s')) {
 					sitePath = `/s/${userDir}/${previewId}`;
 				}
 			}
