@@ -8,8 +8,8 @@
  * wrapping the FridaySyncCore which implements the full livesync functionality.
  */
 
-import { Plugin, Notice } from "obsidian";
-import { FridaySyncCore } from "./FridaySyncCore";
+import {Notice, Plugin} from "obsidian";
+import {FridaySyncCore} from "./FridaySyncCore";
 
 /**
  * Sync configuration for CouchDB
@@ -161,15 +161,9 @@ export class SyncService {
             return false;
         }
 
-        // Debug: log the values to diagnose LiveSync issue
-        console.log(`[Friday Sync] startSync called with continuous=${continuous}, config.liveSync=${this.config?.liveSync}`);
-        
         // When continuous is explicitly true, always use LiveSync mode
         // Only check config.liveSync when continuous is not explicitly passed
-        const useContinuous = continuous;
-        console.log(`[Friday Sync] Using continuous=${useContinuous} for sync`);
-        
-        return await this.core.startSync(useContinuous);
+		return await this.core.startSync(continuous);
     }
 
     /**

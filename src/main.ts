@@ -179,8 +179,6 @@ export default class FridayPlugin extends Plugin {
 	 * Initialize desktop-only features
 	 */
 	private async initDesktopFeatures(): Promise<void> {
-		console.log('[Friday] Desktop mode: Loading full features...');
-		
 		// Dynamically import PC-only modules
 		// Note: Hugoverse is already initialized in initCore for license operations
 		const [
@@ -960,7 +958,6 @@ export default class FridayPlugin extends Plugin {
 					
 					// Start LiveSync (continuous replication) by default
 					if (this.settings.syncConfig.syncOnStart) {
-						console.log('[Friday Sync] Starting LiveSync on startup...');
 						await this.syncService.startSync(true); // true = liveSync mode
 					}
 				}

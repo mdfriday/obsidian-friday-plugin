@@ -301,7 +301,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         try {
             const path = doc.path;
             if (!path) {
-                console.log(`[Friday Sync] Document has no path: ${doc._id}`);
                 return false;
             }
             
@@ -319,7 +318,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 
                 if (isDeleted) {
                     // Handle deletion
-                    console.log(`[Friday Sync] Deleting file: ${path}`);
                     const vault = this.core.plugin.app.vault;
                     const existingFile = vault.getAbstractFileByPath(path);
                     if (existingFile) {
@@ -338,7 +336,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 // Fetch the full entry with data
                 const fullEntry = await localDB.getDBEntryFromMeta(doc, false, true);
                 if (!fullEntry) {
-                    console.log(`[Friday Sync] Could not get full entry for: ${path}`);
                     return false;
                 }
                 
@@ -427,8 +424,7 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
 
     parseSynchroniseResult(docs: Array<PouchDB.Core.ExistingDocument<EntryDoc>>): void {
         // Queue documents for processing
-        console.log(`[Friday Sync] *** LiveSync received ${docs.length} documents for processing ***`);
-        
+
         let queuedCount = 0;
         for (const doc of docs) {
             // Skip chunks and system documents
@@ -443,12 +439,9 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             if (doc.type === "notes" || doc.type === "newnote" || doc.type === "plain") {
                 this.processingQueue.push(doc);
                 queuedCount++;
-                console.log(`[Friday Sync] Queued document: ${(doc as any).path || doc._id} (type: ${doc.type})`);
             }
         }
-        
-        console.log(`[Friday Sync] Queued ${queuedCount} documents for writing to vault`);
-        
+
         // Start processing queue if not already processing
         if (!this.isProcessing) {
             this.processQueue();
@@ -458,9 +451,7 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
     private async processQueue(): Promise<void> {
         if (this.isProcessing) return;
         this.isProcessing = true;
-        
-        console.log(`[Friday Sync] Starting to process ${this.processingQueue.length} queued documents...`);
-        
+
         try {
             let processed = 0;
             while (this.processingQueue.length > 0) {
@@ -470,15 +461,13 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 try {
                     // Cast to MetaEntry for processing
                     const path = (doc as any).path || doc._id;
-                    console.log(`[Friday Sync] Processing document: ${path}`);
-                    const result = await this.processSynchroniseResult(doc as unknown as MetaEntry);
+                    await this.processSynchroniseResult(doc as unknown as MetaEntry);
                     processed++;
                     console.log(`[Friday Sync] Document processed (${result ? 'success' : 'failed'}): ${path}`);
                 } catch (error) {
                     console.error(`[Friday Sync] Error processing doc ${doc._id}:`, error);
                 }
             }
-            console.log(`[Friday Sync] Finished processing ${processed} documents`);
         } finally {
             this.isProcessing = false;
         }
@@ -503,7 +492,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             const status = this.core.replicationStat.value.syncStatus;
             if (status === "CONNECTED" || status === "STARTED") {
                 // LiveSync is running, no need to do one-shot sync
-                console.log("[Friday Sync] LiveSync is running, skipping one-shot sync");
                 return true;
             }
             // Otherwise, do a one-shot sync
@@ -738,7 +726,6 @@ class FridayRemoteService extends ServiceBase implements RemoteService {
                 // Get E2EEAlgorithm from settings, default to V2 for forward compatibility
                 const settings = this.core.getSettings();
                 const e2eeAlgorithm = settings.E2EEAlgorithm || E2EEAlgorithms.V2;
-                console.log(`[Friday Sync] Enabling encryption with passphrase (algorithm: ${e2eeAlgorithm})`);
                 enableEncryption(
                     db,
                     passphrase,
@@ -757,7 +744,6 @@ class FridayRemoteService extends ServiceBase implements RemoteService {
             // Fetch database info
             try {
                 const info = await db.info();
-                console.log(`[Friday Sync] Connected to ${info.db_name}, docs: ${info.doc_count}`);
                 return { db, info };
             } catch (ex: any) {
                 const msg = `${ex?.name}:${ex?.message}`;
