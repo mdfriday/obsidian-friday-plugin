@@ -94,11 +94,9 @@ export interface TranslationNamespace {
 		reset_sync_title: string;
 		reset_sync_message: string;
 		reset_sync_button: string;
-		reset_sync_confirm_title: string;
-		reset_sync_confirm_message: string;
+		reset_input_placeholder: string;
 		reset_sync_success: string;
 		reset_sync_failed: string;
-		resetting: string;
 	};
 
 	// Main UI translations

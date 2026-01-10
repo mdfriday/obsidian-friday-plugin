@@ -1111,86 +1111,6 @@ export default class FridayPlugin extends Plugin {
 	}
 }
 
-/**
- * Reset Confirmation Modal
- * Requires user to type 'RESET' to confirm the action
- */
-class ResetConfirmModal extends Modal {
-	private plugin: FridayPlugin;
-	private onConfirm: () => Promise<void>;
-	private inputEl: HTMLInputElement;
-	private confirmBtn: HTMLButtonElement;
-
-	constructor(app: App, plugin: FridayPlugin, onConfirm: () => Promise<void>) {
-		super(app);
-		this.plugin = plugin;
-		this.onConfirm = onConfirm;
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.addClass('friday-reset-confirm-modal');
-		contentEl.empty();
-
-		// Title
-		contentEl.createEl('h2', { 
-			text: this.plugin.i18n.t('settings.reset_sync_confirm_title') 
-		});
-
-		// Warning message
-		contentEl.createEl('p', { 
-			text: this.plugin.i18n.t('settings.reset_sync_confirm_message'),
-			cls: 'friday-reset-warning-text'
-		});
-
-		// Input field
-		const inputContainer = contentEl.createDiv('friday-reset-confirm-input');
-		this.inputEl = inputContainer.createEl('input', {
-			type: 'text',
-			placeholder: 'RESET'
-		});
-
-		this.inputEl.addEventListener('input', () => {
-			this.confirmBtn.disabled = this.inputEl.value !== 'RESET';
-		});
-
-		// Buttons
-		const buttonsContainer = contentEl.createDiv('friday-reset-confirm-buttons');
-
-		const cancelBtn = buttonsContainer.createEl('button', {
-			text: this.plugin.i18n.t('common.cancel'),
-			cls: 'friday-reset-cancel-btn'
-		});
-		cancelBtn.addEventListener('click', () => this.close());
-
-		this.confirmBtn = buttonsContainer.createEl('button', {
-			text: this.plugin.i18n.t('settings.reset_sync_button'),
-			cls: 'friday-reset-confirm-btn'
-		});
-		this.confirmBtn.disabled = true;
-		this.confirmBtn.addEventListener('click', async () => {
-			this.confirmBtn.disabled = true;
-			this.confirmBtn.textContent = this.plugin.i18n.t('settings.resetting');
-			
-			try {
-				await this.onConfirm();
-				this.close();
-			} catch (error) {
-				// Error handling is done in onConfirm
-				this.confirmBtn.disabled = false;
-				this.confirmBtn.textContent = this.plugin.i18n.t('settings.reset_sync_button');
-			}
-		});
-
-		// Focus input
-		this.inputEl.focus();
-	}
-
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
-}
 
 class FridaySettingTab extends PluginSettingTab {
 	plugin: FridayPlugin;
@@ -1821,29 +1741,45 @@ class FridaySettingTab extends PluginSettingTab {
 			cls: 'friday-danger-zone-title' 
 		});
 
-		const dangerContent = dangerZone.createDiv('friday-danger-zone-content');
-		const dangerWarning = dangerContent.createDiv('friday-danger-zone-warning');
-		dangerWarning.createEl('strong', { text: this.plugin.i18n.t('settings.reset_sync_title') });
-		dangerWarning.createEl('p', { text: this.plugin.i18n.t('settings.reset_sync_message') });
+		let resetInput = '';
+		let resetButton: HTMLButtonElement;
 
-		const resetBtn = dangerContent.createEl('button', {
-			text: this.plugin.i18n.t('settings.reset_sync_button'),
-			cls: 'friday-danger-zone-btn'
-		});
-
-		resetBtn.addEventListener('click', () => {
-			this.showResetConfirmModal();
-		});
-	}
-
-	/**
-	 * Show reset confirmation modal
-	 */
-	private showResetConfirmModal(): void {
-		const modal = new ResetConfirmModal(this.app, this.plugin, async () => {
-			await this.performReset();
-		});
-		modal.open();
+		new Setting(dangerZone)
+			.setName(this.plugin.i18n.t('settings.reset_sync_title'))
+			.setDesc(this.plugin.i18n.t('settings.reset_sync_message'))
+			.addText((text) => {
+				text.inputEl.placeholder = this.plugin.i18n.t('settings.reset_input_placeholder');
+				text.onChange((value) => {
+					resetInput = value;
+					// Enable button only when user types "RESET"
+					if (resetButton) {
+						resetButton.disabled = value !== 'RESET';
+					}
+				});
+			})
+			.addButton((button) => {
+				button
+					.setButtonText(this.plugin.i18n.t('settings.reset_sync_button'))
+					.setWarning();
+				
+				// Store reference and set initial disabled state after setting up the button
+				resetButton = button.buttonEl;
+				resetButton.disabled = true;
+				
+				// Add click handler directly to the button element
+				resetButton.addEventListener('click', async () => {
+					if (resetInput === 'RESET' && !resetButton.disabled) {
+						resetButton.disabled = true;
+						resetButton.textContent = this.plugin.i18n.t('settings.sync_uploading');
+						try {
+							await this.performReset();
+						} catch (error) {
+							resetButton.disabled = false;
+							resetButton.textContent = this.plugin.i18n.t('settings.reset_sync_button');
+						}
+					}
+				});
+			});
 	}
 
 	/**
