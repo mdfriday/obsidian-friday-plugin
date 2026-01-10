@@ -460,10 +460,8 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 
                 try {
                     // Cast to MetaEntry for processing
-                    const path = (doc as any).path || doc._id;
                     await this.processSynchroniseResult(doc as unknown as MetaEntry);
                     processed++;
-                    console.log(`[Friday Sync] Document processed (${result ? 'success' : 'failed'}): ${path}`);
                 } catch (error) {
                     console.error(`[Friday Sync] Error processing doc ${doc._id}:`, error);
                 }
