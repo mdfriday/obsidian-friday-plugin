@@ -848,9 +848,25 @@ class FridayVaultService extends ServiceBase implements VaultService {
     vaultName(): string { return "friday-vault"; }
     getVaultName(): string { return "friday-vault"; }
     async scanVault(showingNotice?: boolean, ignoreSuspending?: boolean): Promise<boolean> { return true; }
-    async isIgnoredByIgnoreFile(file: string | UXFileInfoStub): Promise<boolean> { return false; }
+    
+    /**
+     * Check if file is ignored by .mdfignore (livesync compatible)
+     */
+    async isIgnoredByIgnoreFile(file: string | UXFileInfoStub): Promise<boolean> {
+        const filepath = typeof file === 'string' ? file : file.path;
+        return await this.core.isIgnoredByIgnoreFile(filepath);
+    }
+    
     markFileListPossiblyChanged(): void {}
-    async isTargetFile(file: string | UXFileInfoStub, keepFileCheckList?: boolean): Promise<boolean> { return true; }
+    
+    /**
+     * Check if file is a valid sync target (livesync compatible)
+     */
+    async isTargetFile(file: string | UXFileInfoStub, keepFileCheckList?: boolean): Promise<boolean> {
+        const filepath = typeof file === 'string' ? file : file.path;
+        return await this.core.isTargetFile(filepath);
+    }
+    
     isFileSizeTooLarge(size: number): boolean { return size > 100 * 1024 * 1024; }
     getActiveFilePath(): FilePath | undefined { return undefined; }
     isStorageInsensitive(): boolean { return false; }

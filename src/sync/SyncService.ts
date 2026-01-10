@@ -30,6 +30,10 @@ export interface SyncConfig {
     liveSync: boolean;
     syncOnStart: boolean;
     syncOnSave: boolean;
+    
+    // Ignore patterns (gitignore format, will be written to .mdfignore file)
+    // e.g., ["images/", "*.tmp", "attachments/**"]
+    ignorePatterns: string[];
 }
 
 /**
@@ -252,6 +256,23 @@ export class SyncService {
     }
 
     /**
+     * Update ignore patterns
+     * 
+     * This updates the .mdfignore file in the vault root and refreshes the ignore cache.
+     * Changes take effect immediately for new sync operations.
+     * 
+     * @param patterns - Array of gitignore-style patterns
+     */
+    async updateIgnorePatterns(patterns: string[]): Promise<void> {
+        if (this.config) {
+            this.config.ignorePatterns = patterns;
+        }
+        if (this.core) {
+            await this.core.generateIgnoreFile(patterns);
+        }
+    }
+
+    /**
      * Close and clean up resources
      */
     async close(): Promise<void> {
@@ -277,6 +298,7 @@ export class SyncService {
             liveSync: true,   // Default to LiveSync mode for real-time synchronization
             syncOnStart: true,
             syncOnSave: true,
+            ignorePatterns: [],  // No patterns ignored by default
         };
     }
 }

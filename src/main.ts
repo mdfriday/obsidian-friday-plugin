@@ -1645,6 +1645,33 @@ class FridaySettingTab extends PluginSettingTab {
 				});
 		}
 
+		// Ignore Patterns setting
+		const currentPatterns = this.plugin.settings.syncConfig?.ignorePatterns || [];
+		new Setting(securityContainer)
+			.setName(this.plugin.i18n.t('settings.ignore_patterns'))
+			.setDesc(this.plugin.i18n.t('settings.ignore_patterns_desc'))
+			.addText((text) => {
+				text.inputEl.style.width = '200px';
+				text.inputEl.placeholder = this.plugin.i18n.t('settings.ignore_patterns_placeholder');
+				text.setValue(currentPatterns.join(', '));
+				text.onChange(async (value) => {
+					// Parse comma-separated patterns, trim whitespace, filter empty
+					const patterns = value
+						.split(',')
+						.map(p => p.trim())
+						.filter(p => p.length > 0);
+					
+					// Update settings
+					this.plugin.settings.syncConfig.ignorePatterns = patterns;
+					await this.plugin.saveSettings();
+					
+					// Update sync service immediately if initialized
+					if (this.plugin.syncService?.isInitialized) {
+						await this.plugin.syncService.updateIgnorePatterns(patterns);
+					}
+				});
+			});
+
 		// First time sync - Upload option
 		if (this.firstTimeSync) {
 			new Setting(containerEl)

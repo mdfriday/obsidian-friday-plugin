@@ -20,5 +20,8 @@ export { FridayStorageEventManager, type FileEvent, type FileEventType } from ".
 // Export utilities for cache management
 export { clearHandlers as clearSyncHandlerCache } from "./core/replication/SyncParamsHandler";
 
+// Export ignore pattern utilities (livesync compatible gitignore matching)
+export { isAccepted, isAcceptedAll } from "./core/string_and_binary/path";
+
 // Export types from the core library
 export * from "./types";

@@ -62,6 +62,9 @@ export const zhCn: TranslationNamespace = {
 		encryption_password: "加密密码",
 		show_password: "显示",
 		hide_password: "隐藏",
+		ignore_patterns: "忽略规则",
+		ignore_patterns_desc: "匹配这些规则的文件和文件夹将不会被同步。使用 gitignore 格式，每行一个规则。",
+		ignore_patterns_placeholder: "例如 images/, *.tmp",
 
 		// Publish settings
 		publish_settings: "发布设置",

@@ -52,7 +52,7 @@ import {disableEncryption, enableEncryption} from "./core/pouchdb/encryption";
 import {replicationFilter} from "./core/pouchdb/compress";
 
 // Import path utilities for correct document ID generation
-import {id2path_base, path2id_base} from "./core/string_and_binary/path";
+import {id2path_base, path2id_base, isAcceptedAll, isAccepted} from "./core/string_and_binary/path";
 
 /**
  * Simple KeyValue Database implementation using localStorage
@@ -193,6 +193,11 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     
     // Storage event manager for watching file changes
     private _storageEventManager: FridayStorageEventManager | null = null;
+    
+    // Ignore file configuration (livesync compatible)
+    private static readonly IGNORE_FILE_NAME = ".mdfignore";
+    private _ignorePatterns: string[] = [];
+    private _ignoreFileCache: Map<string, string[] | false> = new Map();
 
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -317,6 +322,14 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      */
     async initialize(config: SyncConfig): Promise<boolean> {
         try {
+            // Generate .mdfignore file from user patterns (before initializing settings)
+            if (config.ignorePatterns && config.ignorePatterns.length > 0) {
+                await this.generateIgnoreFile(config.ignorePatterns);
+            }
+            
+            // Determine if ignore files should be used
+            const useIgnoreFiles = config.ignorePatterns && config.ignorePatterns.length > 0;
+            
             // Update settings from config
             this._settings = {
                 ...DEFAULT_SETTINGS,
@@ -332,6 +345,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 syncOnSave: config.syncOnSave,
                 remoteType: REMOTE_COUCHDB,
                 isConfigured: true,
+                // Livesync ignore file settings
+                useIgnoreFiles: useIgnoreFiles,
+                ignoreFiles: FridaySyncCore.IGNORE_FILE_NAME,
             };
 
             // Initialize managers
@@ -697,6 +713,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             let stored = 0;
             let skipped = 0;
+            let ignored = 0;
             let errors = 0;
             
             for (const file of files) {
@@ -704,6 +721,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     // Skip hidden files and plugin config
                     if (file.path.startsWith(".")) {
                         skipped++;
+                        continue;
+                    }
+                    
+                    // Check if file is ignored by .mdfignore (livesync compatible)
+                    if (!(await this.isTargetFile(file.path))) {
+                        ignored++;
+                        Logger(`File ignored by .mdfignore: ${file.path}`, LOG_LEVEL_VERBOSE);
                         continue;
                     }
                     
@@ -729,7 +753,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 }
             }
             
-            Logger(`Vault scan complete: ${stored} stored, ${skipped} skipped, ${errors} errors`, LOG_LEVEL_INFO);
+            Logger(`Vault scan complete: ${stored} stored, ${skipped} skipped (hidden), ${ignored} ignored (.mdfignore), ${errors} errors`, LOG_LEVEL_INFO);
             Logger(`Stored ${stored} files to local database`, LOG_LEVEL_NOTICE);
             
             return errors === 0 || stored > 0;
@@ -975,6 +999,125 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         } catch (error) {
             return { success: false, message: `Connection error: ${error}` };
         }
+    }
+
+    // ==================== Ignore File Management (livesync compatible) ====================
+    
+    /**
+     * Generate or update the .mdfignore file in vault root
+     * This file is used by livesync's ignore mechanism
+     */
+    async generateIgnoreFile(patterns: string[]): Promise<void> {
+        this._ignorePatterns = patterns;
+        
+        if (patterns.length === 0) {
+            // Remove ignore file if no patterns
+            try {
+                const ignoreFilePath = FridaySyncCore.IGNORE_FILE_NAME;
+                if (await this.plugin.app.vault.adapter.exists(ignoreFilePath)) {
+                    await this.plugin.app.vault.adapter.remove(ignoreFilePath);
+                    Logger(`Removed ${ignoreFilePath} (no patterns configured)`, LOG_LEVEL_INFO);
+                }
+            } catch (error) {
+                Logger(`Failed to remove ignore file: ${error}`, LOG_LEVEL_VERBOSE);
+            }
+            return;
+        }
+        
+        // Generate ignore file content
+        const header = [
+            "# MDFriday Sync Ignore File",
+            "# This file is auto-generated from your sync settings",
+            "# Do not edit manually - changes will be overwritten",
+            "",
+        ];
+        const content = [...header, ...patterns].join("\n");
+        
+        try {
+            const ignoreFilePath = FridaySyncCore.IGNORE_FILE_NAME;
+            await this.plugin.app.vault.adapter.write(ignoreFilePath, content);
+            Logger(`Generated ${ignoreFilePath} with ${patterns.length} patterns`, LOG_LEVEL_INFO);
+            
+            // Update cache
+            this._ignoreFileCache.set(ignoreFilePath, patterns);
+        } catch (error) {
+            Logger(`Failed to generate ignore file: ${error}`, LOG_LEVEL_VERBOSE);
+        }
+    }
+    
+    /**
+     * Read ignore file content (with caching, livesync compatible)
+     */
+    async readIgnoreFile(path: string): Promise<string[] | false> {
+        try {
+            if (!await this.plugin.app.vault.adapter.exists(path)) {
+                this._ignoreFileCache.set(path, false);
+                return false;
+            }
+            const content = await this.plugin.app.vault.adapter.read(path);
+            const lines = content.split(/\r?\n/g);
+            this._ignoreFileCache.set(path, lines);
+            return lines;
+        } catch (error) {
+            Logger(`Failed to read ignore file ${path}: ${error}`, LOG_LEVEL_VERBOSE);
+            this._ignoreFileCache.set(path, false);
+            return false;
+        }
+    }
+    
+    /**
+     * Get ignore file content (with caching)
+     */
+    async getIgnoreFile(path: string): Promise<string[] | false> {
+        if (this._ignoreFileCache.has(path)) {
+            return this._ignoreFileCache.get(path) ?? false;
+        }
+        return await this.readIgnoreFile(path);
+    }
+    
+    /**
+     * Check if a file is ignored by ignore patterns (livesync compatible)
+     * Uses isAcceptedAll for layer-by-layer ignore file checking
+     */
+    async isIgnoredByIgnoreFile(filepath: string): Promise<boolean> {
+        if (this._ignorePatterns.length === 0) {
+            return false;
+        }
+        
+        // Use livesync's isAcceptedAll function for proper gitignore-style matching
+        const ignoreFiles = [FridaySyncCore.IGNORE_FILE_NAME];
+        const isAccepted = await isAcceptedAll(
+            filepath,
+            ignoreFiles,
+            (filename) => this.getIgnoreFile(filename)
+        );
+        
+        // isAcceptedAll returns true if accepted, false if ignored
+        return !isAccepted;
+    }
+    
+    /**
+     * Check if a file is a valid sync target (livesync compatible)
+     */
+    async isTargetFile(filepath: string): Promise<boolean> {
+        // Check ignore patterns first
+        if (await this.isIgnoredByIgnoreFile(filepath)) {
+            return false;
+        }
+        
+        // Check if database accepts this file
+        if (this._localDatabase && !this._localDatabase.isTargetFile(filepath)) {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Clear ignore file cache (call when patterns change)
+     */
+    clearIgnoreCache(): void {
+        this._ignoreFileCache.clear();
     }
 }
 

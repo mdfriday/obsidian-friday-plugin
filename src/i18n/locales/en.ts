@@ -62,6 +62,9 @@ export const en: TranslationNamespace = {
 		encryption_password: "Encryption Password",
 		show_password: "Show",
 		hide_password: "Hide",
+		ignore_patterns: "Ignore Patterns",
+		ignore_patterns_desc: "Files and folders matching these patterns will not be synced. Use gitignore format, one pattern per line.",
+		ignore_patterns_placeholder: "e.g. images/, *.tmp",
 
 		// Publish settings
 		publish_settings: "Publish Settings",

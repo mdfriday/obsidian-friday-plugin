@@ -89,6 +89,16 @@ export interface TranslationNamespace {
 		mdfriday_account: string;
 		mdfriday_account_desc: string;
 
+		// Security Settings
+		security: string;
+		encryption_enabled: string;
+		encryption_password: string;
+		show_password: string;
+		hide_password: string;
+		ignore_patterns: string;
+		ignore_patterns_desc: string;
+		ignore_patterns_placeholder: string;
+
 		// Danger Zone - Reset
 		danger_zone: string;
 		reset_sync_title: string;
