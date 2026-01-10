@@ -377,12 +377,11 @@ export class FridayStorageEventManager {
     private async processEvent(event: FileEvent): Promise<boolean> {
         try {
             // Check if file is ignored by .mdfignore (livesync compatible)
-            // This must be done for CREATE/CHANGED events, not DELETE (we should still delete from DB)
-            if (event.type !== "DELETE") {
-                if (!(await this.core.isTargetFile(event.path))) {
-                    Logger(`File ignored by .mdfignore: ${event.path}`, LOG_LEVEL_VERBOSE);
-                    return true;
-                }
+            // Following livesync design: ALL events (including DELETE) are checked
+            // This means ignored files' operations are never synced
+            if (!(await this.core.isTargetFile(event.path))) {
+                Logger(`File ignored by .mdfignore: ${event.path}`, LOG_LEVEL_VERBOSE);
+                return true;
             }
             
             // Livesync pattern: Check mtime cache to avoid reprocessing
