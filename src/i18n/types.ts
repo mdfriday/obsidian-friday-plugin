@@ -88,6 +88,17 @@ export interface TranslationNamespace {
 		// MDFriday Account
 		mdfriday_account: string;
 		mdfriday_account_desc: string;
+
+		// Danger Zone - Reset
+		danger_zone: string;
+		reset_sync_title: string;
+		reset_sync_message: string;
+		reset_sync_button: string;
+		reset_sync_confirm_title: string;
+		reset_sync_confirm_message: string;
+		reset_sync_success: string;
+		reset_sync_failed: string;
+		resetting: string;
 	};
 
 	// Main UI translations

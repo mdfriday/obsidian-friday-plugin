@@ -1,8 +1,8 @@
-import {App, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice, MarkdownView, setIcon, Platform} from 'obsidian';
+import {App, Modal, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice, MarkdownView, setIcon, Platform} from 'obsidian';
 import {User} from "./user";
 import './styles/license-settings.css';
 import {I18nService} from "./i18n";
-import {SyncService, SyncStatusDisplay, type SyncConfig} from "./sync";
+import {SyncService, SyncStatusDisplay, type SyncConfig, clearSyncHandlerCache} from "./sync";
 import {
     type StoredLicenseData,
     type StoredSyncData,
@@ -936,6 +936,12 @@ export default class FridayPlugin extends Plugin {
 	 */
 	async initializeSyncService() {
 		try {
+			// Clean up existing status display before creating new one
+			if (this.syncStatusDisplay) {
+				this.syncStatusDisplay.onunload();
+				this.syncStatusDisplay = null;
+			}
+			
 			this.syncService = new SyncService(this);
 			
 			// Initialize status display (using livesync's ModuleLog implementation)
@@ -971,7 +977,7 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Clear sync database (IndexedDB) to start fresh
+	 * Clear sync database (IndexedDB) and related localStorage data to start fresh
 	 * This is useful when switching to a new vault or re-downloading from cloud
 	 */
 	async clearSyncDatabase(): Promise<void> {
@@ -990,7 +996,11 @@ export default class FridayPlugin extends Plugin {
 			
 			console.log(`[Friday] Clearing IndexedDB: ${indexedDBName}`);
 
-			// Delete the IndexedDB database
+			// Step 1: Clear localStorage items with "friday-kv-" prefix
+			// These contain sync-related data like PBKDF2 salt cache
+			this.clearSyncLocalStorage();
+
+			// Step 2: Delete the IndexedDB database
 			return new Promise((resolve, reject) => {
 				const deleteRequest = indexedDB.deleteDatabase(indexedDBName);
 				
@@ -1013,6 +1023,34 @@ export default class FridayPlugin extends Plugin {
 		} catch (error) {
 			console.error('[Friday] Error in clearSyncDatabase:', error);
 			throw error;
+		}
+	}
+
+	/**
+	 * Clear sync-related localStorage items
+	 * This removes cached encryption data like PBKDF2 salt
+	 */
+	private clearSyncLocalStorage(): void {
+		try {
+			const keysToRemove: string[] = [];
+			
+			// Find all keys with "friday-kv-" prefix
+			for (let i = 0; i < localStorage.length; i++) {
+				const key = localStorage.key(i);
+				if (key && key.startsWith('friday-kv-')) {
+					keysToRemove.push(key);
+				}
+			}
+			
+			// Remove found keys
+			keysToRemove.forEach(key => {
+				localStorage.removeItem(key);
+				console.log(`[Friday] Removed localStorage: ${key}`);
+			});
+			
+			console.log(`[Friday] Cleared ${keysToRemove.length} sync-related localStorage items`);
+		} catch (error) {
+			console.warn('[Friday] Error clearing sync localStorage:', error);
 		}
 	}
 
@@ -1070,6 +1108,87 @@ export default class FridayPlugin extends Plugin {
 
 	async status(text: string) {
 		this.statusBar.setText(text)
+	}
+}
+
+/**
+ * Reset Confirmation Modal
+ * Requires user to type 'RESET' to confirm the action
+ */
+class ResetConfirmModal extends Modal {
+	private plugin: FridayPlugin;
+	private onConfirm: () => Promise<void>;
+	private inputEl: HTMLInputElement;
+	private confirmBtn: HTMLButtonElement;
+
+	constructor(app: App, plugin: FridayPlugin, onConfirm: () => Promise<void>) {
+		super(app);
+		this.plugin = plugin;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.addClass('friday-reset-confirm-modal');
+		contentEl.empty();
+
+		// Title
+		contentEl.createEl('h2', { 
+			text: this.plugin.i18n.t('settings.reset_sync_confirm_title') 
+		});
+
+		// Warning message
+		contentEl.createEl('p', { 
+			text: this.plugin.i18n.t('settings.reset_sync_confirm_message'),
+			cls: 'friday-reset-warning-text'
+		});
+
+		// Input field
+		const inputContainer = contentEl.createDiv('friday-reset-confirm-input');
+		this.inputEl = inputContainer.createEl('input', {
+			type: 'text',
+			placeholder: 'RESET'
+		});
+
+		this.inputEl.addEventListener('input', () => {
+			this.confirmBtn.disabled = this.inputEl.value !== 'RESET';
+		});
+
+		// Buttons
+		const buttonsContainer = contentEl.createDiv('friday-reset-confirm-buttons');
+
+		const cancelBtn = buttonsContainer.createEl('button', {
+			text: this.plugin.i18n.t('common.cancel'),
+			cls: 'friday-reset-cancel-btn'
+		});
+		cancelBtn.addEventListener('click', () => this.close());
+
+		this.confirmBtn = buttonsContainer.createEl('button', {
+			text: this.plugin.i18n.t('settings.reset_sync_button'),
+			cls: 'friday-reset-confirm-btn'
+		});
+		this.confirmBtn.disabled = true;
+		this.confirmBtn.addEventListener('click', async () => {
+			this.confirmBtn.disabled = true;
+			this.confirmBtn.textContent = this.plugin.i18n.t('settings.resetting');
+			
+			try {
+				await this.onConfirm();
+				this.close();
+			} catch (error) {
+				// Error handling is done in onConfirm
+				this.confirmBtn.disabled = false;
+				this.confirmBtn.textContent = this.plugin.i18n.t('settings.reset_sync_button');
+			}
+		});
+
+		// Focus input
+		this.inputEl.focus();
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
 	}
 }
 
@@ -1623,6 +1742,13 @@ class FridaySettingTab extends PluginSettingTab {
 									await this.plugin.syncService.initialize(this.plugin.settings.syncConfig);
 								}
 								await this.plugin.syncService.rebuildRemote();
+								
+								// Restart LiveSync after rebuildRemote (which terminates existing sync)
+								// This ensures continuous sync is running for new file changes
+								if (this.plugin.settings.syncConfig?.syncOnStart) {
+									await this.plugin.syncService.startSync(true);
+								}
+								
 								new Notice(this.plugin.i18n.t('settings.sync_upload_success'));
 								this.firstTimeSync = false;
 								this.display();
@@ -1679,6 +1805,94 @@ class FridaySettingTab extends PluginSettingTab {
 							}
 						});
 				});
+		}
+
+		// ========== Danger Zone ==========
+		this.renderDangerZone(containerEl);
+	}
+
+	/**
+	 * Render Danger Zone section with reset functionality
+	 */
+	private renderDangerZone(containerEl: HTMLElement): void {
+		const dangerZone = containerEl.createDiv('friday-danger-zone');
+		dangerZone.createEl('h3', { 
+			text: this.plugin.i18n.t('settings.danger_zone'), 
+			cls: 'friday-danger-zone-title' 
+		});
+
+		const dangerContent = dangerZone.createDiv('friday-danger-zone-content');
+		const dangerWarning = dangerContent.createDiv('friday-danger-zone-warning');
+		dangerWarning.createEl('strong', { text: this.plugin.i18n.t('settings.reset_sync_title') });
+		dangerWarning.createEl('p', { text: this.plugin.i18n.t('settings.reset_sync_message') });
+
+		const resetBtn = dangerContent.createEl('button', {
+			text: this.plugin.i18n.t('settings.reset_sync_button'),
+			cls: 'friday-danger-zone-btn'
+		});
+
+		resetBtn.addEventListener('click', () => {
+			this.showResetConfirmModal();
+		});
+	}
+
+	/**
+	 * Show reset confirmation modal
+	 */
+	private showResetConfirmModal(): void {
+		const modal = new ResetConfirmModal(this.app, this.plugin, async () => {
+			await this.performReset();
+		});
+		modal.open();
+	}
+
+	/**
+	 * Perform the actual reset operation
+	 */
+	private async performReset(): Promise<void> {
+		try {
+			const { license, userToken } = this.plugin.settings;
+			if (!license) {
+				throw new Error('No license found');
+			}
+
+			// Step 1: Call backend API to reset cloud data
+			await this.plugin.hugoverse.resetUsage(userToken, license.key);
+
+			// Step 2: Close existing sync service
+			if (this.plugin.syncService?.isInitialized) {
+				await this.plugin.syncService.close();
+			}
+
+			// Step 3: Clear in-memory handler cache (contains old PBKDF2 salt)
+			// This is critical - without clearing, the old salt would be reused with new passphrase
+			clearSyncHandlerCache();
+
+			// Step 4: Clear local IndexedDB and localStorage
+			await this.plugin.clearSyncDatabase();
+
+			// Step 5: Generate new encryption passphrase (same as first-time activation)
+			this.plugin.settings.encryptionPassphrase = generateEncryptionPassphrase();
+			this.plugin.settings.syncConfig.passphrase = this.plugin.settings.encryptionPassphrase;
+
+			// Step 6: Save settings
+			await this.plugin.saveSettings();
+
+			// Step 7: Re-initialize sync service
+			await this.plugin.initializeSyncService();
+
+			// Step 8: Set first time flag to show upload option
+			this.firstTimeSync = true;
+
+			// Step 9: Show success message and refresh display
+			new Notice(this.plugin.i18n.t('settings.reset_sync_success'));
+			this.display();
+
+		} catch (error) {
+			console.error('Reset failed:', error);
+			new Notice(this.plugin.i18n.t('settings.reset_sync_failed', { 
+				error: error instanceof Error ? error.message : String(error) 
+			}));
 		}
 	}
 

@@ -388,10 +388,21 @@ export class SyncStatusDisplay {
      * Clean up
      */
     onunload() {
+        // Remove status bar item
+        if (this.statusBar) {
+            this.statusBar.remove();
+            this.statusBar = undefined;
+        }
+        
+        // Remove status div
         if (this.statusDiv) {
             this.statusDiv.remove();
+            this.statusDiv = undefined;
         }
         document.querySelectorAll(".livesync-status")?.forEach((e) => e.remove());
+        
+        // Clear status bar items with syncstatusbar class
+        document.querySelectorAll(".syncstatusbar")?.forEach((e) => e.remove());
         
         // Hide all notifications
         for (const key in this.notifies) {
@@ -402,5 +413,8 @@ export class SyncStatusDisplay {
             }
         }
         this.notifies = {};
+        
+        // Clear core reference
+        this.core = null;
     }
 }

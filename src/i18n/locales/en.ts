@@ -115,6 +115,17 @@ export const en: TranslationNamespace = {
 		mdfriday_account: "MDFriday Account (Optional)",
 		mdfriday_account_desc:
 			"Sign in to access advanced features like theme marketplace and cloud publishing.",
+
+		// Danger Zone - Reset
+		danger_zone: "Danger Zone",
+		reset_sync_title: "Reset cloud data",
+		reset_sync_message: "This will permanently delete all your cloud sync data and published sites. Your local files will not be affected. A new encryption password will be generated.",
+		reset_sync_button: "Reset Cloud Data",
+		reset_sync_confirm_title: "Confirm Reset",
+		reset_sync_confirm_message: "Are you sure you want to reset all cloud data? This action cannot be undone. Type 'RESET' to confirm.",
+		reset_sync_success: "Cloud data reset successfully! You can now upload your local data.",
+		reset_sync_failed: "Failed to reset cloud data: {{error}}",
+		resetting: "Resetting...",
 	},
 
 	ui: {

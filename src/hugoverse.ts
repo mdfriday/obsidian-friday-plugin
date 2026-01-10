@@ -359,4 +359,42 @@ export class Hugoverse {
 		}
 	}
 
+	/**
+	 * Reset license usage (clear sync database and publish data)
+	 * 
+	 * POST /api/license/usage/reset?key=<license_key>
+	 * Authorization: Bearer <token>
+	 * 
+	 * This will:
+	 * 1. Delete and recreate the CouchDB database (clear sync data)
+	 * 2. Delete the publish directory (clear publish data)
+	 */
+	async resetUsage(
+		token: string,
+		licenseKey: string
+	): Promise<{ success: boolean; message?: string }> {
+		try {
+			const resetUrl = `${this.apiUrl}/api/license/usage/reset?key=${licenseKey}`;
+
+			const response: RequestUrlResponse = await requestUrl({
+				url: resetUrl,
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+				},
+			});
+
+			// Check response status
+			if (response.status !== 200 && response.status !== 201) {
+				console.error(`License usage reset failed: ${response.text}`);
+				throw new Error(`Reset failed: ${response.status}`);
+			}
+
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to reset license usage:", error);
+			throw error;
+		}
+	}
+
 }

@@ -17,5 +17,8 @@ export { SyncStatusDisplay } from "./SyncStatusDisplay";
 // Export the storage event manager (for watching local file changes)
 export { FridayStorageEventManager, type FileEvent, type FileEventType } from "./FridayStorageEventManager";
 
+// Export utilities for cache management
+export { clearHandlers as clearSyncHandlerCache } from "./core/replication/SyncParamsHandler";
+
 // Export types from the core library
 export * from "./types";

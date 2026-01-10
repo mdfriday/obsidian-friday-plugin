@@ -111,6 +111,17 @@ export const zhCn: TranslationNamespace = {
 		// MDFriday Account
 		mdfriday_account: "MDFriday 账户（可选）",
 		mdfriday_account_desc: "登录以使用高级功能，如主题市场和云端发布。",
+
+		// Danger Zone - Reset
+		danger_zone: "危险区域",
+		reset_sync_title: "重置云端数据",
+		reset_sync_message: "此操作将永久删除您的所有云端同步数据和已发布的站点。本地文件不受影响。重置后将生成新的加密密码。",
+		reset_sync_button: "重置云端数据",
+		reset_sync_confirm_title: "确认重置",
+		reset_sync_confirm_message: "确定要重置所有云端数据吗？此操作无法撤销。请输入 'RESET' 确认。",
+		reset_sync_success: "云端数据重置成功！您现在可以上传本地数据。",
+		reset_sync_failed: "重置云端数据失败：{{error}}",
+		resetting: "重置中...",
 	},
 
 	ui: {
