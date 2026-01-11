@@ -647,7 +647,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             try {
                 await this._replicator.tryResetRemoteDatabase(this._settings);
             } catch (error) {
-                console.log("Reset remote database error (may be expected if DB doesn't exist):", error);
+                console.error("Reset remote database error (may be expected if DB doesn't exist):", error);
             }
             
             // Step 3: Create remote database (in case it was destroyed)
@@ -655,7 +655,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             try {
                 await this._replicator.tryCreateRemoteDatabase(this._settings);
             } catch (error) {
-                console.log("Create remote database error:", error);
+                console.error("Create remote database error:", error);
             }
             
             // Small delay to ensure database is ready

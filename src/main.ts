@@ -226,7 +226,7 @@ export default class FridayPlugin extends Plugin {
 		try {
 			this.registerView(FRIDAY_SERVER_VIEW_TYPE, leaf => new ServerView(leaf, this));
 		} catch (e) {
-			console.log('[Friday] View already registered, skipping');
+			console.error('[Friday] View already registered, skipping');
 		}
 		this.app.workspace.onLayoutReady(() => this.initLeaf());
 		
@@ -308,15 +308,12 @@ export default class FridayPlugin extends Plugin {
 				}
 			})
 		);
-		
-		console.log('[Friday] Desktop features loaded successfully');
 	}
 
 	/**
 	 * Initialize mobile-only features
 	 */
 	private async initMobileFeatures(): Promise<void> {
-		console.log('[Friday] Mobile mode: Sync-only features enabled');
 		// Mobile currently only needs sync functionality
 		// which is already handled by initializeSyncService()
 		// Additional mobile-specific UI can be added here in the future
@@ -819,7 +816,6 @@ export default class FridayPlugin extends Plugin {
 	async refreshLicenseUsage() {
 		// Check if dependencies are initialized
 		if (!this.user || !this.hugoverse) {
-			console.log('[Friday] Skipping usage refresh: dependencies not initialized yet');
 			return;
 		}
 
@@ -852,7 +848,7 @@ export default class FridayPlugin extends Plugin {
 			}
 		} catch (error) {
 			// If failed, try to re-login with license key (token might be expired)
-			console.log('[Friday] Failed to fetch usage, attempting to refresh token...');
+			console.error('[Friday] Failed to fetch usage, attempting to refresh token...');
 			
 			try {
 				// Re-login with license key
@@ -861,7 +857,6 @@ export default class FridayPlugin extends Plugin {
 				const newToken = await this.user.loginWithCredentials(email, password);
 				
 				if (newToken) {
-					console.log('[Friday] Token refreshed successfully, retrying usage fetch...');
 					// Retry with new token
 					const usageResponse = await hugoverse.getLicenseUsage(newToken, license.key);
 					if (usageResponse && usageResponse.disks) {
@@ -993,8 +988,6 @@ export default class FridayPlugin extends Plugin {
 			// Example: "_pouch_ob-d12-livesync-v2"
 			const SuffixDatabaseName = "-livesync-v2";
 			const indexedDBName = `_pouch_${vaultName}${SuffixDatabaseName}`;
-			
-			console.log(`[Friday] Clearing IndexedDB: ${indexedDBName}`);
 
 			// Step 1: Clear localStorage items with "friday-kv-" prefix
 			// These contain sync-related data like PBKDF2 salt cache
@@ -1005,7 +998,6 @@ export default class FridayPlugin extends Plugin {
 				const deleteRequest = indexedDB.deleteDatabase(indexedDBName);
 				
 				deleteRequest.onsuccess = () => {
-					console.log(`[Friday] Successfully deleted IndexedDB: ${indexedDBName}`);
 					resolve();
 				};
 				
@@ -1045,10 +1037,8 @@ export default class FridayPlugin extends Plugin {
 			// Remove found keys
 			keysToRemove.forEach(key => {
 				localStorage.removeItem(key);
-				console.log(`[Friday] Removed localStorage: ${key}`);
 			});
 			
-			console.log(`[Friday] Cleared ${keysToRemove.length} sync-related localStorage items`);
 		} catch (error) {
 			console.warn('[Friday] Error clearing sync localStorage:', error);
 		}
