@@ -958,8 +958,8 @@
 			buildProgress = 5;
 
 			// Create config file
-			// Update sitePath for MDFriday Share if license is activated with user_dir
-			if (plugin.settings.license && userDir) {
+			// Update sitePath for MDFriday Share only if user selected mdf-share
+			if (selectedPublishOption === 'mdf-share' && plugin.settings.license && userDir) {
 				if (sitePath.startsWith(`/s/${userDir}`) || !sitePath.startsWith('/s')) {
 					sitePath = `/s/${userDir}/${previewId}`;
 				}
