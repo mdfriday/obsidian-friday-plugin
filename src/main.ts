@@ -88,7 +88,7 @@ const DEFAULT_SETTINGS: FridaySettings = {
 
 export const FRIDAY_ICON = 'dice-5';
 export const API_URL_DEV = 'http://127.0.0.1:1314';
-export const API_URL_PRO = 'https://mdfriday.sunwei.xyz';
+export const API_URL_PRO = 'https://app.mdfriday.com';
 export function GetBaseUrl(): string {
 	return process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
 }
@@ -750,26 +750,26 @@ export default class FridayPlugin extends Plugin {
 			// Wait a bit for the panel to initialize
 			await new Promise(resolve => setTimeout(resolve, 500));
 
-			// Step 2: Set sitePath to "/s" for MDFriday Share
-			if (this.setSitePath) {
-				this.setSitePath('/s');
+			// Step 2: Select MDFriday Share publish option first
+			if (this.selectMDFShare) {
+				this.selectMDFShare();
+			}
+
+			// Step 3: Set sitePath to "/s/{userDir}" for MDFriday Share (previewId will be added in startPreview)
+			if (this.setSitePath && this.settings.licenseUser?.userDir) {
+				this.setSitePath(`/s/${this.settings.licenseUser.userDir}`);
 			}
 
 			// Wait a bit for sitePath to be set
 			await new Promise(resolve => setTimeout(resolve, 100));
 
-			// Step 3: Generate preview
+			// Step 4: Generate preview
 			if (this.startPreviewAndWait) {
 				const previewSuccess = await this.startPreviewAndWait();
 				if (!previewSuccess) {
 					new Notice(this.i18n.t('messages.preview_failed_generic'), 5000);
 					return;
 				}
-			}
-
-			// Step 4: Select MDFriday Share publish option
-			if (this.selectMDFShare) {
-				this.selectMDFShare();
 			}
 
 			// Show completion notice

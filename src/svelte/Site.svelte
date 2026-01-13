@@ -135,8 +135,8 @@
 		// Update userDir from settings
 		userDir = plugin.settings.licenseUser?.userDir || '';
 		
-		// Check if MDFriday Share is available
-		isMDFShareAvailable = !!(plugin.settings.license && userDir && sitePath.startsWith(`/s/${userDir}/`));
+		// Check if MDFriday Share is available (only requires license and userDir)
+		isMDFShareAvailable = !!(plugin.settings.license && userDir);
 		
 		// Update publish options based on license availability
 		publishOptions = [
