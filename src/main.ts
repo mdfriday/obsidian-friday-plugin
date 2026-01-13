@@ -121,6 +121,7 @@ export default class FridayPlugin extends Plugin {
 	setSitePath: ((path: string) => void) | null = null
 	startPreviewAndWait: (() => Promise<boolean>) | null = null
 	selectMDFShare: (() => void) | null = null
+	refreshLicenseState: (() => void) | null = null
 	
 	// PC-only state
 	private previousDownloadServer: 'global' | 'east' = 'global'
@@ -1960,6 +1961,11 @@ class FridaySettingTab extends PluginSettingTab {
 		// For non-first-time, user needs to input passphrase first, then manually download
 		if (this.plugin.settings.syncEnabled && response.first_time) {
 			await this.plugin.initializeSyncService();
+		}
+
+		// Step 13: Refresh license state in Site panel (if open)
+		if (this.plugin.refreshLicenseState) {
+			this.plugin.refreshLicenseState();
 		}
 	}
 }

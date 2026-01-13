@@ -175,6 +175,7 @@
 		plugin.setSitePath = setSitePathExternal;
 		plugin.startPreviewAndWait = startPreviewAndWait;
 		plugin.selectMDFShare = selectMDFShare;
+		plugin.refreshLicenseState = refreshLicenseState;
 	});
 	
 	// External method to set site path
@@ -198,6 +199,20 @@
 		if (isMDFShareAvailable) {
 			selectedPublishOption = 'mdf-share';
 		}
+	}
+
+	// Refresh license state from plugin settings (called after license activation)
+	function refreshLicenseState() {
+		// Update userDir and isMDFShareAvailable by triggering reactive update
+		userDir = plugin.settings.licenseUser?.userDir || '';
+		isMDFShareAvailable = !!(plugin.settings.license && userDir);
+		
+		// Update publish options
+		publishOptions = [
+			{ value: 'netlify', label: t('ui.publish_option_netlify') },
+			{ value: 'ftp', label: t('ui.publish_option_ftp') },
+			...(isMDFShareAvailable ? [{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') }] : []),
+		];
 	}
 
 	onDestroy(() => {
