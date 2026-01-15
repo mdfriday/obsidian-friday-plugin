@@ -44,6 +44,10 @@ import {FridayServiceHub} from "./FridayServiceHub";
 import type {SyncConfig, SyncStatus, SyncStatusCallback} from "./SyncService";
 import {FridayStorageEventManager} from "./FridayStorageEventManager";
 
+// Import HiddenFileSync module
+import {FridayHiddenFileSync} from "./features/HiddenFileSync";
+import {DEFAULT_INTERNAL_IGNORE_PATTERNS} from "./types";
+
 // PouchDB imports - use the configured PouchDB with all plugins (including transform-pouch)
 import {PouchDB} from "./core/pouchdb/pouchdb-browser";
 
@@ -194,6 +198,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     // Storage event manager for watching file changes
     private _storageEventManager: FridayStorageEventManager | null = null;
     
+    // Hidden file sync module for .obsidian synchronization
+    private _hiddenFileSync: FridayHiddenFileSync | null = null;
+    
     // Ignore file configuration (livesync compatible)
     private static readonly IGNORE_FILE_NAME = ".mdfignore";
     private _ignorePatterns: string[] = [];
@@ -278,6 +285,10 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         return this._replicator;
     }
 
+    get hiddenFileSync(): FridayHiddenFileSync | null {
+        return this._hiddenFileSync;
+    }
+
     onStatusChange(callback: SyncStatusCallback) {
         this.statusCallback = callback;
     }
@@ -348,6 +359,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 // Livesync ignore file settings
                 useIgnoreFiles: useIgnoreFiles,
                 ignoreFiles: FridaySyncCore.IGNORE_FILE_NAME,
+                // Hidden file sync settings (default: enabled with best practices)
+                syncInternalFiles: config.syncInternalFiles ?? true,
+                syncInternalFilesBeforeReplication: config.syncInternalFilesBeforeReplication ?? true,
+                syncInternalFilesInterval: config.syncInternalFilesInterval ?? 60,
+                syncInternalFilesIgnorePatterns: config.syncInternalFilesIgnorePatterns ?? DEFAULT_INTERNAL_IGNORE_PATTERNS,
+                syncInternalFilesTargetPatterns: config.syncInternalFilesTargetPatterns ?? "",
+                watchInternalFileChanges: config.watchInternalFileChanges ?? true,
             };
 
             // Initialize managers
@@ -421,6 +439,14 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             // Initialize storage event manager for watching file changes
             this._storageEventManager = new FridayStorageEventManager(this.plugin, this);
+            
+            // Initialize hidden file sync module (for .obsidian synchronization)
+            // Default: enabled with Obsidian official sync best practices
+            if (this._settings.syncInternalFiles !== false) {
+                this._hiddenFileSync = new FridayHiddenFileSync(this.plugin, this);
+                await this._hiddenFileSync.onload();
+                Logger("Hidden file sync module initialized", LOG_LEVEL_INFO);
+            }
 
             // Set up status monitoring for debugging
             this.setupStatusMonitoring();

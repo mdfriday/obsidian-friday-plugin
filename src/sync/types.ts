@@ -7,6 +7,56 @@
 // Re-export all types from core
 export * from "./core/common/types";
 
+// ==================== Hidden File Sync Types ====================
+
+import type { FilePath } from "./core/common/types";
+
+// Internal file document prefix constants (matching livesync)
+export const ICHeader = "i:";
+export const ICHeaderEnd = "i;";
+export const ICHeaderLength = ICHeader.length;
+
+/**
+ * Internal file info interface for hidden files (.obsidian)
+ */
+export interface InternalFileInfo {
+    path: FilePath;
+    mtime: number;
+    ctime: number;
+    size: number;
+    deleted?: boolean;
+}
+
+/**
+ * Default ignore patterns for .obsidian sync
+ * Following Obsidian official sync best practices:
+ * - workspace*: Device-specific layout state, different per device
+ * - cache: Temporary cache files, regenerated automatically
+ * - node_modules/.git: Development artifacts
+ */
+export const DEFAULT_INTERNAL_IGNORE_PATTERNS = [
+    "\\.obsidian\\/workspace",           // Workspace layout (device-specific)
+    "\\.obsidian\\/workspace\\.json",    // Workspace JSON
+    "\\.obsidian\\/workspace-mobile\\.json", // Mobile workspace
+    "\\.obsidian\\/cache",               // Cache directory
+    "\\/node_modules\\/",                // Node modules
+    "\\/\\.git\\/",                      // Git directories
+].join(",");
+
+/**
+ * Hidden file sync settings interface
+ */
+export interface HiddenFileSyncSettings {
+    syncInternalFiles: boolean;
+    syncInternalFilesBeforeReplication: boolean;
+    syncInternalFilesInterval: number;
+    syncInternalFilesIgnorePatterns: string;
+    syncInternalFilesTargetPatterns: string;
+    syncInternalFileOverwritePatterns: string;
+    watchInternalFileChanges: boolean;
+    suppressNotifyHiddenFilesChange: boolean;
+}
+
 // Re-export replicator types
 export type { 
     LiveSyncAbstractReplicator, 

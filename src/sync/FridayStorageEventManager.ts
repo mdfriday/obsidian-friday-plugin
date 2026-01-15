@@ -225,8 +225,26 @@ export class FridayStorageEventManager {
             this.plugin.app.vault.on("rename", this.watchVaultRename)
         );
         
+        // Register raw event for hidden file sync (.obsidian files)
+        // @ts-ignore - Internal Obsidian API
+        this.plugin.registerEvent(
+            this.plugin.app.vault.on("raw", this.watchVaultRawEvents.bind(this))
+        );
+        
         this.isWatching = true;
         Logger("Storage event manager started watching vault", LOG_LEVEL_INFO);
+    }
+    
+    /**
+     * Handle vault raw events for hidden files (.obsidian)
+     * Delegates to HiddenFileSync module if enabled
+     */
+    private watchVaultRawEvents(path: string) {
+        const hiddenFileSync = this.core.hiddenFileSync;
+        if (hiddenFileSync && hiddenFileSync.isThisModuleEnabled()) {
+            // Fire and forget - don't block the event handler
+            fireAndForget(() => hiddenFileSync.watchVaultRawEvents(path as FilePath));
+        }
     }
     
     /**

@@ -34,6 +34,15 @@ export interface SyncConfig {
     // Ignore patterns (gitignore format, will be written to .mdfignore file)
     // e.g., ["images/", "*.tmp", "attachments/**"]
     ignorePatterns: string[];
+    
+    // Hidden file sync (.obsidian folder synchronization)
+    // Default: enabled with Obsidian official sync best practices
+    syncInternalFiles?: boolean;                    // Enable .obsidian sync (default: true)
+    syncInternalFilesBeforeReplication?: boolean;   // Scan before sync (default: true)
+    syncInternalFilesInterval?: number;             // Periodic scan interval in seconds (default: 60)
+    syncInternalFilesIgnorePatterns?: string;       // Regex patterns to ignore (comma-separated)
+    syncInternalFilesTargetPatterns?: string;       // Regex patterns to target (comma-separated)
+    watchInternalFileChanges?: boolean;             // Watch file changes in real-time (default: true)
 }
 
 /**

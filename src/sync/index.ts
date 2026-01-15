@@ -17,6 +17,16 @@ export { SyncStatusDisplay } from "./SyncStatusDisplay";
 // Export the storage event manager (for watching local file changes)
 export { FridayStorageEventManager, type FileEvent, type FileEventType } from "./FridayStorageEventManager";
 
+// Export the hidden file sync module (for .obsidian synchronization)
+export { FridayHiddenFileSync } from "./features/HiddenFileSync";
+
+// Export hidden file utilities
+export { 
+    isInternalMetadata, 
+    stripInternalMetadataPrefix,
+    addInternalPrefix,
+} from "./utils/hiddenFileUtils";
+
 // Export utilities for cache management
 export { clearHandlers as clearSyncHandlerCache } from "./core/replication/SyncParamsHandler";
 

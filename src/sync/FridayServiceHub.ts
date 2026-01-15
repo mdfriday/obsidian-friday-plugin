@@ -56,6 +56,9 @@ import { enableEncryption, disableEncryption } from "./core/pouchdb/encryption";
 import { replicationFilter } from "./core/pouchdb/compress";
 import { E2EEAlgorithms } from "./core/common/types";
 
+// Import hidden file utilities
+import { isInternalMetadata } from "./utils/hiddenFileUtils";
+
 // PouchDB imports - use the configured PouchDB with transform-pouch plugin
 import { PouchDB } from "./core/pouchdb/pouchdb-browser";
 
@@ -299,6 +302,16 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
      */
     private async defaultProcessSynchroniseResult(doc: MetaEntry): Promise<boolean> {
         try {
+            // Check if this is an internal file (i: prefix for .obsidian files)
+            if (isInternalMetadata(doc._id)) {
+                const hiddenFileSync = this.core.hiddenFileSync;
+                if (hiddenFileSync && hiddenFileSync.isThisModuleEnabled()) {
+                    return await hiddenFileSync.processReplicationResult(doc as LoadedEntry);
+                }
+                // Skip if hidden file sync module is disabled
+                return true;
+            }
+            
             const path = doc.path;
             if (!path) {
                 return false;
