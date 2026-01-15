@@ -303,7 +303,12 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
     private async defaultProcessSynchroniseResult(doc: MetaEntry): Promise<boolean> {
         try {
             // Check if this is an internal file (i: prefix for .obsidian files)
-            if (isInternalMetadata(doc._id)) {
+            // Need to check both _id and path, because when usePathObfuscation is enabled,
+            // _id will be hashed (e.g., "h:xxxxx") but path still contains the "i:" prefix
+            const isInternalFile = isInternalMetadata(doc._id) || 
+                (doc.path && isInternalMetadata(doc.path));
+            
+            if (isInternalFile) {
                 const hiddenFileSync = this.core.hiddenFileSync;
                 if (hiddenFileSync && hiddenFileSync.isThisModuleEnabled()) {
                     return await hiddenFileSync.processReplicationResult(doc as LoadedEntry);
