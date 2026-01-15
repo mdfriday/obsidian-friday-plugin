@@ -504,8 +504,6 @@ export class FridayHiddenFileSync {
         // path2id will add the prefix if we pass it, causing double "i:" prefix
         const id = await this.core.path2id(prefixedFileName);
         
-        console.log(`[HiddenFileSync] loadBaseSaveData: file=${file}, prefixedFileName=${prefixedFileName}, id=${id}`);
-        
         try {
             const old = includeContent
                 ? await localDB.getDBEntry(prefixedFileName, undefined, false, true)
@@ -526,10 +524,8 @@ export class FridayHiddenFileSync {
                     type: "newnote",
                     eden: {},
                 };
-                console.log(`[HiddenFileSync] loadBaseSaveData: Creating new entry with _id=${id}`);
                 return baseSaveData;
             }
-            console.log(`[HiddenFileSync] loadBaseSaveData: Found existing entry _id=${old._id}, rev=${old._rev}`);
             return old;
         } catch (ex) {
             Logger(`[HiddenFileSync] Failed to load base data: ${file}`, LOG_LEVEL_VERBOSE);
@@ -752,40 +748,8 @@ export class FridayHiddenFileSync {
                     throw new Error(`Failed to read file from database: ${storageFilePath}`);
                 }
                 
-                // Debug: Log document structure
-                console.log(`[HiddenFileSync] === Content Debug for: ${storageFilePath} ===`);
-                console.log(`[HiddenFileSync] fileOnDB._id: ${fileOnDB._id}`);
-                console.log(`[HiddenFileSync] fileOnDB.datatype: ${fileOnDB.datatype}`);
-                console.log(`[HiddenFileSync] fileOnDB.type: ${fileOnDB.type}`);
-                console.log(`[HiddenFileSync] fileOnDB.size: ${fileOnDB.size}`);
-                console.log(`[HiddenFileSync] fileOnDB.data type: ${typeof fileOnDB.data}`);
-                console.log(`[HiddenFileSync] fileOnDB.data is array: ${Array.isArray(fileOnDB.data)}`);
-                if (Array.isArray(fileOnDB.data)) {
-                    console.log(`[HiddenFileSync] fileOnDB.data.length: ${fileOnDB.data.length}`);
-                    if (fileOnDB.data.length > 0) {
-                        const firstItem = fileOnDB.data[0];
-                        console.log(`[HiddenFileSync] fileOnDB.data[0] type: ${typeof firstItem}`);
-                        console.log(`[HiddenFileSync] fileOnDB.data[0] preview: ${String(firstItem).substring(0, 100)}`);
-                    }
-                } else if (typeof fileOnDB.data === 'string') {
-                    console.log(`[HiddenFileSync] fileOnDB.data string length: ${fileOnDB.data.length}`);
-                    console.log(`[HiddenFileSync] fileOnDB.data preview: ${fileOnDB.data.substring(0, 100)}`);
-                }
-                console.log(`[HiddenFileSync] fileOnDB.children: ${JSON.stringify(fileOnDB.children)}`);
-                
                 // Write to storage
                 const writeContent = readContent(fileOnDB);
-                console.log(`[HiddenFileSync] writeContent type: ${typeof writeContent}`);
-                if (typeof writeContent === 'string') {
-                    console.log(`[HiddenFileSync] writeContent length: ${writeContent.length}`);
-                    console.log(`[HiddenFileSync] writeContent preview: ${writeContent.substring(0, 200)}`);
-                } else if (writeContent instanceof ArrayBuffer) {
-                    console.log(`[HiddenFileSync] writeContent ArrayBuffer size: ${writeContent.byteLength}`);
-                    const preview = new Uint8Array(writeContent.slice(0, 100));
-                    console.log(`[HiddenFileSync] writeContent bytes preview: ${Array.from(preview).join(',')}`);
-                }
-                console.log(`[HiddenFileSync] === End Content Debug ===`);
-                
                 const resultStat = await this.writeFile(storageFilePath, writeContent, {
                     mtime: (fileOnDB as any).mtime,
                     ctime: (fileOnDB as any).ctime,
@@ -1004,40 +968,26 @@ export class FridayHiddenFileSync {
         try {
             return await serialized(`hidden-file-event:${path}`, async () => {
                 const localDB = this.core.localDatabase;
-                if (!localDB) {
-                    console.log(`[HiddenFileSync] trackDatabaseFileModification: no localDatabase`);
-                    return false;
-                }
+                if (!localDB) return false;
                 
                 try {
                     // CRITICAL: Always fetch metadata with conflicts flag to detect conflicts
                     // The passed `meta` from replication may not include _conflicts info
                     const prefixedPath = addPrefix(path, ICHeader);
-                    console.log(`[HiddenFileSync] Fetching metadata with conflicts for: ${prefixedPath}`);
                     const docMeta = await localDB.getDBEntryMeta(prefixedPath, { conflicts: true }, true);
                     
-                    if (docMeta === false) {
-                        console.log(`[HiddenFileSync] Failed to read detail of ${path}`);
-                        return false;
-                    }
-                    
-                    console.log(`[HiddenFileSync] Metadata fetched: rev=${docMeta._rev}, conflicts=${JSON.stringify(docMeta._conflicts || [])}`);
+                    if (docMeta === false) return false;
                     
                     // Check for conflicts BEFORE extracting file to storage
                     // If conflicted, queue for resolution and do NOT write the file yet
                     if (docMeta._conflicts && docMeta._conflicts.length > 0) {
-                        console.log(`[HiddenFileSync] ⚠️ CONFLICT DETECTED: ${path} has ${docMeta._conflicts.length} conflict(s), queuing resolution`);
-                        console.log(`[HiddenFileSync] Current rev: ${docMeta._rev}`);
-                        console.log(`[HiddenFileSync] Conflicted revs: ${docMeta._conflicts.join(', ')}`);
                         const prefixedPathWithType = addPrefix(path, ICHeader) as FilePathWithPrefix;
                         this.queueConflictCheck(prefixedPathWithType);
                         return true; // Return true to indicate we handled it (queued for conflict resolution)
                     }
                     
-                    console.log(`[HiddenFileSync] No conflicts, extracting to storage: ${path}`);
-                    
                     // No conflicts - safe to extract file to storage
-                    const extractResult = await this.extractInternalFileFromDatabase(
+                    await this.extractInternalFileFromDatabase(
                         path,
                         false,
                         docMeta,
@@ -1046,11 +996,10 @@ export class FridayHiddenFileSync {
                         true   // includeDeletion
                     );
                     
-                    console.log(`[HiddenFileSync] Extract result: ${extractResult}`);
-                    
                     return true;
                 } catch (ex) {
-                    console.error(`[HiddenFileSync] trackDatabaseFileModification failed: ${path}`, ex);
+                    Logger(`[HiddenFileSync] trackDatabaseFileModification failed: ${path}`, LOG_LEVEL_VERBOSE);
+                    Logger(ex, LOG_LEVEL_VERBOSE);
                     return false;
                 }
             });
@@ -1071,13 +1020,7 @@ export class FridayHiddenFileSync {
             return false;
         }
         
-        console.log(`[HiddenFileSync] ====== Processing replicated document: ${path} ======`);
-        console.log(`[HiddenFileSync] Doc ID: ${doc._id}, Rev: ${doc._rev}`);
-        
-        const result = await this.trackDatabaseFileModification(path);
-        
-        console.log(`[HiddenFileSync] ====== Processing complete: ${path}, result: ${result} ======`);
-        return result;
+        return await this.trackDatabaseFileModification(path);
     }
 
     /**
@@ -1140,31 +1083,17 @@ export class FridayHiddenFileSync {
             async (paths: FilePathWithPrefix[]) => {
                 const path = paths[0];
                 const localDB = this.core.localDatabase;
-                if (!localDB) {
-                    console.log(`[HiddenFileSync] conflictResolutionProcessor: no localDatabase`);
-                    return [];
-                }
+                if (!localDB) return [];
                 
                 try {
-                    console.log(`[HiddenFileSync] ========================================`);
-                    console.log(`[HiddenFileSync] 🔄 Starting conflict resolution for: ${path}`);
-                    console.log(`[HiddenFileSync] ========================================`);
-                    
                     // FIX: path already has i: prefix, don't pass ICHeader again
                     const prefixedPath = path.startsWith(ICHeader) ? path : addPrefix(path, ICHeader);
                     const id = await this.core.path2id(prefixedPath);
-                    console.log(`[HiddenFileSync] Document ID: ${id}, prefixedPath: ${prefixedPath}`);
-                    
                     const doc = await localDB.getRaw<MetaEntry>(id, { conflicts: true });
                     
-                    if (!doc._conflicts?.length) {
-                        console.log(`[HiddenFileSync] ✅ No conflicts found for ${path} (already resolved?)`);
-                        return [];
-                    }
+                    if (!doc._conflicts?.length) return [];
                     
-                    console.log(`[HiddenFileSync] 📋 Found ${doc._conflicts.length} conflict(s) for: ${path}`);
-                    console.log(`[HiddenFileSync]    Current revision: ${doc._rev}`);
-                    console.log(`[HiddenFileSync]    Conflicted revisions: ${doc._conflicts.join(", ")}`);
+                    Logger(`[HiddenFileSync] Resolving ${doc._conflicts.length} conflict(s) for: ${path}`, LOG_LEVEL_INFO);
                     
                     const conflicts = doc._conflicts.sort(
                         (a, b) => Number(a.split("-")[0]) - Number(b.split("-")[0])
@@ -1174,38 +1103,29 @@ export class FridayHiddenFileSync {
                     
                     // For JSON files, try smart merge first
                     if (path.endsWith(".json")) {
-                        console.log(`[HiddenFileSync] 📄 JSON file detected, attempting smart merge: ${path}`);
                         const merged = await this.tryMergeJSON(id, path, doc, revA, revB);
-                        if (merged) {
-                            console.log(`[HiddenFileSync] ✅ JSON merge successful for: ${path}`);
-                            return [];
-                        }
+                        if (merged) return [];
                         
                         // Check overwrite patterns
                         const overwritePatterns = parsePatterns(
                             this.settings.syncInternalFileOverwritePatterns || ""
                         );
                         if (matchesAnyPattern(stripAllPrefixes(path), overwritePatterns)) {
-                            console.log(`[HiddenFileSync] 📝 Overwrite pattern matched, using newer version: ${path}`);
                             await this.resolveByNewerEntry(id, path, doc, revA, revB);
                             return [];
                         }
                         
-                        // For now, fall back to newer entry for unresolved JSON conflicts
-                        console.log(`[HiddenFileSync] ⚠️ JSON merge failed, falling back to newer version: ${path}`);
+                        // Fall back to newer entry for unresolved JSON conflicts
                         await this.resolveByNewerEntry(id, path, doc, revA, revB);
                         return [];
                     }
                     
                     // Non-JSON files (main.js, styles.css, etc.): always resolve by newer mtime
-                    console.log(`[HiddenFileSync] 🔧 Non-JSON file (${path.split('.').pop()}), resolving by newer mtime`);
                     await this.resolveByNewerEntry(id, path, doc, revA, revB);
-                    console.log(`[HiddenFileSync] ========================================`);
-                    console.log(`[HiddenFileSync] ✅ Conflict resolution completed for: ${path}`);
-                    console.log(`[HiddenFileSync] ========================================`);
                     return [];
                 } catch (ex) {
-                    console.error(`[HiddenFileSync] ❌ Conflict resolution failed: ${path}`, ex);
+                    Logger(`[HiddenFileSync] Conflict resolution failed: ${path}`, LOG_LEVEL_VERBOSE);
+                    Logger(ex, LOG_LEVEL_VERBOSE);
                     return [];
                 }
             },
@@ -1243,11 +1163,6 @@ export class FridayHiddenFileSync {
         if (!localDB) return;
         
         try {
-            console.log(`[HiddenFileSync] --- resolveByNewerEntry ---`);
-            console.log(`[HiddenFileSync] Path: ${path}`);
-            console.log(`[HiddenFileSync] Current rev: ${currentRev}`);
-            console.log(`[HiddenFileSync] Conflicted rev: ${conflictedRev}`);
-            
             // Get the conflicted document
             const conflictedDoc = await localDB.getRaw<MetaEntry>(id, { rev: conflictedRev });
             
@@ -1255,40 +1170,27 @@ export class FridayHiddenFileSync {
             const mtimeCurrent = getComparingMTime(currentDoc, true);
             const mtimeConflicted = getComparingMTime(conflictedDoc, true);
             
-            console.log(`[HiddenFileSync] 📊 Mtime comparison:`);
-            console.log(`[HiddenFileSync]    Current rev ${currentRev}: mtime=${mtimeCurrent} (${new Date(mtimeCurrent).toISOString()})`);
-            console.log(`[HiddenFileSync]    Conflicted rev ${conflictedRev}: mtime=${mtimeConflicted} (${new Date(mtimeConflicted).toISOString()})`);
-            
             // Delete the older revision
             const deleteRev = mtimeCurrent < mtimeConflicted ? currentRev : conflictedRev;
-            const keepRev = mtimeCurrent < mtimeConflicted ? conflictedRev : currentRev;
-            
-            console.log(`[HiddenFileSync] 🎯 Decision:`);
-            console.log(`[HiddenFileSync]    Keeping: ${keepRev} (newer)`);
-            console.log(`[HiddenFileSync]    Deleting: ${deleteRev} (older)`);
-            
-            console.log(`[HiddenFileSync] 🗑️ Removing revision: ${deleteRev}`);
             await localDB.removeRevision(id, deleteRev);
-            console.log(`[HiddenFileSync] ✅ Older revision deleted successfully`);
+            
+            Logger(`[HiddenFileSync] Conflict resolved, older revision deleted: ${path}`, LOG_LEVEL_INFO);
             
             // Check if more conflicts exist
             const updated = await localDB.getRaw<MetaEntry>(id, { conflicts: true });
             const remainingConflicts = updated._conflicts?.length ?? 0;
-            console.log(`[HiddenFileSync] Remaining conflicts after resolution: ${remainingConflicts}`);
             
             if (remainingConflicts === 0) {
                 // No more conflicts, extract file to storage
                 const storageFilePath = stripAllPrefixes(path) as FilePath;
-                console.log(`[HiddenFileSync] 📥 No more conflicts, extracting ${storageFilePath} to storage`);
                 await this.extractInternalFileFromDatabase(storageFilePath);
-                console.log(`[HiddenFileSync] ✅ File extracted to storage`);
             } else {
                 // More conflicts, re-queue
-                console.log(`[HiddenFileSync] ⚠️ ${remainingConflicts} more conflict(s) remain, re-queuing ${path}`);
                 this.queueConflictCheck(path);
             }
         } catch (ex) {
-            console.error(`[HiddenFileSync] ❌ resolveByNewerEntry failed: ${path}`, ex);
+            Logger(`[HiddenFileSync] resolveByNewerEntry failed: ${path}`, LOG_LEVEL_VERBOSE);
+            Logger(ex, LOG_LEVEL_VERBOSE);
         }
     }
 
@@ -1307,8 +1209,6 @@ export class FridayHiddenFileSync {
         const localDB = this.core.localDatabase;
         if (!localDB) return false;
         
-        console.log(`[HiddenFileSync] 🔀 Attempting JSON merge for: ${path}`);
-        
         try {
             // Find common base revision
             const revInfo = await localDB.getRaw<MetaEntry>(id, { revs_info: true });
@@ -1317,21 +1217,12 @@ export class FridayHiddenFileSync {
                 ?.filter((e: any) => e.status === "available" && Number(e.rev.split("-")[0]) < conflictedRevNo)
                 ?.[0]?.rev ?? "";
             
-            if (!commonBase) {
-                console.log(`[HiddenFileSync] ⚠️ No common base for JSON merge: ${path}`);
-                return false;
-            }
-            
-            console.log(`[HiddenFileSync] Common base revision: ${commonBase}`);
+            if (!commonBase) return false;
             
             // Use ConflictManager for merge if available
             const conflictManager = this.core.managers?.conflictManager;
-            if (!conflictManager || !conflictManager.mergeObject) {
-                console.log(`[HiddenFileSync] ⚠️ ConflictManager not available for JSON merge: ${path}`);
-                return false;
-            }
+            if (!conflictManager || !conflictManager.mergeObject) return false;
             
-            console.log(`[HiddenFileSync] Calling mergeObject with base=${commonBase}, current=${currentRev}, conflicted=${conflictedRev}`);
             const result = await conflictManager.mergeObject(
                 doc.path,
                 commonBase,
@@ -1339,12 +1230,7 @@ export class FridayHiddenFileSync {
                 conflictedRev
             );
             
-            if (!result) {
-                console.log(`[HiddenFileSync] ⚠️ JSON merge returned no result: ${path}`);
-                return false;
-            }
-            
-            console.log(`[HiddenFileSync] ✅ JSON merge succeeded, writing to storage`);
+            if (!result) return false;
             
             // Write merged content to storage
             const filename = stripAllPrefixes(path) as FilePath;
@@ -1356,17 +1242,17 @@ export class FridayHiddenFileSync {
             }
             
             // Store merged content to database and remove conflicted revision
-            console.log(`[HiddenFileSync] Storing merged content to database and removing conflicted revision`);
             await this.storeInternalFileToDatabase({ path: filename, ...stat } as any);
             await localDB.removeRevision(id, conflictedRev);
             
             // Re-check for more conflicts
             this.queueConflictCheck(path);
             
-            console.log(`[HiddenFileSync] ✅ JSON merge complete: ${path}`);
+            Logger(`[HiddenFileSync] JSON merge successful: ${path}`, LOG_LEVEL_INFO);
             return true;
         } catch (ex) {
-            console.error(`[HiddenFileSync] ❌ JSON merge error: ${path}`, ex);
+            Logger(`[HiddenFileSync] JSON merge failed: ${path}`, LOG_LEVEL_VERBOSE);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             return false;
         }
     }
@@ -1380,14 +1266,13 @@ export class FridayHiddenFileSync {
         const localDB = this.core.localDatabase;
         if (!localDB) return;
         
-        console.log("[HiddenFileSync] 🔍 Scanning database for conflicted internal files...");
+        Logger("[HiddenFileSync] Scanning for conflicted files...", LOG_LEVEL_INFO);
         
         try {
             // Find all conflicted internal files
             const conflicted = localDB.findEntries(ICHeader, ICHeaderEnd, { conflicts: true });
             
             let conflictCount = 0;
-            const conflictedPaths: string[] = [];
             for await (const doc of conflicted) {
                 if (!("_conflicts" in doc)) continue;
                 if (!doc._conflicts?.length) continue;
@@ -1395,22 +1280,18 @@ export class FridayHiddenFileSync {
                     const path = (doc.path || doc._id) as FilePathWithPrefix;
                     this.queueConflictCheck(path);
                     conflictCount++;
-                    conflictedPaths.push(path);
                 }
             }
             
             if (conflictCount > 0) {
-                console.log(`[HiddenFileSync] ⚠️ Found ${conflictCount} conflicted file(s):`);
-                conflictedPaths.forEach(p => console.log(`[HiddenFileSync]    - ${p}`));
-                console.log(`[HiddenFileSync] 🔄 Starting resolution...`);
+                Logger(`[HiddenFileSync] Found ${conflictCount} conflicted file(s), resolving...`, LOG_LEVEL_INFO);
                 // Wait for all conflicts to be processed
                 await this.conflictResolutionProcessor.startPipeline().waitForAllProcessed();
-                console.log(`[HiddenFileSync] ✅ All conflicts resolved`);
-            } else {
-                console.log("[HiddenFileSync] ✅ No conflicted files found");
+                Logger("[HiddenFileSync] Conflict resolution complete", LOG_LEVEL_INFO);
             }
         } catch (ex) {
-            console.error("[HiddenFileSync] ❌ Error scanning for conflicts", ex);
+            Logger("[HiddenFileSync] Error scanning for conflicts", LOG_LEVEL_VERBOSE);
+            Logger(ex, LOG_LEVEL_VERBOSE);
         }
     }
 }

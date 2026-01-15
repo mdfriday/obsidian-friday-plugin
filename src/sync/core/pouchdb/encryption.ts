@@ -156,7 +156,7 @@ async function incomingEncryptHKDF(
             }
         } catch (ex) {
             Logger(ENCRYPTION_HKDF_FAILED, LOG_LEVEL_NOTICE);
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
     }
@@ -174,7 +174,7 @@ async function incomingEncryptHKDF(
             };
         } catch (ex) {
             Logger(`${ENCRYPTION_HKDF_FAILED} on Eden`, LOG_LEVEL_NOTICE);
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
     }
@@ -194,7 +194,7 @@ async function incomingEncryptHKDF(
                 if ("children" in saveDoc) saveDoc.children = [];
             } catch (ex) {
                 Logger(`${ENCRYPTION_HKDF_FAILED} on Metadata`, LOG_LEVEL_NOTICE);
-                Logger(ex);
+                Logger(ex, LOG_LEVEL_VERBOSE);
                 throw ex;
             }
         }
@@ -238,7 +238,7 @@ async function outgoingDecryptHKDF(
             }
         } catch (ex) {
             Logger(DECRYPTION_HKDF_FAILED, LOG_LEVEL_NOTICE);
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
     }
@@ -253,7 +253,7 @@ async function outgoingDecryptHKDF(
                 }
             } catch (ex) {
                 Logger(`${DECRYPTION_HKDF_FAILED} on Path`, LOG_LEVEL_NOTICE);
-                Logger(ex);
+                Logger(ex, LOG_LEVEL_VERBOSE);
                 throw ex;
             }
         } else if (isPathProbablyObfuscated(path)) {
@@ -284,7 +284,7 @@ async function outgoingDecryptHKDF(
             edenDecrypted = true;
         } catch (ex) {
             Logger(`${DECRYPTION_FALLBACK_FAILED} on Eden`, LOG_LEVEL_NOTICE);
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
     }
@@ -305,7 +305,7 @@ async function outgoingDecryptHKDF(
             edenDecrypted = true;
         } catch (ex) {
             Logger(`${DECRYPTION_HKDF_FAILED} on Eden`, LOG_LEVEL_NOTICE);
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
     }
@@ -334,7 +334,7 @@ async function incomingEncryptV1(
             }
         } catch (ex) {
             Logger("Encryption failed.", LOG_LEVEL_NOTICE);
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
     }
@@ -359,7 +359,7 @@ async function incomingEncryptV1(
             }
         } catch (ex) {
             Logger("Encryption failed.", LOG_LEVEL_NOTICE);
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
     }

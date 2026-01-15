@@ -103,7 +103,7 @@ export abstract class LiveSyncAbstractReplicator {
             this.nodeid = nodeinfo.nodeid;
             return true;
         } catch (ex) {
-            Logger(ex);
+            Logger(ex, LOG_LEVEL_VERBOSE);
         }
         return false;
     }

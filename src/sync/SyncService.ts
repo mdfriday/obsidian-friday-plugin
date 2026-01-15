@@ -138,7 +138,7 @@ export class SyncService {
             return result;
         } catch (error) {
             console.error("Sync initialization failed:", error);
-            new Notice(`Sync initialization failed: ${error}`);
+            new Notice("Sync initialization failed. Please check your settings.");
             return false;
         }
     }

@@ -305,17 +305,18 @@ export class EntryManager {
                 return doc;
             } catch (ex: any) {
                 if (isErrorOfMissingDoc(ex)) {
+                    // Technical error - don't show to users as notice popup
                     Logger(
-                        `Missing document content!, could not read ${dispFilename}(${meta._id.substring(0, 8)}) from database.`,
-                        LOG_LEVEL_NOTICE
+                        `Missing document content for ${dispFilename}`,
+                        LOG_LEVEL_VERBOSE
                     );
                     return false;
                 }
                 Logger(
-                    `Something went wrong on reading ${dispFilename}(${meta._id.substring(0, 8)}) from database:`,
-                    LOG_LEVEL_NOTICE
+                    `Something went wrong on reading ${dispFilename} from database`,
+                    LOG_LEVEL_VERBOSE
                 );
-                Logger(ex);
+                Logger(ex, LOG_LEVEL_VERBOSE);
             }
         }
         return false;
@@ -433,7 +434,8 @@ export class EntryManager {
                     note._id
                 );
                 if (result.result === false) {
-                    Logger(`Failed to write buffered chunks for ${dispFilename}`, LOG_LEVEL_NOTICE);
+                    // Technical error - don't show to users as notice popup
+                    Logger(`Failed to write data for ${dispFilename}`, LOG_LEVEL_VERBOSE);
                     return false;
                 }
                 totalWritingCount++;
@@ -448,7 +450,8 @@ export class EntryManager {
             const flushIfNeeded = async () => {
                 if (bufferedSize > MAX_WRITE_SIZE) {
                     if (!(await flushBufferedChunks())) {
-                        Logger(`Failed to flush buffered chunks for ${dispFilename}`, LOG_LEVEL_NOTICE);
+                        // Technical error - don't show to users as notice popup
+                        Logger(`Failed to flush data for ${dispFilename}`, LOG_LEVEL_VERBOSE);
                         return false;
                     }
                 }
@@ -498,8 +501,9 @@ export class EntryManager {
             );
 
             if (dataSize > 0 && totalWritingCount === 0) {
+                // Corruption warning - keep but simplify message
                 Logger(
-                    `No data to save in ${dispFilename}!! This document may be corrupted in the local database! Please back it up immediately, and report an issue!`,
+                    `Warning: Document ${dispFilename} appears to be corrupted. Please report this issue.`,
                     LOG_LEVEL_NOTICE
                 );
             }
@@ -545,7 +549,8 @@ export class EntryManager {
             );
         });
         if (result === false) {
-            Logger(`Failed to write document ${dispFilename}`, LOG_LEVEL_NOTICE);
+            // Technical error - don't show to users as notice popup
+            Logger(`Failed to save ${dispFilename}`, LOG_LEVEL_VERBOSE);
             return false;
         }
         Logger(`Document saved: ${dispFilename} (${result.id.substring(0, 8)}-${result.rev})`, LOG_LEVEL_VERBOSE);

@@ -518,8 +518,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             return true;
         } catch (error) {
             console.error("Sync failed:", error);
-            Logger(`Sync failed: ${error}`, LOG_LEVEL_NOTICE);
-            this.setStatus("ERRORED", `Sync failed: ${error}`);
+            Logger("Sync failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger(error, LOG_LEVEL_VERBOSE);
+            this.setStatus("ERRORED", "Sync failed");
             return false;
         }
     }
@@ -550,8 +551,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             return result;
         } catch (error) {
             console.error("Pull failed:", error);
-            this.setStatus("ERRORED", `Pull failed: ${error}`);
-            Logger(`Sync error: ${error}`, LOG_LEVEL_NOTICE);
+            this.setStatus("ERRORED", "Pull failed");
+            Logger("Pull failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
     }
@@ -582,8 +584,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             return result;
         } catch (error) {
             console.error("Push failed:", error);
-            this.setStatus("ERRORED", `Push failed: ${error}`);
-            Logger(`Sync error: ${error}`, LOG_LEVEL_NOTICE);
+            this.setStatus("ERRORED", "Push failed");
+            Logger("Push failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
     }
@@ -628,8 +631,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             return result;
         } catch (error) {
             console.error("Fetch failed:", error);
-            this.setStatus("ERRORED", `Fetch failed: ${error}`);
-            Logger(`Sync error: ${error}`, LOG_LEVEL_NOTICE);
+            this.setStatus("ERRORED", "Fetch failed");
+            Logger("Fetch failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
     }
@@ -715,8 +719,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             return result;
         } catch (error) {
             console.error("Rebuild remote failed:", error);
-            this.setStatus("ERRORED", `Rebuild remote failed: ${error}`);
-            Logger(`Rebuild remote error: ${error}`, LOG_LEVEL_NOTICE);
+            this.setStatus("ERRORED", "Rebuild remote failed");
+            Logger("Rebuild remote failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
     }
@@ -910,7 +915,8 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             return true;
         } catch (error) {
-            Logger(`Rebuild failed: ${error}`, LOG_LEVEL_NOTICE);
+            Logger("Rebuild failed. Please try again.", LOG_LEVEL_NOTICE);
+            Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
     }

@@ -279,15 +279,18 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                         : lastSyncPullSeq >= maxPullSeq
                           ? " (LIVE)"
                           : ` (${maxPullSeq - lastSyncPullSeq})`;
+                // Show sync progress in status area only, not as popup notice
+                // Technical details like doc counts are not user-friendly
                 Logger(
                     `↑${this.docSent - docSentOnStart}${pushLast} ↓${this.docArrived - docArrivedOnStart}${pullLast}`,
-                    LOG_LEVEL_NOTICE,
+                    LOG_LEVEL_INFO,
                     "sync"
                 );
             }
             this.updateInfo();
         } catch (ex) {
-            Logger("Replication callback error", LOG_LEVEL_NOTICE, "sync");
+            // Technical callback errors shouldn't be shown as notices
+            Logger("Replication callback error", LOG_LEVEL_VERBOSE, "sync");
             Logger(ex, LOG_LEVEL_VERBOSE);
             //
         }
@@ -1025,7 +1028,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             await this.tryCreateRemoteDatabase(setting);
         } catch (ex) {
             Logger($msg("liveSyncReplicator.remoteDbDestroyError"), LOG_LEVEL_NOTICE);
-            Logger(ex, LOG_LEVEL_NOTICE);
+            Logger(ex, LOG_LEVEL_VERBOSE);
         }
         // Recreate salt
         clearHandlers();
