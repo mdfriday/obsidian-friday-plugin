@@ -279,8 +279,17 @@ export class EntryManager {
                 );
 
                 if (chunks.some((e) => e === false)) {
-                    // TODO EXACT MESSAGE
-                    throw new Error("Load failed");
+                    // Log detailed info about which chunks failed to load
+                    const failedIndices = chunks.map((e, i) => e === false ? i : -1).filter(i => i >= 0);
+                    const failedChunkIds = failedIndices.map(i => childrenKeys[i]);
+                    console.error(`[Friday Sync] Failed to load chunks for ${dispFilename}:`, {
+                        failedChunkIds: failedChunkIds,
+                        totalChunks: childrenKeys.length,
+                        failedCount: failedIndices.length,
+                        docId: meta._id,
+                        docPath: meta.path,
+                    });
+                    throw new Error(`Load failed: ${failedIndices.length}/${childrenKeys.length} chunks missing`);
                 }
 
                 const doc: LoadedEntry & PouchDB.Core.IdMeta = {
@@ -305,13 +314,24 @@ export class EntryManager {
                 return doc;
             } catch (ex: any) {
                 if (isErrorOfMissingDoc(ex)) {
-                    // Technical error - don't show to users as notice popup
+                    // Log detailed info for debugging
+                    console.error(`[Friday Sync] Missing document content for ${dispFilename}:`, {
+                        docId: meta._id,
+                        docPath: meta.path,
+                        childrenCount: meta.children?.length ?? 0,
+                    });
                     Logger(
                         `Missing document content for ${dispFilename}`,
                         LOG_LEVEL_VERBOSE
                     );
                     return false;
                 }
+                console.error(`[Friday Sync] Error reading ${dispFilename} from database:`, {
+                    error: ex,
+                    errorMessage: ex instanceof Error ? ex.message : String(ex),
+                    docId: meta._id,
+                    docPath: meta.path,
+                });
                 Logger(
                     `Something went wrong on reading ${dispFilename} from database`,
                     LOG_LEVEL_VERBOSE

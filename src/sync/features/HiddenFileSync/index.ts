@@ -763,6 +763,12 @@ export class FridayHiddenFileSync {
                 
                 return false;
             } catch (ex) {
+                console.error(`[HiddenFileSync] extractInternalFileFromDatabase failed:`, {
+                    path: storageFilePath,
+                    error: ex,
+                    errorMessage: ex instanceof Error ? ex.message : String(ex),
+                    errorStack: ex instanceof Error ? ex.stack : undefined,
+                });
                 Logger(`STORAGE <-- DB:${storageFilePath}: (hidden) Failed`, LOG_LEVEL_INFO);
                 Logger(ex, LOG_LEVEL_VERBOSE);
                 return false;
@@ -998,6 +1004,12 @@ export class FridayHiddenFileSync {
                     
                     return true;
                 } catch (ex) {
+                    console.error(`[HiddenFileSync] trackDatabaseFileModification failed:`, {
+                        path: path,
+                        error: ex,
+                        errorMessage: ex instanceof Error ? ex.message : String(ex),
+                        errorStack: ex instanceof Error ? ex.stack : undefined,
+                    });
                     Logger(`[HiddenFileSync] trackDatabaseFileModification failed: ${path}`, LOG_LEVEL_VERBOSE);
                     Logger(ex, LOG_LEVEL_VERBOSE);
                     return false;

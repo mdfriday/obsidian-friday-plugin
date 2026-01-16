@@ -354,6 +354,13 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 // Fetch the full entry with data
                 const fullEntry = await localDB.getDBEntryFromMeta(doc, false, true);
                 if (!fullEntry) {
+                    console.error(`[Friday Sync] Could not get full entry for:`, {
+                        docId: doc._id,
+                        docPath: doc.path,
+                        docType: doc.type,
+                        docSize: doc.size,
+                        docChildren: doc.children?.length ?? 0,
+                    });
                     return false;
                 }
                 
@@ -424,7 +431,17 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 }
             }
         } catch (error) {
-            console.error(`[Friday Sync] Error processing document:`, error);
+            // Log detailed error info to console for debugging
+            console.error(`[Friday Sync] Error processing document:`, {
+                error: error,
+                docId: doc._id,
+                docPath: doc.path,
+                docType: doc.type,
+                docRev: doc._rev,
+                docSize: doc.size,
+                errorMessage: error instanceof Error ? error.message : String(error),
+                errorStack: error instanceof Error ? error.stack : undefined,
+            });
             return false;
         }
     }
@@ -472,17 +489,47 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
 
         try {
             let processed = 0;
+            let errors = 0;
+            const errorDetails: Array<{docId: string, docPath?: string, error: any}> = [];
+            
             while (this.processingQueue.length > 0) {
                 const doc = this.processingQueue.shift();
                 if (!doc) continue;
                 
                 try {
                     // Cast to MetaEntry for processing
-                    await this.processSynchroniseResult(doc as unknown as MetaEntry);
-                    processed++;
+                    const result = await this.processSynchroniseResult(doc as unknown as MetaEntry);
+                    if (result) {
+                        processed++;
+                    } else {
+                        errors++;
+                        errorDetails.push({
+                            docId: doc._id,
+                            docPath: (doc as any).path,
+                            error: 'processSynchroniseResult returned false',
+                        });
+                    }
                 } catch (error) {
-                    console.error(`[Friday Sync] Error processing doc ${doc._id}:`, error);
+                    errors++;
+                    errorDetails.push({
+                        docId: doc._id,
+                        docPath: (doc as any).path,
+                        error: error,
+                    });
+                    console.error(`[Friday Sync] Error processing doc ${doc._id}:`, {
+                        error: error,
+                        docPath: (doc as any).path,
+                        docType: doc.type,
+                        errorMessage: error instanceof Error ? error.message : String(error),
+                        errorStack: error instanceof Error ? error.stack : undefined,
+                    });
                 }
+            }
+            
+            // Log summary if there were errors
+            if (errors > 0) {
+                console.log(`[Friday Sync] Queue processing complete: ${processed} succeeded, ${errors} failed`);
+                console.log(`[Friday Sync] Error details:`, errorDetails);
             }
         } finally {
             this.isProcessing = false;

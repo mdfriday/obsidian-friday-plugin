@@ -48,6 +48,9 @@ import {FridayStorageEventManager} from "./FridayStorageEventManager";
 import {FridayHiddenFileSync} from "./features/HiddenFileSync";
 import {DEFAULT_INTERNAL_IGNORE_PATTERNS} from "./types";
 
+// Import hidden file utilities
+import {isInternalMetadata} from "./utils/hiddenFileUtils";
+
 // PouchDB imports - use the configured PouchDB with all plugins (including transform-pouch)
 import {PouchDB} from "./core/pouchdb/pouchdb-browser";
 
@@ -822,23 +825,56 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             let updated = 0;
             let errors = 0;
             
+            // Track internal files processed by HiddenFileSync
+            let internalFilesProcessed = 0;
+            let internalFilesErrors = 0;
+            
             for (const row of allDocs.rows) {
                 const doc = row.doc;
                 if (!doc) continue;
                 
                 // Skip non-file documents
                 if (doc._id.startsWith("h:")) continue; // chunk
-                if (doc._id.startsWith("_")) continue; // internal
+                if (doc._id.startsWith("_")) continue; // internal PouchDB docs
                 if ((doc as any).type === "versioninfo") continue;
                 if ((doc as any).type === "milestoneinfo") continue;
                 if ((doc as any).type === "nodeinfo") continue;
                 if ((doc as any).type === "leaf") continue;
                 
-                // Only process note/plain documents
+                // Check if this is an internal file (i: prefix) - delegate to HiddenFileSync
+                // This matches livesync's architecture where internal files are processed separately
+                const docPath = (doc as any).path as string | undefined;
+                const isInternalFile = isInternalMetadata(doc._id) || 
+                    (docPath && isInternalMetadata(docPath));
+                
+                if (isInternalFile) {
+                    // Delegate internal files to HiddenFileSync module
+                    if (this._hiddenFileSync && this._hiddenFileSync.isThisModuleEnabled()) {
+                        try {
+                            const result = await this._hiddenFileSync.processReplicationResult(doc as any);
+                            if (result) {
+                                internalFilesProcessed++;
+                            } else {
+                                internalFilesErrors++;
+                            }
+                        } catch (ex) {
+                            internalFilesErrors++;
+                            console.error(`[Friday Sync] Error processing internal file:`, {
+                                docId: doc._id,
+                                path: docPath,
+                                error: ex instanceof Error ? ex.message : String(ex),
+                            });
+                        }
+                    }
+                    // Skip normal file processing for internal files
+                    continue;
+                }
+                
+                // Only process note/plain documents for normal files
                 const docType = (doc as any).type;
                 if (docType !== "notes" && docType !== "newnote" && docType !== "plain") continue;
                 
-                const path = (doc as any).path;
+                const path = docPath;
                 if (!path) continue;
                 
                 // Check if deleted
@@ -851,6 +887,14 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     // Get full document with data
                     const fullEntry = await this._localDatabase.getDBEntryFromMeta(doc as any, false, true);
                     if (!fullEntry) {
+                        errors++;
+                        console.error(`[Friday Sync] Could not get full entry for:`, {
+                            docId: doc._id,
+                            path: path,
+                            docType: (doc as any).type,
+                            docSize: (doc as any).size,
+                            docChildren: (doc as any).children?.length ?? 0,
+                        });
                         Logger(`Could not get full entry for: ${path}`, LOG_LEVEL_VERBOSE);
                         continue;
                     }
@@ -907,11 +951,25 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     }
                 } catch (error) {
                     errors++;
+                    // Log detailed error info to console for debugging
+                    console.error(`[Friday Sync] Error writing file ${path}:`, {
+                        error: error,
+                        docId: doc._id,
+                        docType: (doc as any).type,
+                        docSize: (doc as any).size,
+                        errorMessage: error instanceof Error ? error.message : String(error),
+                        errorStack: error instanceof Error ? error.stack : undefined,
+                    });
                     Logger(`Error writing file ${path}: ${error}`, LOG_LEVEL_VERBOSE);
                 }
             }
             
-            Logger(`Rebuild complete: ${processed} files processed, ${created} created, ${updated} updated, ${errors} errors`, LOG_LEVEL_NOTICE);
+            // Log summary with errors count
+            const totalErrors = errors + internalFilesErrors;
+            if (totalErrors > 0) {
+                console.log(`[Friday Sync] Rebuild completed with ${totalErrors} errors (${errors} normal files, ${internalFilesErrors} internal files). Check console for details.`);
+            }
+            Logger(`Rebuild complete: ${processed} normal files (${created} created, ${updated} updated, ${errors} errors), ${internalFilesProcessed} internal files (${internalFilesErrors} errors)`, LOG_LEVEL_NOTICE);
             
             return true;
         } catch (error) {
