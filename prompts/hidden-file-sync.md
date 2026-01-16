@@ -59,6 +59,7 @@ class FridaySyncCore {
     -FridayServiceHub _services
     +get hiddenFileSync() FridayHiddenFileSync
     +initialize(config) Promise~boolean~
+    +rebuildVaultFromDB() Promise~boolean~
 }
 
 class FridayStorageEventManager {
@@ -96,6 +97,15 @@ FridayReplicationService --> FridayHiddenFileSync : delegates internal files
    - Integrate with `FridaySyncCore` as an optional module (default enabled)
    - Hook into `FridayStorageEventManager` for raw vault events
    - Hook into `FridayReplicationService` for processing internal file documents
+   - **Critical**: Hook into `rebuildVaultFromDB` to dispatch internal files (i: prefix) to HiddenFileSync
+
+3. **Document Type Dispatching** (matching livesync's architecture):
+   - Internal files (`i:` prefix) → `HiddenFileSync.processReplicationResult()`
+   - Normal files → Standard vault write operations
+   - This separation is critical because:
+     - Obsidian doesn't allow `:` in filenames
+     - Internal files need special path handling (strip `i:` prefix)
+     - Internal files write to `.obsidian/` using adapter directly
 
 3. **Default Configuration** (following Obsidian official sync best practices):
    - Enable hidden file sync by default (`syncInternalFiles: true`)
@@ -131,7 +141,14 @@ FridayReplicationService --> FridayHiddenFileSync : delegates internal files
 2. **Sync Module Layer**: FridayHiddenFileSync handles bidirectional sync logic
 3. **Service Layer**: FridayServiceHub coordinates replication result processing
 4. **Core Layer**: FridaySyncCore manages module lifecycle and configuration
+   - `rebuildVaultFromDB()` dispatches internal files to HiddenFileSync
 5. **Database Layer**: LiveSyncLocalDB stores internal file documents with `i:` prefix
+
+#### Internal File Processing Points
+Internal files (with `i:` prefix) are processed at these integration points:
+1. **rebuildVaultFromDB**: First-time fetch from cloud - dispatches to HiddenFileSync
+2. **FridayReplicationService**: Live replication - checks `i:` prefix and delegates
+3. **FridayStorageEventManager**: Local changes - handles raw vault events
 
 ### Tasks
 
@@ -380,8 +397,12 @@ FridayReplicationService --> FridayHiddenFileSync : delegates internal files
 3. **Changes in `defaultProcessSynchroniseResult`**:
    ```typescript
    private async defaultProcessSynchroniseResult(doc: MetaEntry): Promise<boolean> {
-       // Check if internal file (i: prefix)
-       if (isInternalMetadata(doc._id)) {
+       // Check if internal file (i: prefix) - check both _id and path
+       // When usePathObfuscation is enabled, _id will be hashed but path still has "i:" prefix
+       const isInternalFile = isInternalMetadata(doc._id) || 
+           (doc.path && isInternalMetadata(doc.path));
+       
+       if (isInternalFile) {
            const hiddenFileSync = this.core.hiddenFileSync;
            if (hiddenFileSync && hiddenFileSync.isThisModuleEnabled()) {
                return await hiddenFileSync.processReplicationResult(doc as LoadedEntry);
@@ -392,6 +413,114 @@ FridayReplicationService --> FridayHiddenFileSync : delegates internal files
        // ... existing normal file processing logic ...
    }
    ```
+
+#### Task 13: Integrate with rebuildVaultFromDB (Critical)
+1. **Responsibility**: Properly dispatch internal files to HiddenFileSync during database rebuild
+2. **File**: `src/sync/FridaySyncCore.ts`
+3. **Problem**: During first-time fetch from cloud, `rebuildVaultFromDB` processes all documents but internal files (with `i:` prefix in path/id) cannot be written directly to vault because Obsidian doesn't allow `:` in filenames.
+4. **Solution**: Follow livesync's architecture - check for internal files and delegate to HiddenFileSync
+
+**Architecture Reference** (from livesync `ReplicateResultProcessor.ts` lines 395-401):
+```typescript
+// livesync's approach: try optional processors first, then normal processing
+if (await this.services.replication.processOptionalSynchroniseResult(dbDoc)) {
+    // Internal files handled by HiddenFileSync
+} else if (isValidPath(getPath(doc))) {
+    // Normal files handled by storage
+    await this.applyToStorage(doc as MetaEntry);
+}
+```
+
+**Implementation**:
+```typescript
+// Import isInternalMetadata
+import { isInternalMetadata } from "./utils/hiddenFileUtils";
+
+// In rebuildVaultFromDB method:
+async rebuildVaultFromDB(): Promise<boolean> {
+    // ... existing setup code ...
+    
+    // Track internal files separately
+    let internalFilesProcessed = 0;
+    let internalFilesErrors = 0;
+    
+    for (const row of allDocs.rows) {
+        const doc = row.doc;
+        if (!doc) continue;
+        
+        // Skip non-file documents
+        if (doc._id.startsWith("h:")) continue; // chunk
+        if (doc._id.startsWith("_")) continue; // internal PouchDB docs
+        // ... other skip conditions ...
+        
+        // CRITICAL: Check if this is an internal file (i: prefix)
+        // Must delegate to HiddenFileSync instead of writing directly
+        const docPath = (doc as any).path as string | undefined;
+        const isInternalFile = isInternalMetadata(doc._id) || 
+            (docPath && isInternalMetadata(docPath));
+        
+        if (isInternalFile) {
+            // Delegate internal files to HiddenFileSync module
+            if (this._hiddenFileSync && this._hiddenFileSync.isThisModuleEnabled()) {
+                try {
+                    const result = await this._hiddenFileSync.processReplicationResult(doc as any);
+                    if (result) {
+                        internalFilesProcessed++;
+                    } else {
+                        internalFilesErrors++;
+                    }
+                } catch (ex) {
+                    internalFilesErrors++;
+                    console.error(`[Friday Sync] Error processing internal file:`, {
+                        docId: doc._id,
+                        path: docPath,
+                        error: ex instanceof Error ? ex.message : String(ex),
+                    });
+                }
+            }
+            // Skip normal file processing for internal files
+            continue;
+        }
+        
+        // ... existing normal file processing logic ...
+    }
+    
+    // Log summary including internal files
+    Logger(`Rebuild complete: ${processed} normal files (${created} created, ${updated} updated, ${errors} errors), ${internalFilesProcessed} internal files (${internalFilesErrors} errors)`, LOG_LEVEL_NOTICE);
+}
+```
+
+**Processing Flow Diagram**:
+```
+rebuildVaultFromDB
+       │
+       ▼
+┌─────────────────────────────┐
+│   Iterate all DB documents  │
+└─────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────┐
+│ Skip h:, _ prefix documents │
+└─────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────┐
+│ isInternalMetadata(doc._id) │
+│ || isInternalMetadata(path)?│
+└─────────────────────────────┘
+       │
+   ┌───┴────────────────────┐
+   Yes      				No
+   │        				│
+   ▼        				▼
+┌──────────────────┐  ┌──────────────────┐
+│ HiddenFileSync   │  │  Normal file     │
+│ .processReplic.. │  │  vault.create()  │
+│ (strips i: prefix│  │  vault.modify()  │
+│  writes to .obs) │  │                  │
+└──────────────────┘  └──────────────────┘
+```
 
 ### Common Tasks
 
@@ -455,16 +584,19 @@ FridayReplicationService --> FridayHiddenFileSync : delegates internal files
    - Allow user to customize ignore patterns
 
 5. **Data Constraints**:
-   - Internal files use `i:` prefix in document ID
+   - Internal files use `i:` prefix in document ID and path
    - File paths stored relative to vault root
    - mtime/ctime preserved for conflict resolution
    - Content stored as blob for binary safety
+   - **Critical**: Obsidian doesn't allow `:` in filenames, so `i:` prefix must be stripped before writing to vault
 
 6. **Integration Constraints**:
    - Hook into vault `raw` events for real-time monitoring
    - Hook into replication service for incoming document handling
+   - **Hook into rebuildVaultFromDB for first-time fetch from cloud** (critical)
    - Integrate with existing FridayStorageEventManager patterns
    - Use existing kvDB for persistent caching
+   - Must check both `doc._id` and `doc.path` for `i:` prefix (path obfuscation support)
 
 ### File Structure
 
@@ -472,13 +604,19 @@ FridayReplicationService --> FridayHiddenFileSync : delegates internal files
 src/sync/
 ├── features/
 │   └── HiddenFileSync/
-│       ├── index.ts              # Main FridayHiddenFileSync class (~800 lines)
-│       └── types.ts              # Module-specific types (~30 lines)
+│       └── index.ts              # Main FridayHiddenFileSync class (~1300 lines)
+│                                 # - Conflict resolution with QueueProcessor
+│                                 # - processReplicationResult() for internal files
 ├── utils/
-│   └── hiddenFileUtils.ts        # Utility functions (~100 lines)
+│   └── hiddenFileUtils.ts        # Utility functions (~150 lines)
+│                                 # - isInternalMetadata()
+│                                 # - stripInternalMetadataPrefix()
+│                                 # - compareMTime(), getComparingMTime()
 ├── FridaySyncCore.ts             # Updated: integrate HiddenFileSync
+│                                 # - rebuildVaultFromDB() dispatches i: files
+│                                 # - Import isInternalMetadata
 ├── FridayStorageEventManager.ts  # Updated: add raw event handling
-├── FridayServiceHub.ts           # Updated: handle internal files
+├── FridayServiceHub.ts           # Updated: handle internal files in replication
 ├── types.ts                      # Updated: add hidden file types
 └── index.ts                      # Updated: export new module
 ```
@@ -529,6 +667,7 @@ const defaultHiddenFileSyncSettings: HiddenFileSyncSettings = {
 
 ### Source Code References
 
+#### Livesync Original Source
 | Component | Source File | Lines |
 |-----------|-------------|-------|
 | Main Class | `livesync/src/features/HiddenFileSync/CmdHiddenFileSync.ts` | 1-1930 |
@@ -538,5 +677,14 @@ const defaultHiddenFileSyncSettings: HiddenFileSyncSettings = {
 | Scan Logic | Same file | 494-535, 1069-1091 |
 | Cache Mgmt | Same file | 288-430 |
 | Event Handling | `livesync/src/modules/coreObsidian/storageLib/StorageEventManager.ts` | 219-240 |
+| Document Dispatch | `livesync/src/modules/core/ReplicateResultProcessor.ts` | 395-401 |
 | Utilities | `livesync/src/common/utils.ts` | 145-200 |
 | Types | `livesync/src/common/types.ts` | 52-68 |
+
+#### Friday Implementation
+| Component | File | Key Methods |
+|-----------|------|-------------|
+| HiddenFileSync | `src/sync/features/HiddenFileSync/index.ts` | processReplicationResult(), resolveByNewerEntry() |
+| Internal File Detection | `src/sync/utils/hiddenFileUtils.ts` | isInternalMetadata() |
+| Document Dispatch | `src/sync/FridaySyncCore.ts` | rebuildVaultFromDB() |
+| Replication Handler | `src/sync/FridayServiceHub.ts` | defaultProcessSynchroniseResult() |
