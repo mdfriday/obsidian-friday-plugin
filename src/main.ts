@@ -329,7 +329,7 @@ export default class FridayPlugin extends Plugin {
 			name: "Sync: Pull from Server",
 			callback: async () => {
 				if (!this.settings.syncEnabled) {
-					new Notice("Sync is not enabled. Please enable it in settings first.");
+					new Notice(this.i18n.t('messages.sync_not_enabled'));
 					return;
 				}
 				if (!this.syncService.isInitialized) {
@@ -344,7 +344,7 @@ export default class FridayPlugin extends Plugin {
 			name: "Sync: Push to Server",
 			callback: async () => {
 				if (!this.settings.syncEnabled) {
-					new Notice("Sync is not enabled. Please enable it in settings first.");
+					new Notice(this.i18n.t('messages.sync_not_enabled'));
 					return;
 				}
 				if (!this.syncService.isInitialized) {
@@ -359,7 +359,7 @@ export default class FridayPlugin extends Plugin {
 			name: "Sync: Start Live Sync",
 			callback: async () => {
 				if (!this.settings.syncEnabled) {
-					new Notice("Sync is not enabled. Please enable it in settings first.");
+					new Notice(this.i18n.t('messages.sync_not_enabled'));
 					return;
 				}
 				if (!this.syncService.isInitialized) {
@@ -382,7 +382,7 @@ export default class FridayPlugin extends Plugin {
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
 		if (!Platform.isDesktop || !this.site || !this.projectService) {
-			new Notice('Publishing is only available on desktop');
+			new Notice(this.i18n.t('messages.publishing_desktop_only'));
 			return;
 		}
 		
@@ -627,7 +627,7 @@ export default class FridayPlugin extends Plugin {
 
 	async setSiteAssets(folder: TFolder) {
 		if (!Platform.isDesktop || !this.site) {
-			new Notice('Setting site assets is only available on desktop');
+			new Notice(this.i18n.t('messages.site_assets_desktop_only'));
 			return;
 		}
 		
@@ -662,7 +662,7 @@ export default class FridayPlugin extends Plugin {
 
 	showThemeSelectionModal(selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void, isForSingleFile: boolean = false) {
 		if (!Platform.isDesktop || !this.ThemeSelectionModalClass) {
-			new Notice('Theme selection is only available on desktop');
+			new Notice(this.i18n.t('messages.theme_selection_desktop_only'));
 			return;
 		}
 		const modal = new this.ThemeSelectionModalClass(this.app, selectedTheme, onSelect, this, isForSingleFile);
@@ -675,7 +675,7 @@ export default class FridayPlugin extends Plugin {
 		onClearHistory: (projectId: string) => Promise<void>
 	) {
 		if (!Platform.isDesktop || !this.ProjectManagementModalClass || !this.projectService) {
-			new Notice('Project management is only available on desktop');
+			new Notice(this.i18n.t('messages.project_management_desktop_only'));
 			return;
 		}
 		const modal = new this.ProjectManagementModalClass(this.app, this, this.projectService, onApply, onExport, onClearHistory);
@@ -725,7 +725,7 @@ export default class FridayPlugin extends Plugin {
 	 */
 	private async quickShareCurrentFile(view: MarkdownView) {
 		if (!Platform.isDesktop) {
-			new Notice('Quick share is only available on desktop');
+			new Notice(this.i18n.t('messages.quick_share_desktop_only'));
 			return;
 		}
 		
@@ -1560,7 +1560,7 @@ class FridaySettingTab extends PluginSettingTab {
 
 	/**
 	 * Render Sync Section (only shown when license is activated)
-	 * Includes Security subsection with Netlify-style container
+	 * Includes Security subsection and Selective Sync subsection
 	 */
 	private renderSyncSection(containerEl: HTMLElement): void {
 		const license = this.plugin.settings.license;
@@ -1570,8 +1570,7 @@ class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.sync')});
 
-		// ========== Security Subsection (Netlify-style container) ==========
-		// Show encryption passphrase field first, especially for non-first-time scenario
+		// ========== Security Subsection ==========
 		const securityContainer = containerEl.createDiv('friday-security-container');
 		securityContainer.createEl("h3", {text: this.plugin.i18n.t('settings.security')});
 
@@ -1608,10 +1607,10 @@ class FridaySettingTab extends PluginSettingTab {
 			// Non-first-time: editable password field
 			new Setting(securityContainer)
 				.setName(this.plugin.i18n.t('settings.encryption_password'))
-				.setDesc('Enter the encryption password from your first activation to decrypt cloud data')
+				.setDesc(this.plugin.i18n.t('settings.encryption_password_desc'))
 				.addText((text) => {
 					text.inputEl.type = 'password';
-					text.inputEl.placeholder = 'Enter encryption password';
+					text.inputEl.placeholder = this.plugin.i18n.t('settings.encryption_password_placeholder');
 					text.setValue(encryptionPassphrase || '');
 					text.onChange(async (value) => {
 						this.plugin.settings.encryptionPassphrase = value;
@@ -1636,36 +1635,9 @@ class FridaySettingTab extends PluginSettingTab {
 				});
 		}
 
-		// Ignore Patterns setting
-		const currentPatterns = this.plugin.settings.syncConfig?.ignorePatterns || [];
-		new Setting(securityContainer)
-			.setName(this.plugin.i18n.t('settings.ignore_patterns'))
-			.setDesc(this.plugin.i18n.t('settings.ignore_patterns_desc'))
-			.addText((text) => {
-				text.inputEl.style.width = '200px';
-				text.inputEl.placeholder = this.plugin.i18n.t('settings.ignore_patterns_placeholder');
-				text.setValue(currentPatterns.join(', '));
-				text.onChange(async (value) => {
-					// Parse comma-separated patterns, trim whitespace, filter empty
-					const patterns = value
-						.split(',')
-						.map(p => p.trim())
-						.filter(p => p.length > 0);
-					
-					// Update settings
-					this.plugin.settings.syncConfig.ignorePatterns = patterns;
-					await this.plugin.saveSettings();
-					
-					// Update sync service immediately if initialized
-					if (this.plugin.syncService?.isInitialized) {
-						await this.plugin.syncService.updateIgnorePatterns(patterns);
-					}
-				});
-			});
-
-		// First time sync - Upload option
+		// First time sync - Upload option (in security container)
 		if (this.firstTimeSync) {
-			new Setting(containerEl)
+			new Setting(securityContainer)
 				.setName(this.plugin.i18n.t('settings.sync_first_time_title'))
 				.setDesc(this.plugin.i18n.t('settings.sync_description'))
 				.addButton((button) => {
@@ -1698,8 +1670,8 @@ class FridaySettingTab extends PluginSettingTab {
 						});
 				});
 		} else {
-			// Non-first-time - Download option with IndexedDB cleanup
-			new Setting(containerEl)
+			// Non-first-time - Download option with IndexedDB cleanup (in security container)
+			new Setting(securityContainer)
 				.setName(this.plugin.i18n.t('settings.sync_data_available'))
 				.setDesc(this.plugin.i18n.t('settings.sync_description'))
 				.addButton((button) => {
@@ -1709,7 +1681,7 @@ class FridaySettingTab extends PluginSettingTab {
 						.onClick(async () => {
 							// Validate passphrase is entered
 							if (!this.plugin.settings.encryptionPassphrase) {
-								new Notice('Please enter the encryption password first');
+								new Notice(this.plugin.i18n.t('settings.encryption_password_required'));
 								return;
 							}
 
@@ -1745,8 +1717,208 @@ class FridaySettingTab extends PluginSettingTab {
 				});
 		}
 
+		// ========== Selective Sync Subsection ==========
+		const selectiveSyncContainer = containerEl.createDiv('friday-security-container');
+		selectiveSyncContainer.createEl("h3", {text: this.plugin.i18n.t('settings.selective_sync')});
+
+		// Initialize syncConfig.selectiveSync if not exists
+		if (!this.plugin.settings.syncConfig.selectiveSync) {
+			this.plugin.settings.syncConfig.selectiveSync = {
+				syncImages: true,
+				syncAudio: false,
+				syncVideo: false,
+				syncPdf: false,
+				syncThemes: true,
+				syncPlugins: true,
+			};
+		}
+		const selectiveSync = this.plugin.settings.syncConfig.selectiveSync;
+
+		// Sync Images
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.sync_images'))
+			.setDesc(this.plugin.i18n.t('settings.sync_images_desc'))
+			.addToggle((toggle) => {
+				toggle.setValue(selectiveSync.syncImages ?? true);
+				toggle.onChange(async (value) => {
+					selectiveSync.syncImages = value;
+					await this.plugin.saveSettings();
+					await this.updateIgnorePatternsFromSelectiveSync();
+				});
+			});
+
+		// Sync Audio
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.sync_audio'))
+			.setDesc(this.plugin.i18n.t('settings.sync_audio_desc'))
+			.addToggle((toggle) => {
+				toggle.setValue(selectiveSync.syncAudio ?? false);
+				toggle.onChange(async (value) => {
+					selectiveSync.syncAudio = value;
+					await this.plugin.saveSettings();
+					await this.updateIgnorePatternsFromSelectiveSync();
+				});
+			});
+
+		// Sync Video
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.sync_video'))
+			.setDesc(this.plugin.i18n.t('settings.sync_video_desc'))
+			.addToggle((toggle) => {
+				toggle.setValue(selectiveSync.syncVideo ?? false);
+				toggle.onChange(async (value) => {
+					selectiveSync.syncVideo = value;
+					await this.plugin.saveSettings();
+					await this.updateIgnorePatternsFromSelectiveSync();
+				});
+			});
+
+		// Sync PDF
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.sync_pdf'))
+			.setDesc(this.plugin.i18n.t('settings.sync_pdf_desc'))
+			.addToggle((toggle) => {
+				toggle.setValue(selectiveSync.syncPdf ?? false);
+				toggle.onChange(async (value) => {
+					selectiveSync.syncPdf = value;
+					await this.plugin.saveSettings();
+					await this.updateIgnorePatternsFromSelectiveSync();
+				});
+			});
+
+		// Sync Themes
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.sync_themes'))
+			.setDesc(this.plugin.i18n.t('settings.sync_themes_desc'))
+			.addToggle((toggle) => {
+				toggle.setValue(selectiveSync.syncThemes ?? true);
+				toggle.onChange(async (value) => {
+					selectiveSync.syncThemes = value;
+					await this.plugin.saveSettings();
+					await this.updateIgnorePatternsFromSelectiveSync();
+				});
+			});
+
+		// Sync Plugins
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.sync_plugins'))
+			.setDesc(this.plugin.i18n.t('settings.sync_plugins_desc'))
+			.addToggle((toggle) => {
+				toggle.setValue(selectiveSync.syncPlugins ?? true);
+				toggle.onChange(async (value) => {
+					selectiveSync.syncPlugins = value;
+					await this.plugin.saveSettings();
+					await this.updateIgnorePatternsFromSelectiveSync();
+				});
+			});
+
+		// Ignore Patterns setting
+		const currentPatterns = this.plugin.settings.syncConfig?.ignorePatterns || [];
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.ignore_patterns'))
+			.setDesc(this.plugin.i18n.t('settings.ignore_patterns_desc'))
+			.addText((text) => {
+				text.inputEl.style.width = '200px';
+				text.inputEl.placeholder = this.plugin.i18n.t('settings.ignore_patterns_placeholder');
+				text.setValue(currentPatterns.join(', '));
+				text.onChange(async (value) => {
+					// Parse comma-separated patterns, trim whitespace, filter empty
+					const patterns = value
+						.split(',')
+						.map(p => p.trim())
+						.filter(p => p.length > 0);
+					
+					// Update settings
+					this.plugin.settings.syncConfig.ignorePatterns = patterns;
+					await this.plugin.saveSettings();
+					
+					// Update sync service immediately if initialized
+					if (this.plugin.syncService?.isInitialized) {
+						await this.plugin.syncService.updateIgnorePatterns(patterns);
+					}
+				});
+			});
+
 		// ========== Danger Zone ==========
 		this.renderDangerZone(containerEl);
+	}
+
+	/**
+	 * Update ignore patterns based on selective sync settings
+	 * 
+	 * This method handles two types of ignore patterns:
+	 * 1. ignorePatterns: Controls regular file sync (images, audio, video, PDF)
+	 * 2. syncInternalFilesIgnorePatterns: Controls .obsidian folder sync (themes, plugins)
+	 */
+	private async updateIgnorePatternsFromSelectiveSync(): Promise<void> {
+		const selectiveSync = this.plugin.settings.syncConfig.selectiveSync;
+		if (!selectiveSync) return;
+
+		// File extension patterns for each type (for regular files)
+		const imageExtensions = ['bmp', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif'];
+		const audioExtensions = ['mp3', 'wav', 'm4a', '3gp', 'flac', 'ogg', 'oga', 'opus'];
+		const videoExtensions = ['mp4', 'webm', 'ogv', 'mov', 'mkv'];
+		const pdfExtensions = ['pdf'];
+
+		// Get current patterns (manual patterns)
+		let patterns = [...(this.plugin.settings.syncConfig.ignorePatterns || [])];
+
+		// Helper to add/remove extension patterns
+		const updateExtensionPatterns = (extensions: string[], shouldSync: boolean) => {
+			extensions.forEach(ext => {
+				const pattern = `*.${ext}`;
+				const index = patterns.indexOf(pattern);
+				if (!shouldSync && index === -1) {
+					patterns.push(pattern);
+				} else if (shouldSync && index !== -1) {
+					patterns.splice(index, 1);
+				}
+			});
+		};
+
+		// Update patterns based on toggle states (for regular files)
+		updateExtensionPatterns(imageExtensions, selectiveSync.syncImages ?? true);
+		updateExtensionPatterns(audioExtensions, selectiveSync.syncAudio ?? false);
+		updateExtensionPatterns(videoExtensions, selectiveSync.syncVideo ?? false);
+		updateExtensionPatterns(pdfExtensions, selectiveSync.syncPdf ?? false);
+
+		// Handle themes and plugins (these affect .obsidian folder via syncInternalFilesIgnorePatterns)
+		// Default internal ignore patterns from DEFAULT_INTERNAL_IGNORE_PATTERNS
+		const defaultInternalPatterns = [
+			"\\.obsidian\\/workspace",
+			"\\.obsidian\\/workspace\\.json",
+			"\\.obsidian\\/workspace-mobile\\.json",
+			"\\.obsidian\\/cache",
+			"\\/node_modules\\/",
+			"\\/\\.git\\/",
+			"plugins\\/mdfriday\\/preview",
+			"plugins\\/mdfriday\\/themes",
+		];
+		
+		// Build internal ignore patterns based on selective sync
+		let internalPatterns = [...defaultInternalPatterns];
+		
+		// Add themes folder to ignore if not syncing themes
+		if (!(selectiveSync.syncThemes ?? true)) {
+			internalPatterns.push("\\.obsidian\\/themes");
+		}
+		
+		// Add plugins folder to ignore if not syncing plugins
+		if (!(selectiveSync.syncPlugins ?? true)) {
+			internalPatterns.push("\\.obsidian\\/plugins");
+		}
+		
+		// Update settings
+		this.plugin.settings.syncConfig.ignorePatterns = patterns;
+		this.plugin.settings.syncConfig.syncInternalFilesIgnorePatterns = internalPatterns.join(", ");
+		await this.plugin.saveSettings();
+
+		// Update sync service if initialized
+		if (this.plugin.syncService?.isInitialized) {
+			await this.plugin.syncService.updateIgnorePatterns(patterns);
+			// Note: Internal file patterns are used by HiddenFileSync module
+			// They will be applied on the next sync cycle
+		}
 	}
 
 	/**

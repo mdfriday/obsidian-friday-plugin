@@ -12,6 +12,18 @@ import {Notice, Plugin} from "obsidian";
 import {FridaySyncCore} from "./FridaySyncCore";
 
 /**
+ * Selective sync settings for quick toggles
+ */
+export interface SelectiveSyncSettings {
+    syncImages: boolean;    // bmp, png, jpg, jpeg, gif, svg, webp, avif
+    syncAudio: boolean;     // mp3, wav, m4a, 3gp, flac, ogg, oga, opus
+    syncVideo: boolean;     // mp4, webm, ogv, mov, mkv
+    syncPdf: boolean;       // pdf
+    syncThemes: boolean;    // .obsidian/themes
+    syncPlugins: boolean;   // .obsidian/plugins
+}
+
+/**
  * Sync configuration for CouchDB
  */
 export interface SyncConfig {
@@ -34,6 +46,9 @@ export interface SyncConfig {
     // Ignore patterns (gitignore format, will be written to .mdfignore file)
     // e.g., ["images/", "*.tmp", "attachments/**"]
     ignorePatterns: string[];
+    
+    // Selective sync settings (quick toggles for common file types)
+    selectiveSync?: SelectiveSyncSettings;
     
     // Hidden file sync (.obsidian folder synchronization)
     // Default: enabled with Obsidian official sync best practices
