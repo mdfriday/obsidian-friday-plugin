@@ -394,11 +394,11 @@ export class FridayStorageEventManager {
     
     private async processEvent(event: FileEvent): Promise<boolean> {
         try {
-            // Check if file is ignored by .mdfignore (livesync compatible)
+            // Check if file is ignored by ignore patterns
             // Following livesync design: ALL events (including DELETE) are checked
             // This means ignored files' operations are never synced
             if (!(await this.core.isTargetFile(event.path))) {
-                Logger(`File ignored by .mdfignore: ${event.path}`, LOG_LEVEL_VERBOSE);
+                Logger(`File ignored by ignore patterns: ${event.path}`, LOG_LEVEL_VERBOSE);
                 return true;
             }
             
@@ -447,9 +447,9 @@ export class FridayStorageEventManager {
             return true;
         }
         
-        // Check if file is ignored by .mdfignore (livesync compatible)
+        // Check if file is ignored by ignore patterns
         if (!(await this.core.isTargetFile(event.path))) {
-            Logger(`File ignored by .mdfignore: ${event.path}`, LOG_LEVEL_VERBOSE);
+            Logger(`File ignored by ignore patterns: ${event.path}`, LOG_LEVEL_VERBOSE);
             return true;
         }
         

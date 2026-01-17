@@ -808,6 +808,59 @@ export default class FridayPlugin extends Plugin {
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 		this.previousDownloadServer = this.settings.downloadServer;
+		
+		// Initialize default ignore patterns based on selectiveSync settings
+		this.initializeDefaultIgnorePatterns();
+	}
+	
+	/**
+	 * Initialize default sync settings
+	 * This ensures selectiveSync and internal patterns are properly set even if user never opened settings
+	 */
+	private initializeDefaultIgnorePatterns(): void {
+		// Initialize selectiveSync with defaults if not exists
+		if (!this.settings.syncConfig.selectiveSync) {
+			this.settings.syncConfig.selectiveSync = {
+				syncImages: true,
+				syncAudio: false,
+				syncVideo: false,
+				syncPdf: false,
+				syncThemes: true,
+				syncPlugins: true,
+			};
+		}
+		
+		// Initialize ignorePatterns as empty array if not set (user-defined patterns only)
+		if (!this.settings.syncConfig.ignorePatterns) {
+			this.settings.syncConfig.ignorePatterns = [];
+		}
+		
+		// Build internal ignore patterns for .obsidian folder
+		const selectiveSync = this.settings.syncConfig.selectiveSync;
+		const defaultInternalPatterns = [
+			"\\.obsidian\\/workspace",
+			"\\.obsidian\\/workspace\\.json",
+			"\\.obsidian\\/workspace-mobile\\.json",
+			"\\.obsidian\\/cache",
+			"\\/node_modules\\/",
+			"\\/\\.git\\/",
+			"plugins\\/mdfriday\\/preview",
+			"plugins\\/mdfriday\\/themes",
+		];
+		
+		let internalPatterns = [...defaultInternalPatterns];
+		
+		if (!(selectiveSync.syncThemes ?? true)) {
+			internalPatterns.push("\\.obsidian\\/themes");
+		}
+		if (!(selectiveSync.syncPlugins ?? true)) {
+			internalPatterns.push("\\.obsidian\\/plugins");
+		}
+		
+		// Update internal patterns if not set
+		if (!this.settings.syncConfig.syncInternalFilesIgnorePatterns) {
+			this.settings.syncConfig.syncInternalFilesIgnorePatterns = internalPatterns.join(", ");
+		}
 	}
 
 	/**
@@ -1743,7 +1796,7 @@ class FridaySettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					selectiveSync.syncImages = value;
 					await this.plugin.saveSettings();
-					await this.updateIgnorePatternsFromSelectiveSync();
+					await this.updateSelectiveSyncSettings();
 				});
 			});
 
@@ -1756,7 +1809,7 @@ class FridaySettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					selectiveSync.syncAudio = value;
 					await this.plugin.saveSettings();
-					await this.updateIgnorePatternsFromSelectiveSync();
+					await this.updateSelectiveSyncSettings();
 				});
 			});
 
@@ -1769,7 +1822,7 @@ class FridaySettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					selectiveSync.syncVideo = value;
 					await this.plugin.saveSettings();
-					await this.updateIgnorePatternsFromSelectiveSync();
+					await this.updateSelectiveSyncSettings();
 				});
 			});
 
@@ -1782,7 +1835,7 @@ class FridaySettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					selectiveSync.syncPdf = value;
 					await this.plugin.saveSettings();
-					await this.updateIgnorePatternsFromSelectiveSync();
+					await this.updateSelectiveSyncSettings();
 				});
 			});
 
@@ -1795,7 +1848,7 @@ class FridaySettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					selectiveSync.syncThemes = value;
 					await this.plugin.saveSettings();
-					await this.updateIgnorePatternsFromSelectiveSync();
+					await this.updateSelectiveSyncSettings();
 				});
 			});
 
@@ -1808,7 +1861,7 @@ class FridaySettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					selectiveSync.syncPlugins = value;
 					await this.plugin.saveSettings();
-					await this.updateIgnorePatternsFromSelectiveSync();
+					await this.updateSelectiveSyncSettings();
 				});
 			});
 
@@ -1828,13 +1881,13 @@ class FridaySettingTab extends PluginSettingTab {
 						.map(p => p.trim())
 						.filter(p => p.length > 0);
 					
-					// Update settings
+					// Update settings (user-defined ignore patterns only)
 					this.plugin.settings.syncConfig.ignorePatterns = patterns;
 					await this.plugin.saveSettings();
 					
 					// Update sync service immediately if initialized
 					if (this.plugin.syncService?.isInitialized) {
-						await this.plugin.syncService.updateIgnorePatterns(patterns);
+						this.plugin.syncService.updateIgnorePatterns(patterns);
 					}
 				});
 			});
@@ -1844,46 +1897,19 @@ class FridaySettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Update ignore patterns based on selective sync settings
+	 * Update selective sync settings
 	 * 
-	 * This method handles two types of ignore patterns:
-	 * 1. ignorePatterns: Controls regular file sync (images, audio, video, PDF)
+	 * This method handles:
+	 * 1. selectiveSync: Controls file type sync (images, audio, video, PDF) - directly via settings
 	 * 2. syncInternalFilesIgnorePatterns: Controls .obsidian folder sync (themes, plugins)
+	 * 
+	 * Note: ignorePatterns is separate and only for user-defined patterns (folders, custom rules)
 	 */
-	private async updateIgnorePatternsFromSelectiveSync(): Promise<void> {
+	private async updateSelectiveSyncSettings(): Promise<void> {
 		const selectiveSync = this.plugin.settings.syncConfig.selectiveSync;
 		if (!selectiveSync) return;
 
-		// File extension patterns for each type (for regular files)
-		const imageExtensions = ['bmp', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif'];
-		const audioExtensions = ['mp3', 'wav', 'm4a', '3gp', 'flac', 'ogg', 'oga', 'opus'];
-		const videoExtensions = ['mp4', 'webm', 'ogv', 'mov', 'mkv'];
-		const pdfExtensions = ['pdf'];
-
-		// Get current patterns (manual patterns)
-		let patterns = [...(this.plugin.settings.syncConfig.ignorePatterns || [])];
-
-		// Helper to add/remove extension patterns
-		const updateExtensionPatterns = (extensions: string[], shouldSync: boolean) => {
-			extensions.forEach(ext => {
-				const pattern = `*.${ext}`;
-				const index = patterns.indexOf(pattern);
-				if (!shouldSync && index === -1) {
-					patterns.push(pattern);
-				} else if (shouldSync && index !== -1) {
-					patterns.splice(index, 1);
-				}
-			});
-		};
-
-		// Update patterns based on toggle states (for regular files)
-		updateExtensionPatterns(imageExtensions, selectiveSync.syncImages ?? true);
-		updateExtensionPatterns(audioExtensions, selectiveSync.syncAudio ?? false);
-		updateExtensionPatterns(videoExtensions, selectiveSync.syncVideo ?? false);
-		updateExtensionPatterns(pdfExtensions, selectiveSync.syncPdf ?? false);
-
-		// Handle themes and plugins (these affect .obsidian folder via syncInternalFilesIgnorePatterns)
-		// Default internal ignore patterns from DEFAULT_INTERNAL_IGNORE_PATTERNS
+		// Build internal ignore patterns for .obsidian folder (themes, plugins)
 		const defaultInternalPatterns = [
 			"\\.obsidian\\/workspace",
 			"\\.obsidian\\/workspace\\.json",
@@ -1895,7 +1921,6 @@ class FridaySettingTab extends PluginSettingTab {
 			"plugins\\/mdfriday\\/themes",
 		];
 		
-		// Build internal ignore patterns based on selective sync
 		let internalPatterns = [...defaultInternalPatterns];
 		
 		// Add themes folder to ignore if not syncing themes
@@ -1909,15 +1934,21 @@ class FridaySettingTab extends PluginSettingTab {
 		}
 		
 		// Update settings
-		this.plugin.settings.syncConfig.ignorePatterns = patterns;
 		this.plugin.settings.syncConfig.syncInternalFilesIgnorePatterns = internalPatterns.join(", ");
 		await this.plugin.saveSettings();
 
-		// Update sync service if initialized
+		// Update sync service if initialized (changes take effect immediately)
 		if (this.plugin.syncService?.isInitialized) {
-			await this.plugin.syncService.updateIgnorePatterns(patterns);
-			// Note: Internal file patterns are used by HiddenFileSync module
-			// They will be applied on the next sync cycle
+			// Update file type filtering (images, audio, video, pdf)
+			this.plugin.syncService.updateSelectiveSync({
+				syncImages: selectiveSync.syncImages,
+				syncAudio: selectiveSync.syncAudio,
+				syncVideo: selectiveSync.syncVideo,
+				syncPdf: selectiveSync.syncPdf,
+			});
+			
+			// Update internal file patterns (themes, plugins)
+			this.plugin.syncService.updateInternalFilesIgnorePatterns(internalPatterns.join(", "));
 		}
 	}
 

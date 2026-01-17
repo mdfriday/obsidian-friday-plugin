@@ -915,7 +915,7 @@ class FridayVaultService extends ServiceBase implements VaultService {
     async scanVault(showingNotice?: boolean, ignoreSuspending?: boolean): Promise<boolean> { return true; }
     
     /**
-     * Check if file is ignored by .mdfignore (livesync compatible)
+     * Check if file is ignored by ignore patterns
      */
     async isIgnoredByIgnoreFile(file: string | UXFileInfoStub): Promise<boolean> {
         const filepath = typeof file === 'string' ? file : file.path;

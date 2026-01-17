@@ -179,6 +179,14 @@ export class FridayHiddenFileSync {
         this.stopPeriodicScan();
         Logger("[HiddenFileSync] Module unloaded", LOG_LEVEL_INFO);
     }
+    
+    /**
+     * Clear regex cache (call when patterns change for real-time update)
+     */
+    clearRegexCache(): void {
+        this.cacheFileRegExps.clear();
+        Logger("[HiddenFileSync] Regex cache cleared", LOG_LEVEL_VERBOSE);
+    }
 
     /**
      * Start periodic scanning for hidden file changes

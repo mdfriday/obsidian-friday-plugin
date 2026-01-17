@@ -43,7 +43,7 @@ export interface SyncConfig {
     syncOnStart: boolean;
     syncOnSave: boolean;
     
-    // Ignore patterns (gitignore format, will be written to .mdfignore file)
+    // Ignore patterns (gitignore format, used directly from memory)
     // e.g., ["images/", "*.tmp", "attachments/**"]
     ignorePatterns: string[];
     
@@ -282,17 +282,45 @@ export class SyncService {
     /**
      * Update ignore patterns
      * 
-     * This updates the .mdfignore file in the vault root and refreshes the ignore cache.
+     * This updates the ignore patterns in memory.
      * Changes take effect immediately for new sync operations.
      * 
      * @param patterns - Array of gitignore-style patterns
      */
-    async updateIgnorePatterns(patterns: string[]): Promise<void> {
+    updateIgnorePatterns(patterns: string[]): void {
         if (this.config) {
             this.config.ignorePatterns = patterns;
         }
         if (this.core) {
-            await this.core.generateIgnoreFile(patterns);
+            this.core.updateIgnorePatterns(patterns);
+        }
+    }
+    
+    /**
+     * Update internal files ignore patterns (for .obsidian folder sync)
+     * 
+     * This updates the ignore patterns for themes, plugins, etc.
+     * Changes take effect immediately.
+     * 
+     * @param patterns - Comma-separated regex patterns
+     */
+    updateInternalFilesIgnorePatterns(patterns: string): void {
+        if (this.core) {
+            this.core.updateInternalFilesIgnorePatterns(patterns);
+        }
+    }
+    
+    /**
+     * Update selective sync settings (for file type filtering)
+     * 
+     * This updates which file types are synced (images, audio, video, pdf).
+     * Changes take effect immediately.
+     * 
+     * @param settings - Partial selective sync settings
+     */
+    updateSelectiveSync(settings: { syncImages?: boolean; syncAudio?: boolean; syncVideo?: boolean; syncPdf?: boolean }): void {
+        if (this.core) {
+            this.core.updateSelectiveSync(settings);
         }
     }
 
