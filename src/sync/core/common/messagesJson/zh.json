@@ -392,5 +392,9 @@
     "Warning! This will have a serious impact on performance. And the logs will not be synchronised under the default name. Please be careful with logs; they often contain your confidential information.": "警告！这将严重影响性能。并且日志不会以默认名称同步。请小心处理日志；它们通常包含您的敏感信息。",
     "When you save a file in the editor, start a sync automatically": "当您在编辑器中保存文件时，自动开始同步",
     "Write credentials in the file": "将凭据写入文件",
-    "Write logs into the file": "将日志写入文件"
+    "Write logs into the file": "将日志写入文件",
+    "fridaySync.saltChanged.title": "检测到远程数据库已重置",
+    "fridaySync.saltChanged.message": "远程数据库的加密密钥已更改。这通常意味着远程数据库已被重置或重建。本地数据无法与新数据库同步。请使用「从服务器获取」功能重新同步数据，或清空本地数据库后重新同步。",
+    "fridaySync.decryptionErrors.aggregated": "检测到 ${count} 个解密错误。远程数据库可能已被重置。请使用「从服务器获取」功能重新同步数据。",
+    "fridaySync.saltCheck.failed": "验证远程数据库状态失败"
 }

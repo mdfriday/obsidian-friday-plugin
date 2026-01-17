@@ -15,11 +15,60 @@ import { isPathProbablyObfuscated, obfuscatePath } from "octagonal-wheels/encryp
 // import { encryptHKDF, decryptHKDF } from "../encryption/encryptHKDF.ts";
 import { getPath } from "../string_and_binary/path.ts";
 import { encryptWorker, decryptWorker, encryptHKDFWorker, decryptHKDFWorker } from "../worker/bgWorker.ts";
+import { $msg } from "../common/i18n.ts";
 
 export const encrypt = encryptWorker;
 export const decrypt = decryptWorker;
 export const encryptHKDF = encryptHKDFWorker;
 export const decryptHKDF = decryptHKDFWorker;
+
+// ============================================================================
+// Decryption Error Aggregation
+// ============================================================================
+// When remote database is reset, decryption will fail for many documents.
+// Instead of showing a notice for each failure, we aggregate errors and
+// show a single summary notice after reaching a threshold.
+
+const DECRYPTION_ERROR_THRESHOLD = 5;
+let _decryptionErrorCount = 0;
+let _decryptionErrorReported = false;
+
+/**
+ * Reset decryption error tracking. Call this before starting a sync session.
+ */
+export function resetDecryptionErrorTracking(): void {
+    _decryptionErrorCount = 0;
+    _decryptionErrorReported = false;
+}
+
+/**
+ * Get the current decryption error count.
+ */
+export function getDecryptionErrorCount(): number {
+    return _decryptionErrorCount;
+}
+
+/**
+ * Report a decryption error. Individual errors are logged at VERBOSE level,
+ * and when the threshold is reached, a single summary notice is shown.
+ * @param context Additional context about where the error occurred (e.g., "on Path", "on Eden")
+ */
+function reportDecryptionError(message: string, context?: string): void {
+    _decryptionErrorCount++;
+
+    // Log individual error at VERBOSE level (not shown to user)
+    const fullMessage = context ? `${message} ${context}` : message;
+    Logger(fullMessage, LOG_LEVEL_VERBOSE);
+
+    // When threshold is reached, show a single aggregated notice
+    if (_decryptionErrorCount === DECRYPTION_ERROR_THRESHOLD && !_decryptionErrorReported) {
+        _decryptionErrorReported = true;
+        Logger(
+            $msg("fridaySync.decryptionErrors.aggregated", { count: _decryptionErrorCount.toString() }),
+            LOG_LEVEL_NOTICE
+        );
+    }
+}
 
 const Encrypt_HKDF_Header = "%=";
 const Encrypt_OLD_Header = "%";
@@ -225,7 +274,7 @@ async function outgoingDecryptHKDF(
             } else if (encryptionVersion === EncryptionVersions.ENCRYPTED) {
                 const decryptedData = await tryDecryptV1AsFallback(loadDoc.data, passphrase, useDynamicIterationCount);
                 if (decryptedData === false) {
-                    Logger(MESSAGE_FALLBACK_DECRYPT_FAILED, LOG_LEVEL_NOTICE);
+                    reportDecryptionError(MESSAGE_FALLBACK_DECRYPT_FAILED);
                     throw new Error(MESSAGE_FALLBACK_DECRYPT_FAILED);
                 }
                 loadDoc.data = decryptedData;
@@ -233,11 +282,11 @@ async function outgoingDecryptHKDF(
             } else if (encryptionVersion === EncryptionVersions.UNENCRYPTED) {
                 // not encrypted, no need to decrypt
             } else {
-                Logger("Unknown encryption version. Cannot decrypt.", LOG_LEVEL_NOTICE);
+                reportDecryptionError("Unknown encryption version. Cannot decrypt.");
                 throw new Error("Unknown encryption version. Cannot decrypt.");
             }
         } catch (ex) {
-            Logger(DECRYPTION_HKDF_FAILED, LOG_LEVEL_NOTICE);
+            reportDecryptionError(DECRYPTION_HKDF_FAILED);
             Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
@@ -252,7 +301,7 @@ async function outgoingDecryptHKDF(
                     (loadDoc as any)[key] = metadata[key as keyof EncryptProps];
                 }
             } catch (ex) {
-                Logger(`${DECRYPTION_HKDF_FAILED} on Path`, LOG_LEVEL_NOTICE);
+                reportDecryptionError(DECRYPTION_HKDF_FAILED, "on Path");
                 Logger(ex, LOG_LEVEL_VERBOSE);
                 throw ex;
             }
@@ -260,7 +309,7 @@ async function outgoingDecryptHKDF(
             // As a fallback, try to decrypt with V1 method. This part will eventually be removed.
             const decryptedPath = await tryDecryptV1AsFallback(path, passphrase, useDynamicIterationCount);
             if (decryptedPath === false) {
-                Logger(`${MESSAGE_FALLBACK_DECRYPT_FAILED} on Path`, LOG_LEVEL_NOTICE);
+                reportDecryptionError(MESSAGE_FALLBACK_DECRYPT_FAILED, "on Path");
                 throw new Error(MESSAGE_FALLBACK_DECRYPT_FAILED);
             }
             loadDoc.path = decryptedPath as unknown as FilePathWithPrefix;
@@ -283,7 +332,7 @@ async function outgoingDecryptHKDF(
             };
             edenDecrypted = true;
         } catch (ex) {
-            Logger(`${DECRYPTION_FALLBACK_FAILED} on Eden`, LOG_LEVEL_NOTICE);
+            reportDecryptionError(DECRYPTION_FALLBACK_FAILED, "on Eden");
             Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
@@ -304,7 +353,7 @@ async function outgoingDecryptHKDF(
             };
             edenDecrypted = true;
         } catch (ex) {
-            Logger(`${DECRYPTION_HKDF_FAILED} on Eden`, LOG_LEVEL_NOTICE);
+            reportDecryptionError(DECRYPTION_HKDF_FAILED, "on Eden");
             Logger(ex, LOG_LEVEL_VERBOSE);
             throw ex;
         }
@@ -433,13 +482,13 @@ async function outgoingDecryptV1(
                     if (migrationDecrypt && ex.name == "SyntaxError") {
                         return loadDoc; // This logic will be removed in a while.
                     }
-                    Logger("Decryption failed.", LOG_LEVEL_NOTICE);
+                    reportDecryptionError("Decryption failed.");
                     Logger(ex, LOG_LEVEL_VERBOSE);
                     Logger(`id:${loadDoc._id}-${loadDoc._rev?.substring(0, 10)}`, LOG_LEVEL_VERBOSE);
                     throw ex;
                 }
             } else {
-                Logger("Decryption failed.", LOG_LEVEL_NOTICE);
+                reportDecryptionError("Decryption failed.");
                 Logger(ex, LOG_LEVEL_VERBOSE);
                 Logger(`id:${loadDoc._id}-${loadDoc._rev?.substring(0, 10)}`, LOG_LEVEL_VERBOSE);
                 throw ex;

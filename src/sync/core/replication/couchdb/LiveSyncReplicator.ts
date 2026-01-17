@@ -689,6 +689,16 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         if ((await this.ensurePBKDF2Salt(setting, showResult, !retrying)) === false) {
             return false;
         }
+
+        // Check salt consistency to detect remote database reset
+        if (!retrying) {
+            const saltCheck = await this.checkSaltConsistency(setting);
+            if (!saltCheck.ok) {
+                Logger(saltCheck.message!, LOG_LEVEL_NOTICE);
+                return false;
+            }
+        }
+
         const next = await shareRunningResult("oneShotReplication", async () => {
             if (this.controller) {
                 Logger(
@@ -809,8 +819,15 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         return this.openOneShotReplication(setting, showingNotice ?? false, false, "pushOnly");
     }
 
-    replicateAllFromServer(setting: RemoteDBSettings, showingNotice?: boolean) {
-        return this.openOneShotReplication(setting, showingNotice ?? false, false, "pullOnly");
+    async replicateAllFromServer(setting: RemoteDBSettings, showingNotice?: boolean) {
+        // Clear stored salt before fetching - this allows accepting new salt after database reset
+        await this.clearStoredSalt(setting);
+        const result = await this.openOneShotReplication(setting, showingNotice ?? false, false, "pullOnly");
+        if (result) {
+            // Update stored salt after successful fetch
+            await this.updateStoredSalt(setting);
+        }
+        return result;
     }
 
     async checkReplicationConnectivity(

@@ -465,6 +465,52 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     }
 
     /**
+     * Check if the remote database has been reset/rebuilt
+     * 
+     * This happens when:
+     * - The main vault resets the remote database
+     * - The remote database was corrupted and rebuilt
+     * - Chunk cleanup was performed on the remote
+     * 
+     * When detected, the user should use "Fetch from Server" to re-sync.
+     * 
+     * @returns true if database reset was detected
+     */
+    isRemoteDatabaseReset(): boolean {
+        if (!this._replicator) return false;
+        return this._replicator.remoteLockedAndDeviceNotAccepted;
+    }
+    
+    /**
+     * Check if there are any sync issues that need user attention
+     * 
+     * @returns object with status flags and message
+     */
+    getSyncIssues(): { hasIssues: boolean; message: string; needsFetch: boolean } {
+        if (!this._replicator) {
+            return { hasIssues: false, message: "", needsFetch: false };
+        }
+        
+        if (this._replicator.remoteLockedAndDeviceNotAccepted) {
+            return {
+                hasIssues: true,
+                needsFetch: true,
+                message: "Remote database has been reset. Use 'Fetch from Server' to re-sync."
+            };
+        }
+        
+        if (this._replicator.tweakSettingsMismatched) {
+            return {
+                hasIssues: true,
+                needsFetch: false,
+                message: "Configuration mismatch detected between devices."
+            };
+        }
+        
+        return { hasIssues: false, message: "", needsFetch: false };
+    }
+
+    /**
      * Start synchronization
      * 
      * @param continuous - If true (default), starts LiveSync mode (continuous replication)
@@ -496,6 +542,14 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 false,       // showResult: false for LiveSync (matches livesync)
                 false        // ignoreCleanLock
             );
+            
+            // Check for database reset after connection attempt
+            const issues = this.getSyncIssues();
+            if (issues.needsFetch) {
+                Logger(issues.message, LOG_LEVEL_NOTICE);
+                this.setStatus("ERRORED", "Database reset detected");
+                return false;
+            }
             
             // Start watching for local file changes (for upload to server)
             // This enables bidirectional sync: server->local and local->server
@@ -829,6 +883,10 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             let internalFilesProcessed = 0;
             let internalFilesErrors = 0;
             
+            // Error aggregation: track missing chunks errors separately
+            let missingChunksErrors = 0;
+            const missingChunksFiles: string[] = [];
+            
             for (const row of allDocs.rows) {
                 const doc = row.doc;
                 if (!doc) continue;
@@ -887,7 +945,11 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     // Get full document with data
                     const fullEntry = await this._localDatabase.getDBEntryFromMeta(doc as any, false, true);
                     if (!fullEntry) {
-                        errors++;
+                        // Track as missing chunks error (most common cause)
+                        missingChunksErrors++;
+                        if (missingChunksFiles.length < 10) {
+                            missingChunksFiles.push(path);
+                        }
                         console.error(`[Friday Sync] Could not get full entry for:`, {
                             docId: doc._id,
                             path: path,
@@ -895,7 +957,6 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                             docSize: (doc as any).size,
                             docChildren: (doc as any).children?.length ?? 0,
                         });
-                        Logger(`Could not get full entry for: ${path}`, LOG_LEVEL_VERBOSE);
                         continue;
                     }
                     
@@ -965,11 +1026,32 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             }
             
             // Log summary with errors count
-            const totalErrors = errors + internalFilesErrors;
-            if (totalErrors > 0) {
-                console.log(`[Friday Sync] Rebuild completed with ${totalErrors} errors (${errors} normal files, ${internalFilesErrors} internal files). Check console for details.`);
+            const totalErrors = errors + internalFilesErrors + missingChunksErrors;
+            
+            // Aggregated error display: show one notice for missing chunks instead of many
+            if (missingChunksErrors > 0) {
+                const sampleFiles = missingChunksFiles.slice(0, 3).join(", ");
+                const moreText = missingChunksErrors > 3 ? ` and ${missingChunksErrors - 3} more` : "";
+                Logger(
+                    `${missingChunksErrors} files could not be read (missing data). This usually happens after a database reset. Consider using "Fetch from Server" to re-sync. Examples: ${sampleFiles}${moreText}`,
+                    LOG_LEVEL_NOTICE
+                );
+                console.log(`[Friday Sync] Missing chunks for ${missingChunksErrors} files:`, missingChunksFiles);
             }
-            Logger(`Rebuild complete: ${processed} normal files (${created} created, ${updated} updated, ${errors} errors), ${internalFilesProcessed} internal files (${internalFilesErrors} errors)`, LOG_LEVEL_NOTICE);
+            
+            if (errors > 0) {
+                console.log(`[Friday Sync] Rebuild completed with ${errors} write errors. Check console for details.`);
+            }
+            
+            if (internalFilesErrors > 0) {
+                console.log(`[Friday Sync] ${internalFilesErrors} internal files had errors. Check console for details.`);
+            }
+            
+            // Show success message with summary
+            const successCount = created + updated;
+            if (successCount > 0 || totalErrors === 0) {
+                Logger(`Rebuild complete: ${successCount} files written (${created} new, ${updated} updated)`, LOG_LEVEL_NOTICE);
+            }
             
             return true;
         } catch (error) {

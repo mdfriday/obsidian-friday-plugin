@@ -557,5 +557,9 @@
     "Warning! This will have a serious impact on performance. And the logs will not be synchronised under the default name. Please be careful with logs; they often contain your confidential information.": "Warning! This will have a serious impact on performance. And the logs will not be synchronised under the default name. Please be careful with logs; they often contain your confidential information.",
     "When you save a file in the editor, start a sync automatically": "When you save a file in the editor, start a sync automatically",
     "Write credentials in the file": "Write credentials in the file",
-    "Write logs into the file": "Write logs into the file"
+    "Write logs into the file": "Write logs into the file",
+    "fridaySync.saltChanged.title": "Remote Database Reset Detected",
+    "fridaySync.saltChanged.message": "The remote database encryption key has changed. This usually means the remote database has been reset or rebuilt. Local data cannot sync with the new database. Please use 'Fetch from Server' to re-sync your data, or clear your local database and sync again.",
+    "fridaySync.decryptionErrors.aggregated": "Detected ${count} decryption errors. The remote database may have been reset. Please use 'Fetch from Server' to re-sync your data.",
+    "fridaySync.saltCheck.failed": "Failed to verify remote database status"
 }

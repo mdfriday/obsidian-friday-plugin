@@ -17,6 +17,13 @@ import { resolveWithIgnoreKnownError, type SimpleStore } from "../common/utils.t
 import type { KeyValueDatabase } from "../interfaces/KeyValueDatabase.ts";
 import { arrayBufferToBase64Single } from "../string_and_binary/convert.ts";
 import type { ServiceHub } from "../services/ServiceHub.ts";
+import { $msg } from "../common/i18n.ts";
+
+export type SaltCheckResult = {
+    ok: boolean;
+    message?: string;
+    needsFetch: boolean;
+};
 
 export type ReplicationCallback = (e: PouchDB.Core.ExistingDocument<EntryDoc>[]) => Promise<void> | void;
 export type ReplicationStat = {
@@ -83,6 +90,94 @@ export abstract class LiveSyncAbstractReplicator {
             Logger(`Failed to obtain PBKDF2 salt (Security Seed) for replication`, level);
             Logger(ex, LOG_LEVEL_VERBOSE);
             return false;
+        }
+    }
+
+    /**
+     * Get the storage key for the known salt of a specific database.
+     * @param dbName The name of the database.
+     * @returns The storage key.
+     */
+    protected _getKnownSaltKey(dbName: string): string {
+        return `known_salt_${dbName}`;
+    }
+
+    /**
+     * Check if the remote database's PBKDF2 salt has changed since last sync.
+     * This is used to detect remote database resets.
+     * @param setting The remote database settings.
+     * @returns The result of the salt check.
+     */
+    async checkSaltConsistency(setting: RemoteDBSettings): Promise<SaltCheckResult> {
+        const saltKey = this._getKnownSaltKey(setting.couchDB_DBNAME);
+        const saltStore = this.env.services.database.openSimpleStore<string>("friday-sync-salt");
+
+        try {
+            // Force refresh to get the latest salt from remote
+            const remoteSalt = await this.getReplicationPBKDF2Salt(setting, true);
+            const remoteSaltBase64 = await arrayBufferToBase64Single(remoteSalt);
+
+            // Get the stored salt from last successful sync
+            const storedSalt = await saltStore.get(saltKey);
+
+            // First time sync - no stored salt yet
+            if (!storedSalt) {
+                Logger(`First sync detected, storing initial salt`, LOG_LEVEL_VERBOSE);
+                await saltStore.set(saltKey, remoteSaltBase64);
+                return { ok: true, needsFetch: false };
+            }
+
+            // Compare salts
+            if (storedSalt !== remoteSaltBase64) {
+                Logger(`Salt mismatch detected! Stored: ${storedSalt.substring(0, 16)}..., Remote: ${remoteSaltBase64.substring(0, 16)}...`, LOG_LEVEL_INFO);
+                return {
+                    ok: false,
+                    message: $msg("fridaySync.saltChanged.message"),
+                    needsFetch: true,
+                };
+            }
+
+            Logger(`Salt consistency check passed`, LOG_LEVEL_VERBOSE);
+            return { ok: true, needsFetch: false };
+        } catch (ex) {
+            Logger($msg("fridaySync.saltCheck.failed"), LOG_LEVEL_VERBOSE);
+            Logger(ex, LOG_LEVEL_VERBOSE);
+            // Check failure should not block sync - let subsequent operations handle errors
+            return { ok: true, needsFetch: false };
+        }
+    }
+
+    /**
+     * Update the stored salt after a successful sync or fetch operation.
+     * @param setting The remote database settings.
+     */
+    async updateStoredSalt(setting: RemoteDBSettings): Promise<void> {
+        try {
+            const saltKey = this._getKnownSaltKey(setting.couchDB_DBNAME);
+            const saltStore = this.env.services.database.openSimpleStore<string>("friday-sync-salt");
+            const remoteSalt = await this.getReplicationPBKDF2Salt(setting, false);
+            const remoteSaltBase64 = await arrayBufferToBase64Single(remoteSalt);
+            await saltStore.set(saltKey, remoteSaltBase64);
+            Logger(`Stored salt updated successfully`, LOG_LEVEL_VERBOSE);
+        } catch (ex) {
+            Logger(`Failed to update stored salt`, LOG_LEVEL_VERBOSE);
+            Logger(ex, LOG_LEVEL_VERBOSE);
+        }
+    }
+
+    /**
+     * Clear the stored salt. Call this after "Fetch from Server" to accept new salt.
+     * @param setting The remote database settings.
+     */
+    async clearStoredSalt(setting: RemoteDBSettings): Promise<void> {
+        try {
+            const saltKey = this._getKnownSaltKey(setting.couchDB_DBNAME);
+            const saltStore = this.env.services.database.openSimpleStore<string>("friday-sync-salt");
+            await saltStore.delete(saltKey);
+            Logger(`Stored salt cleared`, LOG_LEVEL_VERBOSE);
+        } catch (ex) {
+            Logger(`Failed to clear stored salt`, LOG_LEVEL_VERBOSE);
+            Logger(ex, LOG_LEVEL_VERBOSE);
         }
     }
     env: LiveSyncReplicatorEnv;

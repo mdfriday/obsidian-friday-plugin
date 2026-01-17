@@ -297,6 +297,34 @@ export class SyncService {
     }
 
     /**
+     * Check if there are any sync issues that need user attention
+     * 
+     * This is useful for detecting:
+     * - Remote database reset (requires "Fetch from Server")
+     * - Configuration mismatches between devices
+     * 
+     * @returns object with status flags and message
+     */
+    getSyncIssues(): { hasIssues: boolean; message: string; needsFetch: boolean } {
+        if (!this.core) {
+            return { hasIssues: false, message: "", needsFetch: false };
+        }
+        return this.core.getSyncIssues();
+    }
+    
+    /**
+     * Check if the remote database has been reset/rebuilt
+     * 
+     * When this returns true, the user should use "Fetch from Server" to re-sync.
+     * This typically happens when another device rebuilds the remote database.
+     * 
+     * @returns true if database reset was detected
+     */
+    isRemoteDatabaseReset(): boolean {
+        return this.core?.isRemoteDatabaseReset() ?? false;
+    }
+
+    /**
      * Close and clean up resources
      */
     async close(): Promise<void> {
