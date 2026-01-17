@@ -172,8 +172,8 @@ export default class FridayPlugin extends Plugin {
 		const { Hugoverse } = await import('./hugoverse');
 		this.hugoverse = new Hugoverse(this);
 		
-		// Fetch usage information if license is active
-		await this.refreshLicenseUsage();
+		// Note: License usage is fetched when user opens Settings page (not on startup)
+		// This improves plugin startup performance
 	}
 
 	/**
@@ -1161,6 +1161,7 @@ class FridaySettingTab extends PluginSettingTab {
 	private isActivating: boolean = false;
 	private activationError: string = '';
 	private firstTimeSync: boolean = false;
+	private isRefreshingUsage: boolean = false;
 
 	constructor(app: App, plugin: FridayPlugin) {
 		super(app, plugin);
@@ -1185,6 +1186,22 @@ class FridaySettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		const {license, licenseSync} = this.plugin.settings;
+		
+		// Refresh license usage in background when settings page opens
+		// This avoids blocking plugin startup with network requests
+		if (!this.isRefreshingUsage && license && !isLicenseExpired(license.expiresAt)) {
+			this.isRefreshingUsage = true;
+			this.plugin.refreshLicenseUsage().then(() => {
+				this.isRefreshingUsage = false;
+				// Only refresh display if usage data changed
+				const newUsage = this.plugin.settings.licenseUsage;
+				if (newUsage?.lastUpdated && Date.now() - newUsage.lastUpdated < 1000) {
+					this.display();
+				}
+			}).catch(() => {
+				this.isRefreshingUsage = false;
+			});
+		}
 
 		// =========================================
 		// License Section (Always at top - both platforms)
