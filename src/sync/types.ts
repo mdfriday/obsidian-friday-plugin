@@ -33,7 +33,7 @@ export interface InternalFileInfo {
  * - workspace*: Device-specific layout state, different per device
  * - cache: Temporary cache files, regenerated automatically
  * - node_modules/.git: Development artifacts
- * - mdfriday/preview, mdfriday/themes: MDFriday plugin generated files
+ * - mdfriday/preview, mdfriday/themes, mdfriday/data.json: MDFriday plugin generated files
  */
 export const DEFAULT_INTERNAL_IGNORE_PATTERNS = [
     "\\.obsidian\\/workspace",           // Workspace layout (device-specific)
@@ -44,6 +44,7 @@ export const DEFAULT_INTERNAL_IGNORE_PATTERNS = [
     "\\/\\.git\\/",                      // Git directories
     "plugins\\/mdfriday\\/preview",      // MDFriday preview files (generated)
     "plugins\\/mdfriday\\/themes",       // MDFriday themes (generated)
+    "plugins\\/mdfriday\\/data\\.json",  // MDFriday plugin settings (device-specific)
 ].join(",");
 
 /**

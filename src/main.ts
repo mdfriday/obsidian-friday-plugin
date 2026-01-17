@@ -1188,16 +1188,16 @@ class FridaySettingTab extends PluginSettingTab {
 		const {license, licenseSync} = this.plugin.settings;
 		
 		// Refresh license usage in background when settings page opens
-		// This avoids blocking plugin startup with network requests
-		if (!this.isRefreshingUsage && license && !isLicenseExpired(license.expiresAt)) {
+		// Only fetch if last update was more than 5 seconds ago to avoid excessive API calls
+		const existingUsage = this.plugin.settings.licenseUsage;
+		const usageStale = !existingUsage?.lastUpdated || (Date.now() - existingUsage.lastUpdated > 5000);
+		
+		if (!this.isRefreshingUsage && license && !isLicenseExpired(license.expiresAt) && usageStale) {
 			this.isRefreshingUsage = true;
 			this.plugin.refreshLicenseUsage().then(() => {
+				// Refresh display to show updated usage data
+				this.display();
 				this.isRefreshingUsage = false;
-				// Only refresh display if usage data changed
-				const newUsage = this.plugin.settings.licenseUsage;
-				if (newUsage?.lastUpdated && Date.now() - newUsage.lastUpdated < 1000) {
-					this.display();
-				}
 			}).catch(() => {
 				this.isRefreshingUsage = false;
 			});

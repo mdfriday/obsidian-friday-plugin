@@ -388,7 +388,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 syncInternalFiles: config.syncInternalFiles ?? true,
                 syncInternalFilesBeforeReplication: config.syncInternalFilesBeforeReplication ?? true,
                 syncInternalFilesInterval: config.syncInternalFilesInterval ?? 60,
-                syncInternalFilesIgnorePatterns: config.syncInternalFilesIgnorePatterns ?? DEFAULT_INTERNAL_IGNORE_PATTERNS,
+                syncInternalFilesIgnorePatterns: config.syncInternalFilesIgnorePatterns 
+                    ? `${DEFAULT_INTERNAL_IGNORE_PATTERNS},${config.syncInternalFilesIgnorePatterns}`
+                    : DEFAULT_INTERNAL_IGNORE_PATTERNS,
                 syncInternalFilesTargetPatterns: config.syncInternalFilesTargetPatterns ?? "",
                 watchInternalFileChanges: config.watchInternalFileChanges ?? true,
             };

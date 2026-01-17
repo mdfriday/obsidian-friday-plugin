@@ -143,7 +143,9 @@ export class FridayHiddenFileSync {
         const s = this.core.getSettings();
         return {
             syncInternalFiles: s.syncInternalFiles ?? true,
-            syncInternalFilesIgnorePatterns: s.syncInternalFilesIgnorePatterns ?? DEFAULT_INTERNAL_IGNORE_PATTERNS,
+            syncInternalFilesIgnorePatterns: s.syncInternalFilesIgnorePatterns 
+                ? `${DEFAULT_INTERNAL_IGNORE_PATTERNS},${s.syncInternalFilesIgnorePatterns}`
+                : DEFAULT_INTERNAL_IGNORE_PATTERNS,
             syncInternalFilesTargetPatterns: s.syncInternalFilesTargetPatterns ?? "",
             syncInternalFileOverwritePatterns: s.syncInternalFileOverwritePatterns ?? "",
             watchInternalFileChanges: s.watchInternalFileChanges ?? true,
