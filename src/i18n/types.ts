@@ -98,6 +98,9 @@ export interface TranslationNamespace {
 		ignore_patterns: string;
 		ignore_patterns_desc: string;
 		ignore_patterns_placeholder: string;
+		ignore_patterns_add: string;
+		ignore_patterns_delete: string;
+		ignore_patterns_custom_rule: string;
 
 		// Danger Zone - Reset
 		danger_zone: string;

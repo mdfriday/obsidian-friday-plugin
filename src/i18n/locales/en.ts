@@ -81,8 +81,11 @@ export const en: TranslationNamespace = {
 		sync_plugins: "Sync Plugins",
 		sync_plugins_desc: "Sync Obsidian plugins from .obsidian/plugins folder.",
 		ignore_patterns: "Ignore Patterns",
-		ignore_patterns_desc: "Files and folders matching these patterns will not be synced. Use gitignore format, one pattern per line.",
+		ignore_patterns_desc: "Files and folders matching these patterns will not be synced. Use gitignore format.",
 		ignore_patterns_placeholder: "e.g. images/, *.tmp",
+		ignore_patterns_add: "Add Rule",
+		ignore_patterns_delete: "Delete Rule",
+		ignore_patterns_custom_rule: "Custom rule",
 
 		// Publish settings
 		publish_settings: "Publish Settings",

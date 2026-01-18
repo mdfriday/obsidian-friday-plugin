@@ -81,8 +81,11 @@ export const zhCn: TranslationNamespace = {
 		sync_plugins: "同步插件",
 		sync_plugins_desc: "同步 .obsidian/plugins 文件夹中的 Obsidian 插件。",
 		ignore_patterns: "忽略规则",
-		ignore_patterns_desc: "匹配这些规则的文件和文件夹将不会被同步。使用 gitignore 格式，每行一个规则。",
+		ignore_patterns_desc: "匹配这些规则的文件和文件夹将不会被同步。使用 gitignore 格式。",
 		ignore_patterns_placeholder: "例如 images/, *.tmp",
+		ignore_patterns_add: "添加规则",
+		ignore_patterns_delete: "删除规则",
+		ignore_patterns_custom_rule: "自定义规则",
 
 		// Publish settings
 		publish_settings: "发布设置",

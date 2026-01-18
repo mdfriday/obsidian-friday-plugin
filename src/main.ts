@@ -1882,32 +1882,70 @@ class FridaySettingTab extends PluginSettingTab {
 				});
 			});
 
-		// Ignore Patterns setting
+		// Ignore Patterns setting - dynamic list using native Setting components
 		const currentPatterns = this.plugin.settings.syncConfig?.ignorePatterns || [];
+		
+		// Container for pattern rows (inserted after the header setting)
+		const patternsListContainer = selectiveSyncContainer.createDiv();
+		
+		// Helper function to save all patterns
+		const savePatterns = async () => {
+			const patterns: string[] = [];
+			const inputs = patternsListContainer.querySelectorAll('input[type="text"]');
+			inputs.forEach((input: HTMLInputElement) => {
+				const value = input.value.trim();
+				if (value) {
+					patterns.push(value);
+				}
+			});
+			
+			this.plugin.settings.syncConfig.ignorePatterns = patterns;
+			await this.plugin.saveSettings();
+			
+			if (this.plugin.syncService?.isInitialized) {
+				this.plugin.syncService.updateIgnorePatterns(patterns);
+			}
+		};
+		
+		// Helper function to create a pattern row using native Setting
+		const createPatternRow = (pattern: string = '') => {
+			const setting = new Setting(patternsListContainer)
+				.setDesc(this.plugin.i18n.t('settings.ignore_patterns_custom_rule'))
+				.addText((text) => {
+					text.setPlaceholder(this.plugin.i18n.t('settings.ignore_patterns_placeholder'));
+					text.setValue(pattern);
+					text.onChange(() => savePatterns());
+				})
+				.addExtraButton((button) => {
+					button
+						.setIcon('trash-2')
+						.setTooltip(this.plugin.i18n.t('settings.ignore_patterns_delete'))
+						.onClick(() => {
+							setting.settingEl.remove();
+							savePatterns();
+						});
+				});
+		};
+		
+		// Header row with title and add button
 		new Setting(selectiveSyncContainer)
 			.setName(this.plugin.i18n.t('settings.ignore_patterns'))
 			.setDesc(this.plugin.i18n.t('settings.ignore_patterns_desc'))
-			.addText((text) => {
-				text.inputEl.style.width = '200px';
-				text.inputEl.placeholder = this.plugin.i18n.t('settings.ignore_patterns_placeholder');
-				text.setValue(currentPatterns.join(', '));
-				text.onChange(async (value) => {
-					// Parse comma-separated patterns, trim whitespace, filter empty
-					const patterns = value
-						.split(',')
-						.map(p => p.trim())
-						.filter(p => p.length > 0);
-					
-					// Update settings (user-defined ignore patterns only)
-					this.plugin.settings.syncConfig.ignorePatterns = patterns;
-					await this.plugin.saveSettings();
-					
-					// Update sync service immediately if initialized
-					if (this.plugin.syncService?.isInitialized) {
-						this.plugin.syncService.updateIgnorePatterns(patterns);
-					}
-				});
+			.addButton((button) => {
+				button
+					.setButtonText(this.plugin.i18n.t('settings.ignore_patterns_add'))
+					.onClick(() => {
+						createPatternRow('');
+					});
 			});
+		
+		// Move the list container after the header setting
+		selectiveSyncContainer.appendChild(patternsListContainer);
+		
+		// Initialize with existing patterns
+		currentPatterns.forEach((pattern) => {
+			createPatternRow(pattern);
+		});
 
 		// ========== Danger Zone ==========
 		this.renderDangerZone(containerEl);
