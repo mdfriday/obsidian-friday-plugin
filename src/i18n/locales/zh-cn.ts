@@ -78,6 +78,8 @@ export const zhCn: TranslationNamespace = {
 		sync_pdf_desc: "同步 PDF 文件。",
 		sync_themes: "同步主题",
 		sync_themes_desc: "同步 .obsidian/themes 文件夹中的 Obsidian 主题。",
+		sync_snippets: "同步代码片段",
+		sync_snippets_desc: "同步 .obsidian/snippets 文件夹中的 CSS 代码片段。",
 		sync_plugins: "同步插件",
 		sync_plugins_desc: "同步 .obsidian/plugins 文件夹中的 Obsidian 插件。",
 		ignore_patterns: "忽略规则",
@@ -91,8 +93,10 @@ export const zhCn: TranslationNamespace = {
 		publish_settings: "发布设置",
 		publish_method: "发布方式",
 		publish_method_desc: "选择您想要发布网站的方式",
+		publish_method_mdfriday: "MDFriday App",
 		publish_method_netlify: "Netlify",
 		publish_method_ftp: "FTP",
+		license_required: "请先激活许可证以使用此功能",
 
 		// Netlify settings
 		netlify_settings: "Netlify 设置",
@@ -124,6 +128,26 @@ export const zhCn: TranslationNamespace = {
 		ftp_test_connection_testing: "测试中...",
 		ftp_test_connection_success: "连接成功",
 		ftp_test_connection_failed: "连接失败",
+
+		// MDFriday App 设置
+		mdfriday_app: "MDFriday App",
+		mdfriday_app_desc: "配置您的个人子域名，用于发布站点",
+		subdomain: "子域名",
+		subdomain_desc: "您的 MDFriday App 个人子域名",
+		subdomain_placeholder: "输入子域名",
+		subdomain_check: "检查",
+		subdomain_checking: "检查中...",
+		subdomain_update: "更新",
+		subdomain_updating: "更新中...",
+		subdomain_available: "子域名可用",
+		subdomain_unavailable: "子域名已被占用",
+		subdomain_updated: "子域名更新成功！",
+		subdomain_update_failed: "子域名更新失败：{{error}}",
+		subdomain_check_failed: "检查子域名可用性失败",
+		subdomain_invalid: "子域名只能包含小写字母、数字和连字符",
+		subdomain_too_short: "子域名长度至少 3 个字符",
+		subdomain_too_long: "子域名长度最多 32 个字符",
+		subdomain_same: "子域名与当前相同",
 
 		// General settings
 		general_settings: "通用设置",

@@ -147,6 +147,34 @@ export interface StoredUsageData {
 }
 
 /**
+ * Subdomain information from API
+ */
+export interface SubdomainInfo {
+    subdomain: string;
+    full_domain: string;
+    folder: string;
+    created_at: number;
+}
+
+/**
+ * Subdomain availability check response
+ */
+export interface SubdomainCheckResponse {
+    available: boolean;
+    message?: string;
+}
+
+/**
+ * Subdomain update response
+ */
+export interface SubdomainUpdateResponse {
+    new_subdomain: string;
+    old_subdomain: string;
+    full_domain: string;
+    message: string;
+}
+
+/**
  * Convert license key to email
  * License Key format: MDF-XXXX-XXXX-XXXX
  */

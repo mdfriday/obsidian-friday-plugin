@@ -2,7 +2,7 @@ import {App, FileSystemAdapter, Notice, Platform, requestUrl, TFile, TFolder, Va
 import type {RequestUrlResponse} from "obsidian";
 import type {User} from "./user";
 import type FridayPlugin from "./main";
-import type { LicenseActivationResponse, LicenseUsageResponse } from "./license";
+import type { LicenseActivationResponse, LicenseUsageResponse, SubdomainInfo, SubdomainCheckResponse, SubdomainUpdateResponse } from "./license";
 
 const NEW_ID = "-1"
 const COUNTER_REQUEST_ID_KEY = "friday_counter_request_id"
@@ -394,6 +394,142 @@ export class Hugoverse {
 		} catch (error) {
 			console.error("Failed to reset license usage:", error);
 			throw error;
+		}
+	}
+
+	/**
+	 * Get current subdomain for license
+	 * 
+	 * GET /api/license/subdomain?key={license_key}
+	 * Authorization: Bearer <token>
+	 */
+	async getSubdomain(
+		token: string,
+		licenseKey: string
+	): Promise<SubdomainInfo | null> {
+		try {
+			const url = `${this.apiUrl}/api/license/subdomain?key=${licenseKey}`;
+			
+			const response: RequestUrlResponse = await requestUrl({
+				url,
+				method: "GET",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+				},
+			});
+			
+			if (response.status !== 200) {
+				console.error(`Get subdomain failed: ${response.text}`);
+				return null;
+			}
+			
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0] as SubdomainInfo;
+			}
+			
+			return null;
+		} catch (error) {
+			console.error("Failed to get subdomain:", error);
+			return null;
+		}
+	}
+
+	/**
+	 * Check if subdomain is available
+	 * 
+	 * POST /api/license/subdomain/check
+	 * Authorization: Bearer <token>
+	 * FormData: license_key, subdomain
+	 */
+	async checkSubdomainAvailability(
+		token: string,
+		licenseKey: string,
+		subdomain: string
+	): Promise<SubdomainCheckResponse | null> {
+		try {
+			const url = `${this.apiUrl}/api/license/subdomain/check`;
+			
+			const body = new FormData();
+			body.append("license_key", licenseKey);
+			body.append("subdomain", subdomain);
+			
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+			
+			const response: RequestUrlResponse = await requestUrl({
+				url,
+				method: "POST",
+				headers: {
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+					"Authorization": `Bearer ${token}`,
+				},
+				body: arrayBufferBody,
+			});
+			
+			if (response.status !== 200) {
+				console.error(`Check subdomain failed: ${response.text}`);
+				return null;
+			}
+			
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0] as SubdomainCheckResponse;
+			}
+			
+			return null;
+		} catch (error) {
+			console.error("Failed to check subdomain:", error);
+			return null;
+		}
+	}
+
+	/**
+	 * Update subdomain
+	 * 
+	 * POST /api/license/subdomain/update
+	 * Authorization: Bearer <token>
+	 * FormData: license_key, new_subdomain
+	 */
+	async updateSubdomain(
+		token: string,
+		licenseKey: string,
+		newSubdomain: string
+	): Promise<SubdomainUpdateResponse | null> {
+		try {
+			const url = `${this.apiUrl}/api/license/subdomain/update`;
+			
+			const body = new FormData();
+			body.append("license_key", licenseKey);
+			body.append("new_subdomain", newSubdomain);
+			
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+			
+			const response: RequestUrlResponse = await requestUrl({
+				url,
+				method: "POST",
+				headers: {
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+					"Authorization": `Bearer ${token}`,
+				},
+				body: arrayBufferBody,
+			});
+			if (response.status !== 200) {
+				console.error(`Update subdomain failed: ${response.text}`);
+				return null;
+			}
+			
+			const data = response.json;
+			console.log("Update subdomain response data:", data);
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0] as SubdomainUpdateResponse;
+			}
+			
+			return null;
+		} catch (error) {
+			console.error("Failed to update subdomain:", error);
+			return null;
 		}
 	}
 

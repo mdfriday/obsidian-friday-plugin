@@ -78,6 +78,8 @@ export const en: TranslationNamespace = {
 		sync_pdf_desc: "Sync PDF files.",
 		sync_themes: "Sync Themes",
 		sync_themes_desc: "Sync Obsidian themes from .obsidian/themes folder.",
+		sync_snippets: "Sync Snippets",
+		sync_snippets_desc: "Sync CSS snippets from .obsidian/snippets folder.",
 		sync_plugins: "Sync Plugins",
 		sync_plugins_desc: "Sync Obsidian plugins from .obsidian/plugins folder.",
 		ignore_patterns: "Ignore Patterns",
@@ -91,8 +93,10 @@ export const en: TranslationNamespace = {
 		publish_settings: "Publish Settings",
 		publish_method: "Publish Method",
 		publish_method_desc: "Choose how you want to publish your site",
+		publish_method_mdfriday: "MDFriday App",
 		publish_method_netlify: "Netlify",
 		publish_method_ftp: "FTP",
+		license_required: "Please activate a license to use this feature",
 
 		// Netlify settings
 		netlify_settings: "Netlify Settings",
@@ -126,6 +130,26 @@ export const en: TranslationNamespace = {
 		ftp_test_connection_testing: "Testing...",
 		ftp_test_connection_success: "Connection Successful",
 		ftp_test_connection_failed: "Connection Failed",
+
+		// MDFriday App Settings
+		mdfriday_app: "MDFriday App",
+		mdfriday_app_desc: "Configure your personal subdomain for publishing sites",
+		subdomain: "Subdomain",
+		subdomain_desc: "Your personal subdomain for MDFriday App",
+		subdomain_placeholder: "Enter subdomain",
+		subdomain_check: "Check",
+		subdomain_checking: "Checking...",
+		subdomain_update: "Update",
+		subdomain_updating: "Updating...",
+		subdomain_available: "Subdomain is available",
+		subdomain_unavailable: "Subdomain is already taken",
+		subdomain_updated: "Subdomain updated successfully!",
+		subdomain_update_failed: "Failed to update subdomain: {{error}}",
+		subdomain_check_failed: "Failed to check subdomain availability",
+		subdomain_invalid: "Subdomain can only contain lowercase letters, numbers, and hyphens",
+		subdomain_too_short: "Subdomain must be at least 3 characters",
+		subdomain_too_long: "Subdomain must be at most 32 characters",
+		subdomain_same: "Subdomain is the same as current",
 
 		// General settings
 		general_settings: "General Settings",

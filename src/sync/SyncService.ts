@@ -20,6 +20,7 @@ export interface SelectiveSyncSettings {
     syncVideo: boolean;     // mp4, webm, ogv, mov, mkv
     syncPdf: boolean;       // pdf
     syncThemes: boolean;    // .obsidian/themes
+    syncSnippets: boolean;  // .obsidian/snippets
     syncPlugins: boolean;   // .obsidian/plugins
 }
 

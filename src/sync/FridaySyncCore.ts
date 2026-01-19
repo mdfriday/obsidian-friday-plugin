@@ -359,7 +359,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             // Store selective sync settings for file type filtering
             if (config.selectiveSync) {
                 this._selectiveSync = {
-                    syncImages: config.selectiveSync.syncImages ?? true,
+                    syncImages: config.selectiveSync.syncImages ?? false,
                     syncAudio: config.selectiveSync.syncAudio ?? false,
                     syncVideo: config.selectiveSync.syncVideo ?? false,
                     syncPdf: config.selectiveSync.syncPdf ?? false,

@@ -42,10 +42,13 @@ interface FridaySettings {
 	licenseUser: StoredUserData | null;
 	licenseUsage: StoredUsageData | null;
 	encryptionPassphrase: string;
+	// Custom subdomain (only set when user modifies from default)
+	// If null/undefined, use licenseUser.userDir as default
+	customSubdomain: string | null;
 	// General Settings
 	downloadServer: 'global' | 'east';
 	// Publish Settings
-	publishMethod: 'netlify' | 'ftp';
+	publishMethod: 'mdfriday' | 'netlify' | 'ftp';
 	netlifyAccessToken: string;
 	netlifyProjectId: string;
 	// FTP Settings
@@ -69,10 +72,11 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	licenseUser: null,
 	licenseUsage: null,
 	encryptionPassphrase: '',
+	customSubdomain: null,
 	// General Settings defaults
 	downloadServer: 'global',
 	// Publish Settings defaults
-	publishMethod: 'netlify',
+	publishMethod: 'mdfriday',
 	netlifyAccessToken: '',
 	netlifyProjectId: '',
 	// FTP Settings defaults
@@ -821,12 +825,13 @@ export default class FridayPlugin extends Plugin {
 		// Initialize selectiveSync with defaults if not exists
 		if (!this.settings.syncConfig.selectiveSync) {
 			this.settings.syncConfig.selectiveSync = {
-				syncImages: true,
+				syncImages: false,
 				syncAudio: false,
 				syncVideo: false,
 				syncPdf: false,
-				syncThemes: true,
-				syncPlugins: true,
+				syncThemes: false,
+				syncSnippets: false,
+				syncPlugins: false,
 			};
 		}
 		
@@ -852,6 +857,9 @@ export default class FridayPlugin extends Plugin {
 		
 		if (!(selectiveSync.syncThemes ?? true)) {
 			internalPatterns.push("\\.obsidian\\/themes");
+		}
+		if (!(selectiveSync.syncSnippets ?? true)) {
+			internalPatterns.push("\\.obsidian\\/snippets");
 		}
 		if (!(selectiveSync.syncPlugins ?? true)) {
 			internalPatterns.push("\\.obsidian\\/plugins");
@@ -933,6 +941,45 @@ export default class FridayPlugin extends Plugin {
 				console.warn('[Friday] Failed to fetch license usage after token refresh:', retryError);
 				// Don't throw error, just log it - usage is not critical for plugin functionality
 			}
+		}
+	}
+
+	/**
+	 * Get effective subdomain (custom or default from userDir)
+	 */
+	getEffectiveSubdomain(): string {
+		return this.settings.customSubdomain ?? this.settings.licenseUser?.userDir ?? '';
+	}
+
+	/**
+	 * Refresh subdomain information from API
+	 * Called when Settings page is displayed (lazy loading)
+	 */
+	async refreshSubdomainInfo(): Promise<void> {
+		// Check if dependencies are initialized
+		if (!this.hugoverse) {
+			return;
+		}
+
+		const { license, userToken } = this.settings;
+		
+		// Only fetch if license is active and not expired
+		if (!license || isLicenseExpired(license.expiresAt)) {
+			return;
+		}
+
+		try {
+			const subdomainInfo = await this.hugoverse.getSubdomain(userToken, license.key);
+			if (subdomainInfo && subdomainInfo.subdomain) {
+				// Only update customSubdomain if it differs from the default (userDir)
+				// This handles the case where user's subdomain was changed from another device
+				if (subdomainInfo.subdomain !== this.settings.licenseUser?.userDir) {
+					this.settings.customSubdomain = subdomainInfo.subdomain;
+					await this.saveData(this.settings);
+				}
+			}
+		} catch (error) {
+			console.warn('[Friday] Failed to refresh subdomain info:', error);
 		}
 	}
 
@@ -1162,6 +1209,8 @@ class FridaySettingTab extends PluginSettingTab {
 	private activationError: string = '';
 	private firstTimeSync: boolean = false;
 	private isRefreshingUsage: boolean = false;
+	private isRefreshingSubdomain: boolean = false;
+	private lastSubdomainRefresh: number = 0;
 
 	constructor(app: App, plugin: FridayPlugin) {
 		super(app, plugin);
@@ -1203,6 +1252,22 @@ class FridaySettingTab extends PluginSettingTab {
 			});
 		}
 
+		// Refresh subdomain info in background when settings page opens
+		// Only fetch if last update was more than 5 seconds ago
+		const subdomainStale = !this.lastSubdomainRefresh || (Date.now() - this.lastSubdomainRefresh > 5000);
+		
+		if (!this.isRefreshingSubdomain && license && !isLicenseExpired(license.expiresAt) && subdomainStale) {
+			this.isRefreshingSubdomain = true;
+			this.plugin.refreshSubdomainInfo().then(() => {
+				this.lastSubdomainRefresh = Date.now();
+				this.isRefreshingSubdomain = false;
+				// Re-render to show updated subdomain
+				this.display();
+			}).catch(() => {
+				this.isRefreshingSubdomain = false;
+			});
+		}
+
 		// =========================================
 		// License Section (Always at top - both platforms)
 		// =========================================
@@ -1227,12 +1292,13 @@ class FridaySettingTab extends PluginSettingTab {
 	 * Render Publish Settings Section (Desktop only)
 	 */
 	private renderPublishSettings(containerEl: HTMLElement): void {
-		const {publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
+		const {publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert, license, licenseUser, customSubdomain, userToken} = this.plugin.settings;
 
 		// Publish Settings Section
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.publish_settings')});
 		
 		// Create containers for dynamic content
+		let mdfridaySettingsContainer: HTMLElement;
 		let netlifySettingsContainer: HTMLElement;
 		let ftpSettingsContainer: HTMLElement;
 		
@@ -1242,30 +1308,227 @@ class FridaySettingTab extends PluginSettingTab {
 			.setDesc(this.plugin.i18n.t('settings.publish_method_desc'))
 			.addDropdown((dropdown) => {
 				dropdown
+					.addOption('mdfriday', this.plugin.i18n.t('settings.publish_method_mdfriday'))
 					.addOption('netlify', this.plugin.i18n.t('settings.publish_method_netlify'))
 					.addOption('ftp', this.plugin.i18n.t('settings.publish_method_ftp'))
-					.setValue(publishMethod || 'netlify')
+					.setValue(publishMethod || 'mdfriday')
 					.onChange(async (value) => {
-						this.plugin.settings.publishMethod = value as 'netlify' | 'ftp';
+						this.plugin.settings.publishMethod = value as 'mdfriday' | 'netlify' | 'ftp';
 						await this.plugin.saveSettings();
-						showPublishSettings(value as 'netlify' | 'ftp');
+						showPublishSettings(value as 'mdfriday' | 'netlify' | 'ftp');
 					});
 			});
 
 		// Create containers for different publish methods
+		mdfridaySettingsContainer = containerEl.createDiv('mdfriday-settings-container');
 		netlifySettingsContainer = containerEl.createDiv('netlify-settings-container');
 		ftpSettingsContainer = containerEl.createDiv('ftp-settings-container');
 
 		// Function to show/hide publish settings based on selected method
-		const showPublishSettings = (method: 'netlify' | 'ftp') => {
-			if (method === 'netlify') {
-				netlifySettingsContainer.style.display = 'block';
-				ftpSettingsContainer.style.display = 'none';
-			} else {
-				netlifySettingsContainer.style.display = 'none';
-				ftpSettingsContainer.style.display = 'block';
-			}
+		const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp') => {
+			mdfridaySettingsContainer.style.display = method === 'mdfriday' ? 'block' : 'none';
+			netlifySettingsContainer.style.display = method === 'netlify' ? 'block' : 'none';
+			ftpSettingsContainer.style.display = method === 'ftp' ? 'block' : 'none';
 		};
+
+		// =========================================
+		// MDFriday App Settings
+		// =========================================
+		mdfridaySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_app')});
+		
+		// Only show subdomain settings if license is active
+		if (license && !isLicenseExpired(license.expiresAt)) {
+			// Get effective subdomain: customSubdomain (if set) or default userDir
+			const effectiveSubdomain = customSubdomain ?? licenseUser?.userDir ?? '';
+			
+			// State variables
+			let currentSubdomain = effectiveSubdomain;
+			let inputSubdomain = effectiveSubdomain;
+			let isChecking = false;
+			let isUpdating = false;
+			let availabilityStatus: 'available' | 'unavailable' | 'error' | null = null;
+			let statusMessage = '';
+			
+			// UI elements
+			let subdomainInput: HTMLInputElement;
+			let checkButton: HTMLButtonElement;
+			let updateButton: HTMLButtonElement;
+			let statusEl: HTMLElement | null = null;
+
+			// Helper to update status display
+			const updateStatusDisplay = () => {
+				// Remove existing status
+				if (statusEl) {
+					statusEl.remove();
+					statusEl = null;
+				}
+
+				if (availabilityStatus && statusMessage) {
+					statusEl = mdfridaySettingsContainer.createDiv({
+						cls: `subdomain-status ${availabilityStatus}`,
+						text: statusMessage
+					});
+				}
+			};
+
+			// Helper to update button states
+			const updateButtonStates = () => {
+				// Check button
+				checkButton.disabled = isChecking || isUpdating || !inputSubdomain.trim() || 
+					inputSubdomain === currentSubdomain;
+				checkButton.textContent = isChecking 
+					? this.plugin.i18n.t('settings.subdomain_checking')
+					: this.plugin.i18n.t('settings.subdomain_check');
+
+				// Update button - only enabled when subdomain is available
+				updateButton.disabled = isUpdating || isChecking || 
+					availabilityStatus !== 'available' || !inputSubdomain.trim();
+				updateButton.textContent = isUpdating
+					? this.plugin.i18n.t('settings.subdomain_updating')
+					: this.plugin.i18n.t('settings.subdomain_update');
+			};
+
+			// Helper to validate subdomain
+			const validateSubdomain = (subdomain: string): { valid: boolean; message?: string } => {
+				if (subdomain.length < 3) {
+					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_too_short') };
+				}
+				if (subdomain.length > 32) {
+					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_too_long') };
+				}
+				if (!/^[a-z0-9-]+$/.test(subdomain)) {
+					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_invalid') };
+				}
+				if (subdomain === currentSubdomain) {
+					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_same') };
+				}
+				return { valid: true };
+			};
+
+			// Create subdomain setting - description shows full domain
+			const subdomainSetting = new Setting(mdfridaySettingsContainer)
+				.setName(this.plugin.i18n.t('settings.subdomain_desc'))
+				.setDesc(currentSubdomain ? `${currentSubdomain}.mdfriday.com` : '');
+
+			// Subdomain input
+			subdomainSetting.addText((text) => {
+				subdomainInput = text.inputEl;
+				text.setPlaceholder(this.plugin.i18n.t('settings.subdomain_placeholder'));
+				text.setValue(currentSubdomain);
+				text.onChange((value) => {
+					inputSubdomain = value.toLowerCase().trim();
+					text.setValue(inputSubdomain);
+					
+					// Reset availability when input changes
+					availabilityStatus = null;
+					statusMessage = '';
+					updateStatusDisplay();
+					updateButtonStates();
+					
+					// Update full domain preview in description
+					subdomainSetting.setDesc(inputSubdomain ? `${inputSubdomain}.mdfriday.com` : '');
+				});
+			});
+
+			// Check button
+			subdomainSetting.addButton((button) => {
+				checkButton = button.buttonEl;
+				button
+					.setButtonText(this.plugin.i18n.t('settings.subdomain_check'))
+					.onClick(async () => {
+						// Validate input first
+						const validation = validateSubdomain(inputSubdomain);
+						if (!validation.valid) {
+							availabilityStatus = 'error';
+							statusMessage = validation.message!;
+							updateStatusDisplay();
+							return;
+						}
+
+						isChecking = true;
+						updateButtonStates();
+
+						try {
+							const result = await this.plugin.hugoverse?.checkSubdomainAvailability(
+								userToken, license.key, inputSubdomain
+							);
+
+							if (result) {
+								availabilityStatus = result.available ? 'available' : 'unavailable';
+								statusMessage = result.available 
+									? this.plugin.i18n.t('settings.subdomain_available')
+									: this.plugin.i18n.t('settings.subdomain_unavailable');
+							} else {
+								availabilityStatus = 'error';
+								statusMessage = this.plugin.i18n.t('settings.subdomain_check_failed');
+							}
+						} catch (error) {
+							availabilityStatus = 'error';
+							statusMessage = this.plugin.i18n.t('settings.subdomain_check_failed');
+						} finally {
+							isChecking = false;
+							updateStatusDisplay();
+							updateButtonStates();
+						}
+					});
+			});
+
+			// Update button
+			subdomainSetting.addButton((button) => {
+				updateButton = button.buttonEl;
+				button
+					.setButtonText(this.plugin.i18n.t('settings.subdomain_update'))
+					.setCta()
+					.onClick(async () => {
+						if (availabilityStatus !== 'available') return;
+
+						isUpdating = true;
+						updateButtonStates();
+
+						try {
+							const result = await this.plugin.hugoverse?.updateSubdomain(
+								userToken, license.key, inputSubdomain
+							);
+
+							if (result && result.new_subdomain) {
+								currentSubdomain = result.new_subdomain;
+								inputSubdomain = currentSubdomain;
+								subdomainInput.value = currentSubdomain;
+								subdomainSetting.setDesc(`${currentSubdomain}.mdfriday.com`);
+								
+								// Save custom subdomain to settings
+								this.plugin.settings.customSubdomain = result.new_subdomain;
+								await this.plugin.saveSettings();
+								
+								availabilityStatus = null;
+								statusMessage = '';
+								
+								new Notice(this.plugin.i18n.t('settings.subdomain_updated'));
+							} else {
+								availabilityStatus = 'error';
+								statusMessage = this.plugin.i18n.t('settings.subdomain_update_failed', { error: 'Unknown error' });
+							}
+						} catch (error) {
+							availabilityStatus = 'error';
+							statusMessage = this.plugin.i18n.t('settings.subdomain_update_failed', { 
+								error: error instanceof Error ? error.message : String(error) 
+							});
+						} finally {
+							isUpdating = false;
+							updateStatusDisplay();
+							updateButtonStates();
+						}
+					});
+			});
+
+			// Initial button states
+			updateButtonStates();
+		} else {
+			// Show message to activate license
+			new Setting(mdfridaySettingsContainer)
+				.setName(this.plugin.i18n.t('settings.subdomain_desc'))
+				.setDesc(this.plugin.i18n.t('settings.license_required'));
+		}
 
 		// Netlify Settings
 		netlifySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.netlify_settings')});
@@ -1477,7 +1740,7 @@ class FridaySettingTab extends PluginSettingTab {
 		});
 
 		// Initialize the display based on current publish method
-		showPublishSettings(publishMethod || 'netlify');
+		showPublishSettings(publishMethod || 'mdfriday');
 	}
 
 	/**
@@ -1794,12 +2057,13 @@ class FridaySettingTab extends PluginSettingTab {
 		// Initialize syncConfig.selectiveSync if not exists
 		if (!this.plugin.settings.syncConfig.selectiveSync) {
 			this.plugin.settings.syncConfig.selectiveSync = {
-				syncImages: true,
+				syncImages: false,
 				syncAudio: false,
 				syncVideo: false,
 				syncPdf: false,
-				syncThemes: true,
-				syncPlugins: true,
+				syncThemes: false,
+				syncSnippets: false,
+				syncPlugins: false,
 			};
 		}
 		const selectiveSync = this.plugin.settings.syncConfig.selectiveSync;
@@ -1864,6 +2128,19 @@ class FridaySettingTab extends PluginSettingTab {
 				toggle.setValue(selectiveSync.syncThemes ?? true);
 				toggle.onChange(async (value) => {
 					selectiveSync.syncThemes = value;
+					await this.plugin.saveSettings();
+					await this.updateSelectiveSyncSettings();
+				});
+			});
+
+		// Sync Snippets
+		new Setting(selectiveSyncContainer)
+			.setName(this.plugin.i18n.t('settings.sync_snippets'))
+			.setDesc(this.plugin.i18n.t('settings.sync_snippets_desc'))
+			.addToggle((toggle) => {
+				toggle.setValue(selectiveSync.syncSnippets ?? true);
+				toggle.onChange(async (value) => {
+					selectiveSync.syncSnippets = value;
 					await this.plugin.saveSettings();
 					await this.updateSelectiveSyncSettings();
 				});
@@ -1981,6 +2258,11 @@ class FridaySettingTab extends PluginSettingTab {
 		// Add themes folder to ignore if not syncing themes
 		if (!(selectiveSync.syncThemes ?? true)) {
 			internalPatterns.push("\\.obsidian\\/themes");
+		}
+		
+		// Add snippets folder to ignore if not syncing snippets
+		if (!(selectiveSync.syncSnippets ?? true)) {
+			internalPatterns.push("\\.obsidian\\/snippets");
 		}
 		
 		// Add plugins folder to ignore if not syncing plugins

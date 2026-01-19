@@ -1,6 +1,7 @@
 /* Publish Settings Styles */
 
 /* Publish Method Containers */
+.mdfriday-settings-container,
 .netlify-settings-container,
 .ftp-settings-container {
   margin-top: 16px;
@@ -10,6 +11,7 @@
   background-color: var(--background-secondary);
 }
 
+.mdfriday-settings-container h3,
 .netlify-settings-container h3,
 .ftp-settings-container h3 {
   margin-top: 0;
@@ -51,6 +53,32 @@
 }
 
 .ftp-test-result-error {
+  background-color: rgba(var(--color-red-rgb), 0.1);
+  color: var(--color-red);
+  border: 1px solid rgba(var(--color-red-rgb), 0.3);
+}
+
+/* Subdomain status feedback (similar to FTP test result) */
+.subdomain-status {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  clear: both;
+}
+
+.subdomain-status.available {
+  background-color: rgba(var(--color-green-rgb), 0.1);
+  color: var(--color-green);
+  border: 1px solid rgba(var(--color-green-rgb), 0.3);
+}
+
+.subdomain-status.unavailable,
+.subdomain-status.error {
   background-color: rgba(var(--color-red-rgb), 0.1);
   color: var(--color-red);
   border: 1px solid rgba(var(--color-red-rgb), 0.3);
