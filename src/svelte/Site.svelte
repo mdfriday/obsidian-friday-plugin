@@ -1272,8 +1272,12 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 				}
 				publishProgress = 100;
 
-				// Step 4: Construct final publish URL
-				publishUrl = deployPath;
+				// Step 4: Construct final publish URL for MDFriday App
+				// deployPath is the path, need to build full URL: https://<subdomain>.mdfriday.com/<deployPath>
+				const subdomain = plugin.getEffectiveSubdomain();
+				const basePath = deployPath.startsWith('/') ? deployPath : `/${deployPath}`;
+				const normalizedPath = basePath === '/' ? '' : basePath;
+				publishUrl = `https://${subdomain}.mdfriday.com${normalizedPath}`;
 				publishSuccess = true;
 
 				new Notice(t('messages.site_published_successfully'), 3000);
