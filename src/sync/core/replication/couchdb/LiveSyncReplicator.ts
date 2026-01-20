@@ -1039,14 +1039,15 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         this.closeReplication();
         const con = await this.connectRemoteCouchDBWithSetting(setting, this.isMobile(), true);
         if (typeof con == "string") return;
-        try {
-            await con.db.destroy();
-            Logger($msg("liveSyncReplicator.remoteDbDestroyed"), LOG_LEVEL_NOTICE);
-            await this.tryCreateRemoteDatabase(setting);
-        } catch (ex) {
-            Logger($msg("liveSyncReplicator.remoteDbDestroyError"), LOG_LEVEL_NOTICE);
-            Logger(ex, LOG_LEVEL_VERBOSE);
-        }
+		// Destroy remote database in backend
+        // try {
+        //     await con.db.destroy();
+        //     Logger($msg("liveSyncReplicator.remoteDbDestroyed"), LOG_LEVEL_NOTICE);
+        //     await this.tryCreateRemoteDatabase(setting);
+        // } catch (ex) {
+        //     Logger($msg("liveSyncReplicator.remoteDbDestroyError"), LOG_LEVEL_NOTICE);
+        //     Logger(ex, LOG_LEVEL_VERBOSE);
+        // }
         // Recreate salt
         clearHandlers();
         await this.ensurePBKDF2Salt(setting, true, false);

@@ -772,20 +772,6 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             // Small delay to ensure database is ready
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Step 3.5: Update local stored salt to match the new remote salt
-            // This prevents "Remote database has been reset" error during push
-            // We do this here (after database is ready) instead of in tryResetRemoteDatabase
-            // because the API calls may fail while the database is being recreated
-            await this._replicator.clearStoredSalt(this._settings);
-            
-            // First ensure the salt exists on remote (this will create it if needed)
-            await this._replicator.ensurePBKDF2Salt(this._settings, true, false);
-            
-            // Small delay after salt creation
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            await this._replicator.updateStoredSalt(this._settings);
-
             // Step 4: Push all local data to remote (first pass)
             Logger("Step 4: Pushing all data to remote server...", LOG_LEVEL_INFO);
             Logger("Pushing all data to server (this may take a while)...", LOG_LEVEL_NOTICE);
