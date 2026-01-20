@@ -147,9 +147,11 @@ export const en: TranslationNamespace = {
 		subdomain_update_failed: "Failed to update subdomain: {{error}}",
 		subdomain_check_failed: "Failed to check subdomain availability",
 		subdomain_invalid: "Subdomain can only contain lowercase letters, numbers, and hyphens",
-		subdomain_too_short: "Subdomain must be at least 3 characters",
+		subdomain_invalid_format: "Subdomain can only contain lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen",
+		subdomain_too_short: "Subdomain must be at least 4 characters",
 		subdomain_too_long: "Subdomain must be at most 32 characters",
 		subdomain_same: "Subdomain is the same as current",
+		subdomain_reserved: "This subdomain is reserved and cannot be used",
 
 		// General settings
 		general_settings: "General Settings",

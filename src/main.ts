@@ -28,6 +28,7 @@ import type {ProjectConfig} from "./projects/types";
 import type {ThemeSelectionModal} from "./theme/modal";
 import type {ProjectManagementModal} from "./projects/modal";
 import type ServerView from './server';
+import {validateSubdomainFormat, isReservedSubdomain} from "./domain";
 
 // Export view type for dynamic import
 export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
@@ -1390,20 +1391,32 @@ class FridaySettingTab extends PluginSettingTab {
 					: this.plugin.i18n.t('settings.subdomain_update');
 			};
 
-			// Helper to validate subdomain
+			// Helper to validate subdomain using domain.ts validation rules
 			const validateSubdomain = (subdomain: string): { valid: boolean; message?: string } => {
-				if (subdomain.length < 3) {
-					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_too_short') };
-				}
-				if (subdomain.length > 32) {
-					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_too_long') };
-				}
-				if (!/^[a-z0-9-]+$/.test(subdomain)) {
-					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_invalid') };
-				}
+				// Check if same as current first
 				if (subdomain === currentSubdomain) {
 					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_same') };
 				}
+				
+				// Use domain.ts validation for format
+				const formatResult = validateSubdomainFormat(subdomain);
+				if (!formatResult.valid) {
+					// Map error messages to i18n keys
+					if (formatResult.error?.includes('at least 4')) {
+						return { valid: false, message: this.plugin.i18n.t('settings.subdomain_too_short') };
+					}
+					if (formatResult.error?.includes('at most 32')) {
+						return { valid: false, message: this.plugin.i18n.t('settings.subdomain_too_long') };
+					}
+					// Default to invalid format message (covers hyphen rules)
+					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_invalid_format') };
+				}
+				
+				// Check reserved subdomains
+				if (isReservedSubdomain(subdomain)) {
+					return { valid: false, message: this.plugin.i18n.t('settings.subdomain_reserved') };
+				}
+				
 				return { valid: true };
 			};
 

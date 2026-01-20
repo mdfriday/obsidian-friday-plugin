@@ -145,9 +145,11 @@ export const zhCn: TranslationNamespace = {
 		subdomain_update_failed: "子域名更新失败：{{error}}",
 		subdomain_check_failed: "检查子域名可用性失败",
 		subdomain_invalid: "子域名只能包含小写字母、数字和连字符",
-		subdomain_too_short: "子域名长度至少 3 个字符",
+		subdomain_invalid_format: "子域名只能包含小写字母、数字和连字符，且不能以连字符开头或结尾",
+		subdomain_too_short: "子域名长度至少 4 个字符",
 		subdomain_too_long: "子域名长度最多 32 个字符",
 		subdomain_same: "子域名与当前相同",
+		subdomain_reserved: "该子域名为保留域名，无法使用",
 
 		// General settings
 		general_settings: "通用设置",
