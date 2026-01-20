@@ -35,6 +35,7 @@ import {
     DEFAULT_INTERNAL_IGNORE_PATTERNS,
     type InternalFileInfo,
 } from "src/sync";
+import { $msg } from "src/sync/core/common/i18n";
 
 /**
  * Conflict information for resolution processing
@@ -853,7 +854,7 @@ export class FridayHiddenFileSync {
      */
     async scanAllStorageChanges(showNotice = false): Promise<void> {
         await skipIfDuplicated("scanAllStorageChanges", async () => {
-            Logger("[HiddenFileSync] Scanning storage changes...", showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
+            Logger($msg("fridaySync.hiddenFileSync.scanningStorage"), showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
             
             const knownNames = [...this._fileInfoLastProcessed.keys()] as FilePath[];
             const existNames = await this.scanInternalFileNames();
@@ -890,7 +891,7 @@ export class FridayHiddenFileSync {
                 })
             );
             
-            Logger("[HiddenFileSync] Storage scan complete", showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
+            Logger($msg("fridaySync.hiddenFileSync.storageScanComplete"), showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
         });
     }
 
@@ -899,7 +900,7 @@ export class FridayHiddenFileSync {
      */
     async scanAllDatabaseChanges(showNotice = false): Promise<void> {
         await skipIfDuplicated("scanAllDatabaseChanges", async () => {
-            Logger("[HiddenFileSync] Scanning database changes...", showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
+            Logger($msg("fridaySync.hiddenFileSync.scanningDatabase"), showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
             
             const databaseFiles = await this.getAllDatabaseFiles();
             
@@ -926,7 +927,7 @@ export class FridayHiddenFileSync {
                 })
             );
             
-            Logger("[HiddenFileSync] Database scan complete", showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
+            Logger($msg("fridaySync.hiddenFileSync.databaseScanComplete"), showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_VERBOSE);
         });
     }
 
@@ -1091,7 +1092,7 @@ export class FridayHiddenFileSync {
             await this.scanAllDatabaseChanges(showNotice);
         }
         
-        Logger("[HiddenFileSync] Initialization complete", showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO);
+        Logger($msg("fridaySync.hiddenFileSync.initComplete"), showNotice ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO);
     }
 
     // ==================== Conflict Resolution ====================

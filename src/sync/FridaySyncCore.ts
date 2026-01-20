@@ -38,6 +38,7 @@ import {type KeyValueDatabase} from "./core/interfaces/KeyValueDatabase";
 import {type SimpleStore} from "octagonal-wheels/databases/SimpleStoreBase";
 import {Logger, setGlobalLogFunction} from "./core/common/logger";
 import {isTextDocument, readContent} from "./core/common/utils";
+import {$msg} from "./core/common/i18n";
 
 // Import services
 import {FridayServiceHub} from "./FridayServiceHub";
@@ -599,7 +600,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             return true;
         } catch (error) {
             console.error("Sync failed:", error);
-            Logger("Sync failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.sync.failed"), LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             this.setStatus("ERRORED", "Sync failed");
             return false;
@@ -617,23 +618,23 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         try {
             this.setStatus("STARTED", "Pulling from server...");
-            Logger("Pulling from server...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.pull.pulling"), LOG_LEVEL_NOTICE);
             
             const result = await this._replicator.replicateAllFromServer(this._settings, true);
             
             if (result) {
                 this.setStatus("COMPLETED", "Pull completed");
-                Logger("Pull completed", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.pull.completed"), LOG_LEVEL_NOTICE);
             } else {
                 this.setStatus("ERRORED", "Pull failed");
-                Logger("Pull failed", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.pull.failed"), LOG_LEVEL_NOTICE);
             }
             
             return result;
         } catch (error) {
             console.error("Pull failed:", error);
             this.setStatus("ERRORED", "Pull failed");
-            Logger("Pull failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.pull.failedConnection"), LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
@@ -650,23 +651,23 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         try {
             this.setStatus("STARTED", "Pushing to server...");
-            Logger("Pushing to server...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.push.pushing"), LOG_LEVEL_NOTICE);
             
             const result = await this._replicator.replicateAllToServer(this._settings, true);
             
             if (result) {
                 this.setStatus("COMPLETED", "Push completed");
-                Logger("Push completed", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.push.completed"), LOG_LEVEL_NOTICE);
             } else {
                 this.setStatus("ERRORED", "Push failed");
-                Logger("Push failed", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.push.failed"), LOG_LEVEL_NOTICE);
             }
             
             return result;
         } catch (error) {
             console.error("Push failed:", error);
             this.setStatus("ERRORED", "Push failed");
-            Logger("Push failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.push.failedConnection"), LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
@@ -686,7 +687,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         try {
             this.setStatus("STARTED", "Fetching from server (first-time sync)...");
-            Logger("Fetching from server (this may take a while)...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.fetch.fetching"), LOG_LEVEL_NOTICE);
             
             // Step 1: Mark this device as resolved/accepted
             Logger("Marking remote as resolved...", LOG_LEVEL_INFO);
@@ -699,21 +700,21 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             if (result) {
                 // Step 3: Rebuild vault from local database
                 Logger("Rebuilding vault from local database...", LOG_LEVEL_INFO);
-                Logger("Writing files to vault...", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.fetch.writingFiles"), LOG_LEVEL_NOTICE);
                 await this.rebuildVaultFromDB();
                 
                 this.setStatus("COMPLETED", "Fetch completed");
-                Logger("Fetch completed successfully!", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.fetch.completed"), LOG_LEVEL_NOTICE);
             } else {
                 this.setStatus("ERRORED", "Fetch failed");
-                Logger("Fetch failed", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.fetch.failed"), LOG_LEVEL_NOTICE);
             }
             
             return result;
         } catch (error) {
             console.error("Fetch failed:", error);
             this.setStatus("ERRORED", "Fetch failed");
-            Logger("Fetch failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.fetch.failedConnection"), LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
@@ -741,20 +742,20 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         try {
             this.setStatus("STARTED", "Rebuilding remote database from local files...");
-            Logger("Rebuilding remote database from local files...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.rebuildRemote.rebuilding"), LOG_LEVEL_NOTICE);
             
             // Step 1: Scan local vault and store all files to local database
             Logger("Step 1: Scanning local vault and storing to database...", LOG_LEVEL_INFO);
             const scanResult = await this.scanAndStoreVaultToDB();
             if (!scanResult) {
-                Logger("Failed to scan and store vault files", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.rebuildRemote.scanFailed"), LOG_LEVEL_NOTICE);
                 this.setStatus("ERRORED", "Failed to scan vault files");
                 return false;
             }
             
             // Step 2: Reset remote database
             Logger("Step 2: Resetting remote database...", LOG_LEVEL_INFO);
-            Logger("Resetting remote database...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.rebuildRemote.resettingRemote"), LOG_LEVEL_NOTICE);
             try {
                 await this._replicator.tryResetRemoteDatabase(this._settings);
             } catch (error) {
@@ -774,7 +775,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
             // Step 4: Push all local data to remote (first pass)
             Logger("Step 4: Pushing all data to remote server...", LOG_LEVEL_INFO);
-            Logger("Pushing all data to server (this may take a while)...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.rebuildRemote.pushingData"), LOG_LEVEL_NOTICE);
             let result = await this._replicator.replicateAllToServer(this._settings, true);
             
             if (!result) {
@@ -790,18 +791,18 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             if (result) {
                 this.setStatus("COMPLETED", "Remote database rebuilt successfully");
-                Logger("Remote database rebuilt successfully!", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.rebuildRemote.success"), LOG_LEVEL_NOTICE);
                 Logger("Other devices should now use 'Fetch from Server' to sync", LOG_LEVEL_INFO);
             } else {
                 this.setStatus("ERRORED", "Rebuild remote failed");
-                Logger("Rebuild remote failed", LOG_LEVEL_NOTICE);
+                Logger($msg("fridaySync.rebuildRemote.failed"), LOG_LEVEL_NOTICE);
             }
             
             return result;
         } catch (error) {
             console.error("Rebuild remote failed:", error);
             this.setStatus("ERRORED", "Rebuild remote failed");
-            Logger("Rebuild remote failed. Please check your connection.", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.rebuildRemote.failedConnection"), LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
@@ -883,7 +884,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      */
     async rebuildVaultFromDB(): Promise<boolean> {
         if (!this._localDatabase) {
-            Logger("Local database not initialized", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.rebuild.localDbNotInitialized"), LOG_LEVEL_NOTICE);
             return false;
         }
         
@@ -1079,7 +1080,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             return true;
         } catch (error) {
-            Logger("Rebuild failed. Please try again.", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.rebuild.failed"), LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }

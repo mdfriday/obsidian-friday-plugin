@@ -10,6 +10,26 @@ import {
 import { en } from './locales/en';
 import { zhCn } from './locales/zh-cn';
 import type FridayPlugin from '../main';
+import { setLang as setSyncLang, type I18N_LANGS } from '../sync/core/common/i18n';
+
+/**
+ * Map main i18n language codes to sync module language codes
+ * Main i18n uses: 'en', 'zh-cn', 'es', 'fr', 'de', 'ja', 'ko', 'pt'
+ * Sync module uses: 'def', 'zh', 'es', 'de', 'ja', 'ko', 'ru', 'zh-tw'
+ */
+function mapToSyncLang(lang: LanguageCode): I18N_LANGS {
+	const mapping: Record<string, I18N_LANGS> = {
+		'en': 'def',
+		'zh-cn': 'zh',
+		'es': 'es',
+		'de': 'de',
+		'ja': 'ja',
+		'ko': 'ko',
+		'fr': 'def', // No French in sync module, fallback to default
+		'pt': 'def', // No Portuguese in sync module, fallback to default
+	};
+	return mapping[lang] || 'def';
+}
 
 /**
  * I18n Service - Handles internationalization for the Friday plugin
@@ -70,6 +90,10 @@ export class I18nService implements II18nService {
 		}
 
 		this.currentLanguage = language;
+
+		// Also set language for sync module's i18n
+		const syncLang = mapToSyncLang(language);
+		setSyncLang(syncLang);
 
 		// Emit language change event for reactive components
 		this.plugin.app.workspace.trigger('friday:language-changed', language);
