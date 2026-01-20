@@ -99,7 +99,9 @@
 	let publishProgress = 0;
 	let publishSuccess = false;
 	let publishUrl = '';
-	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' = plugin.settings.publishMethod || 'netlify';
+	// Map 'mdfriday' from settings to 'netlify' as default (settings uses 'mdfriday' for display config)
+let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' = 
+	(plugin.settings.publishMethod === 'mdfriday' ? 'netlify' : plugin.settings.publishMethod) || 'netlify';
 	
 	// Netlify configuration (project-specific)
 	let netlifyAccessToken = '';
@@ -127,7 +129,7 @@
 	
 	// Local variables for license-based features
 	let userDir = '';
-	let isMDFShareAvailable = false;
+	let isLicenseActivated = false;
 	let publishOptions: Array<{ value: string; label: string }> = [];
 
 	// Reactive block to update license-related state (similar to theme selection at line 64-79)
@@ -135,21 +137,21 @@
 		// Update userDir from settings
 		userDir = plugin.settings.licenseUser?.userDir || '';
 		
-		// Check if MDFriday Share is available (only requires license and userDir)
-		isMDFShareAvailable = !!(plugin.settings.license && userDir);
+		// Check if license is activated (required for MDFriday Share and MDFriday App)
+		isLicenseActivated = !!(plugin.settings.license && userDir);
 		
-		// Update publish options based on license availability
+		// Update publish options - MDFriday Share and MDFriday App are always shown
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
-			...(isMDFShareAvailable ? [{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') }] : []),
+			{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') },
+			{ value: 'mdf-app', label: t('ui.publish_option_mdfriday_app') },
 		];
 	}
 
-	// Auto-switch to netlify if mdf-share is not available when sitePath changes
-	$: if (!isMDFShareAvailable && selectedPublishOption === 'mdf-share') {
-		selectedPublishOption = plugin.settings.publishMethod || 'netlify';
-	}
+	// Check if current publish option requires license
+	$: requiresLicense = selectedPublishOption === 'mdf-share' || selectedPublishOption === 'mdf-app';
+	$: isPublishDisabled = requiresLicense && !isLicenseActivated;
 
 	// HTTP server related
 	let httpServer: IncrementalBuildCoordinator;
@@ -196,22 +198,21 @@
 	
 	// Select MDFriday Share publish option
 	function selectMDFShare() {
-		if (isMDFShareAvailable) {
-			selectedPublishOption = 'mdf-share';
-		}
+		selectedPublishOption = 'mdf-share';
 	}
 
 	// Refresh license state from plugin settings (called after license activation)
 	function refreshLicenseState() {
-		// Update userDir and isMDFShareAvailable by triggering reactive update
+		// Update userDir and isLicenseActivated by triggering reactive update
 		userDir = plugin.settings.licenseUser?.userDir || '';
-		isMDFShareAvailable = !!(plugin.settings.license && userDir);
+		isLicenseActivated = !!(plugin.settings.license && userDir);
 		
-		// Update publish options
+		// Update publish options - MDFriday Share and MDFriday App are always shown
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
-			...(isMDFShareAvailable ? [{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') }] : []),
+			{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') },
+			{ value: 'mdf-app', label: t('ui.publish_option_mdfriday_app') },
 		];
 	}
 
@@ -383,7 +384,9 @@
 				: true;
 			ftpPreferredSecure = existingProject.publishConfig.ftp?.preferredSecure;
 		} else {
-			selectedPublishOption = plugin.settings.publishMethod || 'netlify';
+			// Map 'mdfriday' from settings to 'netlify' as default
+			const settingsMethod = plugin.settings.publishMethod;
+			selectedPublishOption = (settingsMethod === 'mdfriday' ? 'netlify' : settingsMethod) || 'netlify';
 			
 			// Load Netlify defaults
 			netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
@@ -572,7 +575,9 @@
 				ftpPreferredSecure = project.publishConfig.ftp?.preferredSecure;
 			} else {
 				// Project doesn't have config, load defaults from settings
-				selectedPublishOption = plugin.settings.publishMethod || 'netlify';
+				// Map 'mdfriday' from settings to 'netlify' as default
+				const settingsMethod = plugin.settings.publishMethod;
+				selectedPublishOption = (settingsMethod === 'mdfriday' ? 'netlify' : settingsMethod) || 'netlify';
 				
 				// Load Netlify defaults
 				netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
@@ -1204,12 +1209,12 @@
 			} else if (selectedPublishOption === 'ftp') {
 				// FTP deployment
 				await publishToFTP(publicDir);
-			} else {
+			} else if (selectedPublishOption === 'mdf-share') {
 				// MDFriday Share deployment
 				const zipContent = await createZipFromDirectory(publicDir);
 				publishProgress = 50;
 
-				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent);
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'share');
 				if (!previewApiId) {
 					throw new Error('Failed to create MDFriday preview');
 				}
@@ -1246,6 +1251,51 @@
 
 				// Send counter for publish (don't wait for result)
 				plugin.hugoverse.sendCounter('mdf-share').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			} else if (selectedPublishOption === 'mdf-app') {
+				// MDFriday App deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
+
+				// MDFriday App uses sitePath as name and type 'sub'
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'sub', sitePath);
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday App preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%)
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday App');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL
+				publishUrl = deployPath;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-app',
+							url: publishUrl
+						});
+					}
+				}
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-app').catch(error => {
 					console.warn('Counter request failed (non-critical):', error);
 				});
 			}
@@ -2466,12 +2516,31 @@
 				</div>
 			{/if}
 
-			<!-- MDFriday Preview Info -->
+			<!-- MDFriday Share Info -->
 			{#if selectedPublishOption === 'mdf-share'}
 				<div class="publish-config">
 					<div class="field-hint">
 						{t('ui.mdfriday_share_hint')}
 					</div>
+					{#if !isLicenseActivated}
+						<div class="license-warning">
+							⚠️ {t('ui.mdfriday_license_required')}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- MDFriday App Info -->
+			{#if selectedPublishOption === 'mdf-app'}
+				<div class="publish-config">
+					<div class="field-hint">
+						{t('ui.mdfriday_app_hint')}
+					</div>
+					{#if !isLicenseActivated}
+						<div class="license-warning">
+							⚠️ {t('ui.mdfriday_license_required')}
+						</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -2486,7 +2555,7 @@
 					<button
 						class="action-button publish-button"
 						on:click={startPublish}
-						disabled={!hasPreview}
+						disabled={!hasPreview || isPublishDisabled}
 					>
 						{t('ui.publish')}
 					</button>
@@ -2831,6 +2900,16 @@
 		font-size: 12px;
 		color: var(--text-muted);
 		margin-top: 4px;
+		line-height: 1.4;
+	}
+
+	.license-warning {
+		font-size: 12px;
+		color: var(--text-warning);
+		background: var(--background-modifier-error);
+		padding: 8px 12px;
+		border-radius: 4px;
+		margin-top: 8px;
 		line-height: 1.4;
 	}
 

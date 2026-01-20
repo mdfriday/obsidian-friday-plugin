@@ -49,7 +49,7 @@ interface FridaySettings {
 	// General Settings
 	downloadServer: 'global' | 'east';
 	// Publish Settings
-	publishMethod: 'mdfriday' | 'netlify' | 'ftp';
+	publishMethod: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app';
 	netlifyAccessToken: string;
 	netlifyProjectId: string;
 	// FTP Settings
@@ -1328,8 +1328,10 @@ class FridaySettingTab extends PluginSettingTab {
 		ftpSettingsContainer = containerEl.createDiv('ftp-settings-container');
 
 		// Function to show/hide publish settings based on selected method
-		const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp') => {
-			mdfridaySettingsContainer.style.display = method === 'mdfriday' ? 'block' : 'none';
+		// Note: 'mdf-share' and 'mdf-app' from Site.svelte map to 'mdfriday' settings container
+		const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app') => {
+			const isMdfriday = method === 'mdfriday' || method === 'mdf-share' || method === 'mdf-app';
+			mdfridaySettingsContainer.style.display = isMdfriday ? 'block' : 'none';
 			netlifySettingsContainer.style.display = method === 'netlify' ? 'block' : 'none';
 			ftpSettingsContainer.style.display = method === 'ftp' ? 'block' : 'none';
 		};

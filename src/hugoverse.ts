@@ -121,13 +121,14 @@ export class Hugoverse {
 	* -F "size=12345" \
 	* -F "asset=@/Users/weisun/Downloads/site.zip"
 	*/
-	async createMDFPreview(name:string, content:Uint8Array): Promise<string> {
+	async createMDFPreview(name:string, content:Uint8Array, type: 'share' | 'sub' = 'share', path:string = ''): Promise<string> {
 		try {
 			const createResourceUrl = `${this.apiUrl}/api/mdf/preview?type=MDFPreview`;
 
 			// 创建 FormData 并添加基本字段
 			let body: FormData = new FormData();
-			body.append("type", "share");
+			body.append("type", type);
+			body.append("path", path);
 			body.append("id", NEW_ID);
 			body.append("name", name);
 			body.append("size", content.byteLength.toString());
