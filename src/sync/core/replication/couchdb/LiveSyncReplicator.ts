@@ -1050,6 +1050,11 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         // Recreate salt
         clearHandlers();
         await this.ensurePBKDF2Salt(setting, true, false);
+
+        // Update local stored salt to match the new remote salt
+        // This prevents "Remote database has been reset" error when the user
+        // intentionally resets their own database
+        await this.updateStoredSalt(setting);
     }
     async tryCreateRemoteDatabase(setting: RemoteDBSettings) {
         this.closeReplication();

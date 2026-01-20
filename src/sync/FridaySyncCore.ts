@@ -758,7 +758,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             try {
                 await this._replicator.tryResetRemoteDatabase(this._settings);
             } catch (error) {
-                console.error("Reset remote database error (may be expected if DB doesn't exist):", error);
+                console.error("[RebuildRemote] Step 2: Reset remote database error (may be expected if DB doesn't exist):", error);
             }
             
             // Step 3: Create remote database (in case it was destroyed)
@@ -766,12 +766,26 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             try {
                 await this._replicator.tryCreateRemoteDatabase(this._settings);
             } catch (error) {
-                console.error("Create remote database error:", error);
+                console.error("[RebuildRemote] Step 3: Create remote database error:", error);
             }
             
             // Small delay to ensure database is ready
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Step 3.5: Update local stored salt to match the new remote salt
+            // This prevents "Remote database has been reset" error during push
+            // We do this here (after database is ready) instead of in tryResetRemoteDatabase
+            // because the API calls may fail while the database is being recreated
+            await this._replicator.clearStoredSalt(this._settings);
             
+            // First ensure the salt exists on remote (this will create it if needed)
+            await this._replicator.ensurePBKDF2Salt(this._settings, true, false);
+            
+            // Small delay after salt creation
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await this._replicator.updateStoredSalt(this._settings);
+
             // Step 4: Push all local data to remote (first pass)
             Logger("Step 4: Pushing all data to remote server...", LOG_LEVEL_INFO);
             Logger("Pushing all data to server (this may take a while)...", LOG_LEVEL_NOTICE);

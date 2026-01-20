@@ -1127,10 +1127,12 @@ export default class FridayPlugin extends Plugin {
 		try {
 			const keysToRemove: string[] = [];
 			
-			// Find all keys with "friday-kv-" prefix
+			// Find all keys with sync-related prefixes:
+			// - "friday-kv-" for general key-value storage
+			// - "friday-friday-sync-salt-" for salt storage (from openSimpleStore with kind="friday-sync-salt")
 			for (let i = 0; i < localStorage.length; i++) {
 				const key = localStorage.key(i);
-				if (key && key.startsWith('friday-kv-')) {
+				if (key && (key.startsWith('friday-kv-') || key.startsWith('friday-friday-sync-salt-'))) {
 					keysToRemove.push(key);
 				}
 			}

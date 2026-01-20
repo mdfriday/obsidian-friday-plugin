@@ -155,7 +155,9 @@ export abstract class LiveSyncAbstractReplicator {
         try {
             const saltKey = this._getKnownSaltKey(setting.couchDB_DBNAME);
             const saltStore = this.env.services.database.openSimpleStore<string>("friday-sync-salt");
-            const remoteSalt = await this.getReplicationPBKDF2Salt(setting, false);
+            // IMPORTANT: Use refresh=true to ensure we get the latest salt from remote
+            // Using refresh=false may return a cached old salt value
+            const remoteSalt = await this.getReplicationPBKDF2Salt(setting, true);
             const remoteSaltBase64 = await arrayBufferToBase64Single(remoteSalt);
             await saltStore.set(saltKey, remoteSaltBase64);
             Logger(`Stored salt updated successfully`, LOG_LEVEL_VERBOSE);
