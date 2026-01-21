@@ -49,6 +49,13 @@ import {FridayStorageEventManager} from "./FridayStorageEventManager";
 import {FridayHiddenFileSync} from "./features/HiddenFileSync";
 import {DEFAULT_INTERNAL_IGNORE_PATTERNS} from "./types";
 
+// Import network error handling modules
+import {FridayNetworkEvents} from "./features/NetworkEvents";
+import {FridayConnectionMonitor} from "./features/ConnectionMonitor";
+import {FridayConnectionFailureHandler} from "./features/ConnectionFailure";
+import {FridayOfflineTracker} from "./features/OfflineTracker";
+import {ServerConnectivityChecker, type ServerStatus} from "./features/ServerConnectivity";
+
 // Import hidden file utilities
 import {isInternalMetadata} from "./utils/hiddenFileUtils";
 
@@ -205,6 +212,18 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     // Hidden file sync module for .obsidian synchronization
     private _hiddenFileSync: FridayHiddenFileSync | null = null;
     
+    // Network error handling modules
+    private _networkEvents: FridayNetworkEvents | null = null;
+    private _connectionMonitor: FridayConnectionMonitor | null = null;
+    private _connectionFailureHandler: FridayConnectionFailureHandler | null = null;
+    private _offlineTracker: FridayOfflineTracker | null = null;
+    
+    // Server connectivity checker for pre-sync validation
+    private _serverChecker: ServerConnectivityChecker | null = null;
+    
+    // Track if file watcher has been started (to avoid duplicate starts)
+    private _fileWatcherStarted: boolean = false;
+    
     // Ignore patterns configuration (directly from settings, no file needed)
     private _ignorePatterns: string[] = [];
     
@@ -308,6 +327,33 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
     get hiddenFileSync(): FridayHiddenFileSync | null {
         return this._hiddenFileSync;
+    }
+    
+    /**
+     * Current server connectivity status
+     */
+    get serverStatus(): ServerStatus {
+        return this._serverChecker?.currentStatus ?? "UNKNOWN";
+    }
+    
+    /**
+     * Whether server is currently reachable
+     * Used by replicator for error attribution
+     */
+    isServerReachable(): boolean {
+        return this._serverChecker?.isServerReachable ?? false;
+    }
+
+    get offlineTracker(): FridayOfflineTracker | null {
+        return this._offlineTracker;
+    }
+
+    get connectionMonitor(): FridayConnectionMonitor | null {
+        return this._connectionMonitor;
+    }
+
+    get connectionFailureHandler(): FridayConnectionFailureHandler | null {
+        return this._connectionFailureHandler;
     }
 
     onStatusChange(callback: SyncStatusCallback) {
@@ -476,6 +522,25 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 Logger("Hidden file sync module initialized", LOG_LEVEL_INFO);
             }
 
+            // Initialize network error handling modules
+            this._networkEvents = new FridayNetworkEvents(this.plugin, this);
+            this._connectionMonitor = new FridayConnectionMonitor(this);
+            this._connectionFailureHandler = new FridayConnectionFailureHandler(this);
+            this._offlineTracker = new FridayOfflineTracker(this);
+            
+            // Initialize server connectivity checker (for pre-sync validation)
+            this._serverChecker = new ServerConnectivityChecker();
+            
+            await this._offlineTracker.initialize();
+            
+            // Register network event listeners
+            this._networkEvents.registerEvents();
+            
+            // Start connection monitoring
+            this._connectionMonitor.startMonitoring();
+            
+            Logger("Network error handling modules initialized", LOG_LEVEL_INFO);
+
             // Set up status monitoring for debugging
             this.setupStatusMonitoring();
 
@@ -536,6 +601,38 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     }
 
     /**
+     * Handle network recovery - called when network comes back online
+     * Source: Network event handlers trigger this when online event fires
+     */
+    async handleNetworkRecovery(): Promise<void> {
+        Logger("Network recovery detected", LOG_LEVEL_INFO);
+
+        // Update network status
+        this._managers?.networkManager.setServerReachable(true);
+
+        // Update offline tracker
+        if (this._offlineTracker) {
+            this._offlineTracker.setOffline(false);
+        }
+
+        // Apply any offline changes first
+        if (this._offlineTracker && this._offlineTracker.pendingCount > 0) {
+            await this._offlineTracker.applyOfflineChanges(true);
+        }
+
+        // Restart sync if configured
+        // Check if sync needs to be restarted - only skip if already in LIVE state
+        if (this._settings.liveSync && this._replicator) {
+            const status = this.replicationStat.value.syncStatus;
+            // Restart if not in LIVE state (covers PAUSED, CLOSED, ERRORED, NOT_CONNECTED, etc.)
+            if (status !== "LIVE") {
+                Logger(`Restarting sync after network recovery (current status: ${status})`, LOG_LEVEL_INFO);
+                await this.startSync(true);
+            }
+        }
+    }
+
+    /**
      * Start synchronization
      * 
      * @param continuous - If true (default), starts LiveSync mode (continuous replication)
@@ -555,18 +652,80 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         }
 
         try {
-            this.setStatus("STARTED", "Starting synchronization...");
+            this.setStatus("STARTED", "Checking server connectivity...");
             
-            // Open replication - default is LiveSync (continuous) mode
-            // IMPORTANT: Use showResult=false for continuous mode (matching livesync)
-            // This prevents Notice spam - status updates are shown in the UI instead
-            // Only manual operations (pull/push/fetch) use showResult=true
-            await this._replicator.openReplication(
+            // ========== Step 1: Server Connectivity Pre-Check ==========
+            // This lightweight check determines if we should attempt full sync
+            // or enter offline mode
+            const connectivityResult = await this._serverChecker?.checkConnectivity(
                 this._settings,
-                continuous,  // keepAlive for live sync (default: true)
-                false,       // showResult: false for LiveSync (matches livesync)
-                false        // ignoreCleanLock
+                true  // Force check
             );
+
+            if (connectivityResult?.status !== "REACHABLE") {
+                // Server unreachable - enter offline mode
+                return this.handleOfflineMode(connectivityResult?.error);
+            }
+
+            // ========== Server Reachable - Continue Normal Flow ==========
+            Logger("Server connectivity confirmed", LOG_LEVEL_VERBOSE);
+            this._managers?.networkManager.setServerReachable(true);
+            this._serverChecker?.setStatus("REACHABLE");
+            
+            // Disable offline mode if it was enabled
+            if (this._offlineTracker) {
+                this._offlineTracker.setOffline(false);
+            }
+
+            // Start file watcher (for both online and offline scenarios)
+            // This ensures local changes are always saved to PouchDB
+            this.startFileWatcherIfNeeded();
+            
+            // ========== Step 2: Open Replication ==========
+            // Different handling for LiveSync vs OneShot mode
+            
+            if (continuous) {
+                // LiveSync mode: fire-and-forget
+                Logger("Starting LiveSync mode...", LOG_LEVEL_INFO);
+                await this._replicator.openReplication(
+                    this._settings,
+                    true,   // keepAlive = true for LiveSync
+                    false,  // showResult: false for LiveSync
+                    false   // ignoreCleanLock
+                );
+
+                // Safety net: Check connection status after timeout
+                this.setupConnectionTimeout();
+                
+            } else {
+                // OneShot mode: check return value
+                const result = await this._replicator.openReplication(
+                    this._settings,
+                    false,  // keepAlive = false for OneShot
+                    false,  // showResult
+                    false   // ignoreCleanLock
+                );
+
+                if (!result) {
+                    // Connection failed - but server was reachable, so this is a real issue
+                    this._managers?.networkManager.setServerReachable(false);
+                    this._serverChecker?.setStatus("UNREACHABLE", "Sync operation failed");
+
+                    const issues = this.getSyncIssues();
+                    if (issues.needsFetch) {
+                        Logger(issues.message, LOG_LEVEL_NOTICE);
+                        this.setStatus("ERRORED", "Database reset detected");
+                    } else {
+                        this.setStatus("NOT_CONNECTED", "Connection failed, will retry");
+                        this._connectionMonitor?.scheduleReconnect(5000);
+                    }
+
+                    return false;
+                }
+            }
+            
+            // Reset notification cooldown on success
+            this._connectionFailureHandler?.resetNotificationCooldown();
             
             // Check for database reset after connection attempt
             const issues = this.getSyncIssues();
@@ -576,35 +735,95 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 return false;
             }
             
-            // Start watching for local file changes (for upload to server)
-            // This enables bidirectional sync: server->local and local->server
-            // IMPORTANT: Delay startup to avoid capturing Obsidian's startup events
-            // This matches livesync's pattern of waiting for the system to settle
-            if (this._storageEventManager) {
-                // Wait a short time for:
-                // 1. OneShot sync to complete (pullOnly happens first in LiveSync)
-                // 2. Obsidian's startup file events to settle
-                // 3. Any cached file modifications to be processed
-                const WATCH_DELAY_MS = 1500;
-                Logger(`File watcher will start in ${WATCH_DELAY_MS}ms...`, LOG_LEVEL_VERBOSE);
-                
-                setTimeout(() => {
-                    if (this._storageEventManager) {
-                        this._storageEventManager.beginWatch();
-                        Logger("File watcher started - local changes will sync to server", LOG_LEVEL_INFO);
-                    }
-                }, WATCH_DELAY_MS);
-            }
-            
             // Status will be updated by replicator via updateInfo
             return true;
         } catch (error) {
             console.error("Sync failed:", error);
-            Logger($msg("fridaySync.sync.failed"), LOG_LEVEL_NOTICE);
-            Logger(error, LOG_LEVEL_VERBOSE);
-            this.setStatus("ERRORED", "Sync failed");
+            this._managers?.networkManager.setServerReachable(false);
+            this._serverChecker?.setStatus("UNREACHABLE", String(error));
+
+            // Handle the error
+            const action = await this._connectionFailureHandler?.handleReplicationError(error, true);
+
+            if (action === 'retry') {
+                const delay = this._connectionFailureHandler?.getRetryDelay() || 10000;
+                this._connectionMonitor?.scheduleReconnect(delay);
+                this.setStatus("NOT_CONNECTED", "Connection failed, will retry");
+            } else {
+                this.setStatus("ERRORED", "Sync failed");
+            }
+
             return false;
         }
+    }
+    
+    /**
+     * Handle offline mode when server is unreachable
+     * This ensures local changes are still saved and reconnection is scheduled
+     */
+    private handleOfflineMode(errorMessage?: string): boolean {
+        Logger(`Server unreachable: ${errorMessage || 'unknown reason'}`, LOG_LEVEL_INFO);
+
+        this._managers?.networkManager.setServerReachable(false);
+        this._serverChecker?.setStatus("UNREACHABLE", errorMessage);
+        this.setStatus("NOT_CONNECTED", "Server unreachable, offline mode");
+
+        // Start file watcher for offline mode (local changes saved to PouchDB)
+        this.startFileWatcherIfNeeded();
+
+        // Enable offline tracking
+        if (this._offlineTracker) {
+            this._offlineTracker.setOffline(true);
+        }
+
+        // Schedule reconnection
+        this._connectionMonitor?.scheduleReconnect(10000);
+
+        // Show user-friendly message
+        Logger(
+            $msg("fridaySync.error.cannotConnectServer") ||
+            "Cannot connect to server. Changes will be saved locally.",
+            LOG_LEVEL_NOTICE
+        );
+
+        return false;
+    }
+    
+    /**
+     * Start file watcher if not already started
+     * This ensures local changes are always saved to PouchDB, even in offline mode
+     */
+    private startFileWatcherIfNeeded(): void {
+        if (this._storageEventManager && !this._fileWatcherStarted) {
+            this._fileWatcherStarted = true;
+            const WATCH_DELAY_MS = 1500;
+            Logger(`File watcher will start in ${WATCH_DELAY_MS}ms...`, LOG_LEVEL_VERBOSE);
+            
+            setTimeout(() => {
+                if (this._storageEventManager) {
+                    this._storageEventManager.beginWatch();
+                    Logger("File watcher started - local changes will be saved", LOG_LEVEL_INFO);
+                }
+            }, WATCH_DELAY_MS);
+        }
+    }
+    
+    /**
+     * Setup connection timeout safety net
+     * If status remains STARTED after timeout, transition to error state
+     */
+    private setupConnectionTimeout(): void {
+        const CONNECTION_TIMEOUT_MS = 30000;
+        setTimeout(() => {
+            const status = this.replicationStat.value.syncStatus;
+            if (status === "STARTED") {
+                Logger("Connection timeout - status stuck at STARTED", LOG_LEVEL_INFO);
+                this.setStatus("NOT_CONNECTED", "Connection timeout");
+                this._managers?.networkManager.setServerReachable(false);
+                this._serverChecker?.setStatus("UNREACHABLE", "Connection timeout");
+                this._connectionMonitor?.scheduleReconnect(10000);
+            }
+        }, CONNECTION_TIMEOUT_MS);
     }
 
     /**
@@ -1105,6 +1324,12 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      * Close and clean up
      */
     async close(): Promise<void> {
+        // Stop connection monitoring
+        this._connectionMonitor?.stopMonitoring();
+
+        // Unload network events
+        this._networkEvents?.unload();
+
         await this.stopSync();
         if (this._localDatabase) {
             await this._localDatabase.close();

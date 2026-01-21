@@ -589,5 +589,17 @@
     "fridaySync.hiddenFileSync.storageScanComplete": "[HiddenFileSync] Storage scan complete",
     "fridaySync.hiddenFileSync.scanningDatabase": "[HiddenFileSync] Scanning database changes...",
     "fridaySync.hiddenFileSync.databaseScanComplete": "[HiddenFileSync] Database scan complete",
-    "fridaySync.hiddenFileSync.initComplete": "[HiddenFileSync] Initialization complete"
+    "fridaySync.hiddenFileSync.initComplete": "[HiddenFileSync] Initialization complete",
+    "fridaySync.error.networkUnavailable": "Cannot connect to sync server. Will retry when network is available.",
+    "fridaySync.error.authFailed": "Authentication failed. Please check your credentials in Settings.",
+    "fridaySync.error.timeout": "Connection timeout. Will retry...",
+    "fridaySync.network.offline": "Network offline - changes will sync when connection is restored",
+    "fridaySync.network.reconnecting": "Reconnecting to sync server...",
+    "fridaySync.network.reconnected": "Reconnected and sync restarted",
+    "fridaySync.offline.changesTracked": "${count} changes tracked while offline",
+    "fridaySync.offline.applyingChanges": "Applying ${count} offline changes...",
+    "fridaySync.error.cannotConnectServer": "Cannot connect to sync server. Your changes will be saved locally and synced when connection is restored.",
+    "fridaySync.error.serverTimeout": "Connection to sync server timed out. Will retry automatically.",
+    "fridaySync.status.offlineMode": "Offline mode - changes saved locally",
+    "fridaySync.status.reconnecting": "Reconnecting to sync server..."
 }

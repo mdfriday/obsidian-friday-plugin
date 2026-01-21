@@ -151,7 +151,9 @@ export default class FridayPlugin extends Plugin {
 		}
 		
 		// Initialize Sync Service (common for both platforms)
-		await this.initializeSyncService();
+		setTimeout(() => {
+			void this.initializeSyncService();
+		}, 0);
 		
 		// Register sync commands (common for both platforms)
 		this.registerSyncCommands();

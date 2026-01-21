@@ -45,6 +45,14 @@ export interface LiveSyncReplicatorEnv {
     replicationStat: ReactiveSource<ReplicationStat>;
     kvDB: KeyValueDatabase;
     simpleStore: SimpleStore<any>;
+    
+    /**
+     * Check if server is reachable (provided by FridaySyncCore)
+     * Used by replicator to determine error attribution:
+     * - If server unreachable: network issue, don't show misleading errors
+     * - If server reachable: real sync/PBKDF2 issue
+     */
+    isServerReachable?: () => boolean;
 }
 
 export type RemoteDBStatus = {
@@ -83,9 +91,21 @@ export abstract class LiveSyncAbstractReplicator {
             if (hash.length == 0) {
                 throw new Error("PBKDF2 salt (Security Seed) is empty");
             }
-            Logger(`PBKDF2 salt (Security Seed): ${await arrayBufferToBase64Single(hash)}`, LOG_LEVEL_VERBOSE);
+            Logger(`PBKDF2 salt (Security Seed) verified`, LOG_LEVEL_VERBOSE);
             return true;
         } catch (ex) {
+            // Check server status before attributing error
+            // This prevents misleading "PBKDF2 failed" messages when server is unreachable
+            const serverReachable = this.env.isServerReachable?.() ?? true;
+
+            if (!serverReachable) {
+                // Server is unreachable - this is a network issue, not PBKDF2 issue
+                // Don't show misleading "PBKDF2 failed" message to user
+                Logger("PBKDF2 salt fetch skipped - server unreachable", LOG_LEVEL_VERBOSE);
+                return false;
+            }
+
+            // Server is reachable but PBKDF2 failed - this is a real problem
             const level = showMessage ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO;
             Logger(`Failed to obtain PBKDF2 salt (Security Seed) for replication`, level);
             Logger(ex, LOG_LEVEL_VERBOSE);

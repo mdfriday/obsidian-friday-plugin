@@ -424,5 +424,17 @@
     "fridaySync.hiddenFileSync.storageScanComplete": "[隐藏文件同步] 存储扫描完成",
     "fridaySync.hiddenFileSync.scanningDatabase": "[隐藏文件同步] 正在扫描数据库变更...",
     "fridaySync.hiddenFileSync.databaseScanComplete": "[隐藏文件同步] 数据库扫描完成",
-    "fridaySync.hiddenFileSync.initComplete": "[隐藏文件同步] 初始化完成"
+    "fridaySync.hiddenFileSync.initComplete": "[隐藏文件同步] 初始化完成",
+    "fridaySync.error.networkUnavailable": "无法连接到同步服务器。网络恢复后将自动重试。",
+    "fridaySync.error.authFailed": "身份验证失败。请在设置中检查您的凭据。",
+    "fridaySync.error.timeout": "连接超时。将自动重试...",
+    "fridaySync.network.offline": "网络离线 - 连接恢复后将同步更改",
+    "fridaySync.network.reconnecting": "正在重新连接同步服务器...",
+    "fridaySync.network.reconnected": "已重新连接并重启同步",
+    "fridaySync.offline.changesTracked": "离线期间已跟踪 ${count} 个更改",
+    "fridaySync.offline.applyingChanges": "正在应用 ${count} 个离线更改...",
+    "fridaySync.error.cannotConnectServer": "无法连接同步服务器。您的修改将保存在本地，恢复连接后会自动同步。",
+    "fridaySync.error.serverTimeout": "连接同步服务器超时。将自动重试。",
+    "fridaySync.status.offlineMode": "离线模式 - 修改已保存到本地",
+    "fridaySync.status.reconnecting": "正在重新连接同步服务器..."
 }

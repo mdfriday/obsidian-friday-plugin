@@ -68,7 +68,14 @@ function compareMtime(baseMTime: number, targetMTime: number): "BASE_IS_NEW" | "
 export class FridayStorageEventManager {
     private plugin: Plugin;
     private core: FridaySyncCore;
-    private isWatching = false;
+    private _isWatching = false;
+    
+    /**
+     * Whether file watcher is currently active
+     */
+    get isWatching(): boolean {
+        return this._isWatching;
+    }
     
     // Track files being processed to avoid loops (livesync's processingFiles)
     private processingFiles = new Set<string>();
@@ -200,7 +207,7 @@ export class FridayStorageEventManager {
      * Note: Following livesync, we don't immediately start - allow time for Obsidian to settle
      */
     beginWatch() {
-        if (this.isWatching) {
+        if (this._isWatching) {
             Logger("Storage event manager already watching", LOG_LEVEL_VERBOSE);
             return;
         }
@@ -231,7 +238,7 @@ export class FridayStorageEventManager {
             this.plugin.app.vault.on("raw", this.watchVaultRawEvents.bind(this))
         );
         
-        this.isWatching = true;
+        this._isWatching = true;
         Logger("Storage event manager started watching vault", LOG_LEVEL_INFO);
     }
     
@@ -251,7 +258,7 @@ export class FridayStorageEventManager {
      * Stop watching vault
      */
     stopWatch() {
-        this.isWatching = false;
+        this._isWatching = false;
         // Clear any pending debounce timers
         for (const timer of this.debounceTimers.values()) {
             clearTimeout(timer);

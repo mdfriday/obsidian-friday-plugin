@@ -686,15 +686,33 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         syncMode: "sync" | "pullOnly" | "pushOnly",
         ignoreCleanLock = false
     ): Promise<boolean> {
+        // Server status is checked in startSync via ServerConnectivityChecker
+        // Failures here are real problems (not network issues, unless server became unreachable)
+        
         if ((await this.ensurePBKDF2Salt(setting, showResult, !retrying)) === false) {
+            // Check if server is reachable to determine error type
+            const serverReachable = this.env.isServerReachable?.() ?? true;
+
+            if (serverReachable) {
+                // Server reachable but PBKDF2 failed - real error
+                this.syncStatus = "ERRORED";
+                this.updateInfo();
+            }
+            // If server unreachable, status is already set to NOT_CONNECTED in startSync
+            // Don't override it here
             return false;
         }
 
         // Check salt consistency to detect remote database reset
+        // Only run this check if server was reachable (PBKDF2 succeeded)
         if (!retrying) {
             const saltCheck = await this.checkSaltConsistency(setting);
             if (!saltCheck.ok) {
+                // Server reachable, PBKDF2 ok, but salt mismatch
+                // This is a REAL database reset
                 Logger(saltCheck.message!, LOG_LEVEL_NOTICE);
+                this.syncStatus = "ERRORED";
+                this.updateInfo();
                 return false;
             }
         }
@@ -717,6 +735,10 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                     showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO,
                     "sync"
                 );
+                // Set status to ERRORED when connection fails
+                // This ensures the UI shows the correct state instead of staying at STARTED
+                this.syncStatus = "ERRORED";
+                this.updateInfo();
                 return false;
             }
             this.maxPullSeq = Number(`${ret.info.update_seq}`.split("-")[0]);
@@ -954,6 +976,9 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                         $msg("liveSyncReplicator.couldNotConnectToServer"),
                         showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO
                     );
+                    // Set status to ERRORED when LiveSync connection fails
+                    this.syncStatus = "ERRORED";
+                    this.updateInfo();
                     return false;
                 }
                 if (showResult) {
@@ -1015,6 +1040,13 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                         return async () => await this.openContinuousReplication(tempSetting, showResult, true);
                     }
                 }
+            }
+            // If we reach here, either openOneShotReplication failed or something else went wrong
+            // Ensure the status reflects the failure (openOneShotReplication should have set ERRORED,
+            // but this is a safety net in case it didn't)
+            if (this.syncStatus === "STARTED") {
+                this.syncStatus = "ERRORED";
+                this.updateInfo();
             }
             return false;
         });
