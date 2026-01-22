@@ -607,6 +607,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     async handleNetworkRecovery(): Promise<void> {
         Logger("Network recovery detected", LOG_LEVEL_INFO);
 
+        // Check current status - if already LIVE, skip recovery
+        const currentStatus = this.replicationStat.value.syncStatus;
+        if (currentStatus === "LIVE") {
+            Logger("Sync already in LIVE state, skipping recovery", LOG_LEVEL_VERBOSE);
+            return;
+        }
+
         // Update network status
         this._managers?.networkManager.setServerReachable(true);
 
@@ -623,10 +630,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         // Restart sync if configured
         // Check if sync needs to be restarted - only skip if already in LIVE state
         if (this._settings.liveSync && this._replicator) {
-            const status = this.replicationStat.value.syncStatus;
-            // Restart if not in LIVE state (covers PAUSED, CLOSED, ERRORED, NOT_CONNECTED, etc.)
-            if (status !== "LIVE") {
-                Logger(`Restarting sync after network recovery (current status: ${status})`, LOG_LEVEL_INFO);
+            // Only restart if not in LIVE state
+            if (currentStatus !== "LIVE") {
+                Logger(`Restarting sync after network recovery (current status: ${currentStatus})`, LOG_LEVEL_INFO);
                 await this.startSync(true);
             }
         }

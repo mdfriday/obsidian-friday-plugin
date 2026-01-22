@@ -57,6 +57,7 @@ import {
     SyncParamsUpdateError,
 } from "../SyncParamsHandler.ts";
 import type { ServiceHub } from "../../services/ServiceHub.ts";
+import { arrayBufferToBase64Single, base64ToArrayBufferInternalBrowser } from "../../string_and_binary/convert.ts";
 
 const currentVersionRange: ChunkVersionRange = {
     min: 0,
@@ -203,17 +204,124 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         }
     }
 
+    // Instance-level salt cache (session lifetime)
+    private _saltCache: Uint8Array | null = null;
+    
     override async getReplicationPBKDF2Salt(
         setting: RemoteDBSettings,
-        refresh?: boolean
+        refresh?: boolean = false
     ): Promise<Uint8Array<ArrayBuffer>> {
-        const server = `${setting.couchDB_URI}/${setting.couchDB_DBNAME}`;
-        const manager = createSyncParamsHanderForServer(server, {
-            put: (params: SyncParameters) => this.putSyncParameters(setting, params),
-            get: () => this.getSyncParameters(setting),
-            create: () => this.getInitialSyncParameters(setting),
-        });
-        return await manager.getPBKDF2Salt(refresh);
+        
+        // ========== Step 1: Check instance cache ==========
+        // Fast path: return cached salt if available and not forcing refresh
+        if (this._saltCache && !refresh) {
+            Logger("Using session salt cache", LOG_LEVEL_VERBOSE);
+            return this._saltCache;
+        }
+        
+        // ========== Step 2: Check server reachability ==========
+        const serverReachable = this.env.isServerReachable?.() ?? true;
+        
+        if (!serverReachable) {
+            // 🔑 Server unreachable: try local persistent cache
+            // CRITICAL: Do NOT call manager.getPBKDF2Salt() to avoid _fetchSyncParameters
+            Logger("Server unreachable, trying local salt cache", LOG_LEVEL_VERBOSE);
+            
+            const cachedSalt = await this.getLocalCachedSalt(setting.couchDB_DBNAME);
+            
+            if (cachedSalt) {
+                Logger("Using local salt cache (offline mode)", LOG_LEVEL_INFO);
+                this._saltCache = cachedSalt;  // Update session cache
+                return cachedSalt;
+            }
+            
+            // No cache available - cannot proceed offline
+            Logger("No salt cache available for offline mode", LOG_LEVEL_INFO);
+            throw new Error(
+                $msg("fridaySync.error.noCacheOffline") ||
+                "First-time setup requires server connection"
+            );
+        }
+        
+        // ========== Step 3: Server reachable - fetch normally ==========
+        try {
+            const server = `${setting.couchDB_URI}/${setting.couchDB_DBNAME}`;
+            const manager = createSyncParamsHanderForServer(server, {
+                put: (params: SyncParameters) => this.putSyncParameters(setting, params),
+                get: () => this.getSyncParameters(setting),
+                create: () => this.getInitialSyncParameters(setting),
+            });
+            
+            // Fetch from server via SyncParamsHandler
+            const salt = await manager.getPBKDF2Salt(refresh);
+            
+            // ✅ Success: update both caches
+            this._saltCache = salt;  // Session cache
+            await this.saveLocalSaltCache(setting.couchDB_DBNAME, salt);  // Persistent cache
+            
+            Logger("Salt fetched from server and cached", LOG_LEVEL_VERBOSE);
+            return salt;
+            
+        } catch (ex) {
+            // Server fetch failed - try fallback to local cache
+            Logger(`Failed to fetch salt from server: ${ex}`, LOG_LEVEL_VERBOSE);
+            
+            const cachedSalt = await this.getLocalCachedSalt(setting.couchDB_DBNAME);
+            
+            if (cachedSalt) {
+                Logger("Falling back to local salt cache", LOG_LEVEL_INFO);
+                this._saltCache = cachedSalt;
+                return cachedSalt;
+            }
+            
+            // Real failure - no server and no cache
+            Logger("No salt available (server failed and no cache)", LOG_LEVEL_INFO);
+            throw ex;
+        }
+    }
+    
+    /**
+     * Save salt to local persistent cache (reuses existing "friday-sync-salt" store)
+     */
+    private async saveLocalSaltCache(
+        dbName: string,
+        salt: Uint8Array
+    ): Promise<void> {
+        try {
+            const saltKey = this._getKnownSaltKey(dbName);
+            const saltStore = this.env.services.database.openSimpleStore<string>("friday-sync-salt");
+            const saltBase64 = await arrayBufferToBase64Single(salt);
+            await saltStore.set(saltKey, saltBase64);
+            Logger("Salt saved to local cache", LOG_LEVEL_VERBOSE);
+        } catch (ex) {
+            Logger(`Failed to save salt cache: ${ex}`, LOG_LEVEL_VERBOSE);
+            // Non-critical error, don't throw
+        }
+    }
+    
+    /**
+     * Get salt from local persistent cache (reuses existing "friday-sync-salt" store)
+     */
+    private async getLocalCachedSalt(
+        dbName: string
+    ): Promise<Uint8Array | null> {
+        try {
+            const saltKey = this._getKnownSaltKey(dbName);
+            const saltStore = this.env.services.database.openSimpleStore<string>("friday-sync-salt");
+            const saltBase64 = await saltStore.get(saltKey);
+            
+            if (saltBase64) {
+                const salt = new Uint8Array(base64ToArrayBufferInternalBrowser(saltBase64));
+                Logger("Local salt cache found", LOG_LEVEL_VERBOSE);
+                return salt;
+            }
+            
+            Logger("No local salt cache found", LOG_LEVEL_VERBOSE);
+            return null;
+        } catch (ex) {
+            Logger(`Failed to read salt cache: ${ex}`, LOG_LEVEL_VERBOSE);
+            return null;
+        }
     }
 
     // eslint-disable-next-line require-await

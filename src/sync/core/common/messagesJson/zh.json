@@ -436,5 +436,8 @@
     "fridaySync.error.cannotConnectServer": "无法连接同步服务器。您的修改将保存在本地，恢复连接后会自动同步。",
     "fridaySync.error.serverTimeout": "连接同步服务器超时。将自动重试。",
     "fridaySync.status.offlineMode": "离线模式 - 修改已保存到本地",
-    "fridaySync.status.reconnecting": "正在重新连接同步服务器..."
+    "fridaySync.status.reconnecting": "正在重新连接同步服务器...",
+    "fridaySync.error.noCacheOffline": "首次使用需要连接服务器",
+    "fridaySync.error.firstTimeNeedsConnection": "首次使用需要连接服务器。请连接网络后重新启动同步。",
+    "fridaySync.offline.workingMode": "离线工作中 - 连接后自动同步"
 }

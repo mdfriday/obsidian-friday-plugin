@@ -75,7 +75,17 @@ export class FridayNetworkEvents {
         Logger(`Network status changed: ${isOnline ? "online" : "offline"}`, LOG_LEVEL_INFO);
 
         if (isOnline) {
+            // Check current sync status before attempting recovery
+            const currentStatus = this.core.replicationStat.value.syncStatus;
+            
+            if (currentStatus === "LIVE") {
+                // Already in LIVE state, no need to reconnect
+                Logger("Network online but sync already active", LOG_LEVEL_VERBOSE);
+                return;
+            }
+            
             // Network recovered - trigger reconnection
+            Logger("Network recovered, attempting reconnection", LOG_LEVEL_INFO);
             await this.core.handleNetworkRecovery();
         } else {
             // Network lost - update status
@@ -121,9 +131,31 @@ export class FridayNetworkEvents {
         } else {
             // Window visible again
             if (!this.hasFocus) return;
-            Logger("Window visible, checking for sync updates", LOG_LEVEL_VERBOSE);
-            // Trigger a sync check on resume
-            await this.core.handleNetworkRecovery();
+            
+            // Check current sync status - only reconnect if needed
+            const currentStatus = this.core.replicationStat.value.syncStatus;
+            
+            // If already in LIVE state, no need to reconnect
+            if (currentStatus === "LIVE") {
+                Logger("Window visible, sync already active", LOG_LEVEL_VERBOSE);
+                return;
+            }
+            
+            // If status is NOT_CONNECTED or ERRORED, attempt recovery
+            if (currentStatus === "NOT_CONNECTED" || currentStatus === "ERRORED") {
+                Logger("Window visible, checking for sync recovery", LOG_LEVEL_VERBOSE);
+                
+                // Avoid duplicate reconnection attempts if already scheduled
+                if (this.core.connectionMonitor?.isReconnectScheduled()) {
+                    Logger("Reconnect already scheduled, skipping duplicate attempt", LOG_LEVEL_VERBOSE);
+                    return;
+                }
+                
+                await this.core.handleNetworkRecovery();
+            } else {
+                // Other states (STARTED, PAUSED, CLOSED), just log
+                Logger(`Window visible, current status: ${currentStatus}`, LOG_LEVEL_VERBOSE);
+            }
         }
     }
 

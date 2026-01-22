@@ -601,5 +601,8 @@
     "fridaySync.error.cannotConnectServer": "Cannot connect to sync server. Your changes will be saved locally and synced when connection is restored.",
     "fridaySync.error.serverTimeout": "Connection to sync server timed out. Will retry automatically.",
     "fridaySync.status.offlineMode": "Offline mode - changes saved locally",
-    "fridaySync.status.reconnecting": "Reconnecting to sync server..."
+    "fridaySync.status.reconnecting": "Reconnecting to sync server...",
+    "fridaySync.error.noCacheOffline": "First-time setup requires server connection",
+    "fridaySync.error.firstTimeNeedsConnection": "First-time setup requires server connection. Please connect to network and restart sync.",
+    "fridaySync.offline.workingMode": "Working offline - changes will sync when connected"
 }
