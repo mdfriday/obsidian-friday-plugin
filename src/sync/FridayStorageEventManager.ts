@@ -56,8 +56,9 @@ const MTIME_RESOLUTION_PRECISE = 500;
 
 /**
  * Compare mtime with resolution (matching livesync's compareMtime)
+ * Exported for use in other modules
  */
-function compareMtime(baseMTime: number, targetMTime: number): "BASE_IS_NEW" | "TARGET_IS_NEW" | "EVEN" {
+export function compareMtime(baseMTime: number, targetMTime: number): "BASE_IS_NEW" | "TARGET_IS_NEW" | "EVEN" {
     const truncatedBaseMTime = Math.floor(baseMTime / MTIME_RESOLUTION) * MTIME_RESOLUTION;
     const truncatedTargetMTime = Math.floor(targetMTime / MTIME_RESOLUTION) * MTIME_RESOLUTION;
     if (truncatedBaseMTime === truncatedTargetMTime) return "EVEN";
@@ -72,12 +73,20 @@ export class FridayStorageEventManager {
     private plugin: Plugin;
     private core: FridaySyncCore;
     private _isWatching = false;
+    private _isSuspended = false;  // LiveSync's suspendFileWatching mechanism
     
     /**
      * Whether file watcher is currently active
      */
     get isWatching(): boolean {
         return this._isWatching;
+    }
+    
+    /**
+     * Whether file watching is suspended (matching LiveSync's suspendFileWatching)
+     */
+    get isSuspended(): boolean {
+        return this._isSuspended;
     }
     
     // Track files being processed to avoid loops (livesync's processingFiles)
@@ -312,19 +321,53 @@ export class FridayStorageEventManager {
         Logger("Storage event manager stopped", LOG_LEVEL_VERBOSE);
     }
     
+    /**
+     * Suspend file watching (LiveSync's suspendFileWatching pattern)
+     * Used when processing remote updates to prevent feedback loops
+     */
+    suspend() {
+        this._isSuspended = true;
+        Logger("📛 File watching suspended (processing remote updates)", LOG_LEVEL_VERBOSE);
+    }
+    
+    /**
+     * Resume file watching after processing remote updates
+     */
+    resume() {
+        this._isSuspended = false;
+        Logger("✅ File watching resumed", LOG_LEVEL_VERBOSE);
+    }
+    
+    /**
+     * Check if we should process vault events
+     * Implements LiveSync's suspendFileWatching safety valve
+     */
+    private shouldProcessEvent(): boolean {
+        if (!this._isWatching) {
+            return false;
+        }
+        if (this._isSuspended) {
+            // This is the key protection: ignore all events when suspended
+            return false;
+        }
+        return true;
+    }
+    
     // ==================== Event Handlers ====================
     
     private watchVaultCreate(file: TAbstractFile) {
+        // Check if we should process events (LiveSync's suspendFileWatching)
+        if (!this.shouldProcessEvent()) {
+            Logger(`File create skipped (watching suspended): ${file.path}`, LOG_LEVEL_DEBUG);
+            return;
+        }
+        
         if (file instanceof TFolder) return;
         if (this.isFileProcessing(file.path)) {
             Logger(`File create skipped (being processed): ${file.path}`, LOG_LEVEL_VERBOSE);
             return;
         }
-        // Check recentlyTouched (livesync pattern)
-        if (this.recentlyTouched(file as TFile)) {
-            Logger(`File create skipped (recently touched): ${file.path}`, LOG_LEVEL_VERBOSE);
-            return;
-        }
+        // Note: recentlyTouched check moved to processEvent (after delay(10))
         this.enqueueEvent({
             type: "CREATE",
             path: file.path as FilePath,
@@ -335,16 +378,18 @@ export class FridayStorageEventManager {
     }
     
     private watchVaultChange(file: TAbstractFile) {
+        // Check if we should process events (LiveSync's suspendFileWatching)
+        if (!this.shouldProcessEvent()) {
+            Logger(`File change skipped (watching suspended): ${file.path}`, LOG_LEVEL_DEBUG);
+            return;
+        }
+        
         if (file instanceof TFolder) return;
         if (this.isFileProcessing(file.path)) {
             Logger(`File change skipped (being processed): ${file.path}`, LOG_LEVEL_VERBOSE);
             return;
         }
-        // Check recentlyTouched (livesync pattern)
-        if (this.recentlyTouched(file as TFile)) {
-            Logger(`File change skipped (recently touched): ${file.path}`, LOG_LEVEL_VERBOSE);
-            return;
-        }
+        // Note: recentlyTouched check moved to processEvent (after delay(10))
         // Debounce file changes to avoid rapid consecutive saves
         this.debouncedEnqueue({
             type: "CHANGED",
@@ -356,6 +401,12 @@ export class FridayStorageEventManager {
     }
     
     private watchVaultDelete(file: TAbstractFile) {
+        // Check if we should process events (LiveSync's suspendFileWatching)
+        if (!this.shouldProcessEvent()) {
+            Logger(`File delete skipped (watching suspended): ${file.path}`, LOG_LEVEL_DEBUG);
+            return;
+        }
+        
         if (file instanceof TFolder) return;
         if (this.isFileProcessing(file.path)) {
             Logger(`File delete skipped (being processed): ${file.path}`, LOG_LEVEL_VERBOSE);
@@ -376,6 +427,12 @@ export class FridayStorageEventManager {
     }
     
     private watchVaultRename(file: TAbstractFile, oldPath: string) {
+        // Check if we should process events (LiveSync's suspendFileWatching)
+        if (!this.shouldProcessEvent()) {
+            Logger(`File rename skipped (watching suspended): ${oldPath} -> ${file.path}`, LOG_LEVEL_DEBUG);
+            return;
+        }
+        
         if (file instanceof TFolder) return;
         // Clear same change marks for old path
         this.unmarkChanges(oldPath);
@@ -446,6 +503,24 @@ export class FridayStorageEventManager {
     
     private async processEvent(event: FileEvent): Promise<boolean> {
         try {
+            // ========== LiveSync Layer 2: touched + recentlyTouched ==========
+            // For CREATE/CHANGED events, wait for writer to mark as touched
+            // This is the CORE protection against self-triggered sync loops
+            if (event.type === "CREATE" || event.type === "CHANGED") {
+                if (event.file) {
+                    // Wait 10ms to let the writer complete the touch() call
+                    // This matches livesync's StorageEventManager.appendQueue line 279
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    
+                    // Check if this file was recently touched by us
+                    // If yes, this event was triggered by our own write → skip it
+                    if (this.recentlyTouched(event.file)) {
+                        Logger(`File recently touched by us, skipping: ${event.path}`, LOG_LEVEL_VERBOSE);
+                        return true;
+                    }
+                }
+            }
+            
             // Check if file is ignored by ignore patterns
             // Following livesync design: ALL events (including DELETE) are checked
             // This means ignored files' operations are never synced

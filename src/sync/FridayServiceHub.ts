@@ -4,7 +4,7 @@
  * Implements the minimum required services for CouchDB synchronization
  */
 
-import { Platform } from "obsidian";
+import { Platform, TFile } from "obsidian";
 import { ServiceHub, type ServiceInstances } from "./core/services/ServiceHub";
 import {
     type APIService,
@@ -51,13 +51,14 @@ import type { LiveSyncLocalDB } from "./core/pouchdb/LiveSyncLocalDB";
 import type { LiveSyncAbstractReplicator } from "./core/replication/LiveSyncAbstractReplicator";
 import type { SimpleStore } from "octagonal-wheels/databases/SimpleStoreBase";
 import type { SvelteDialogManagerBase } from "./core/UI/svelteDialog";
-import { readContent, isTextDocument } from "./core/common/utils";
+import { readContent, isTextDocument, isDocContentSame } from "./core/common/utils";
 import { enableEncryption, disableEncryption } from "./core/pouchdb/encryption";
 import { replicationFilter } from "./core/pouchdb/compress";
 import { E2EEAlgorithms } from "./core/common/types";
 
 // Import hidden file utilities
 import { isInternalMetadata } from "./utils/hiddenFileUtils";
+import { compareMtime } from "./FridayStorageEventManager";
 
 // PouchDB imports - use the configured PouchDB with transform-pouch plugin
 import { PouchDB } from "./core/pouchdb/pouchdb-browser";
@@ -482,7 +483,10 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 return false;
             }
             
-            // ========== SMART CONFLICT RESOLUTION ==========
+            // Note: We do NOT use suspendFileWatching here (that's only for bulk operations)
+            // Instead, we rely on LiveSync's Layer 2: touched + recentlyTouched
+            const storageEventManager = this.core.storageEventManager;
+            
             // Check if document is deleted first
             const isDeleted = doc._deleted === true || ("deleted" in doc && (doc as any).deleted === true);
             
@@ -529,7 +533,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             // Mark file as being processed to prevent sync loop
             // (When we write the file, vault will emit 'modify' event, 
             //  which should NOT trigger another upload to server)
-            const storageEventManager = this.core.storageEventManager;
             if (storageEventManager) {
                 storageEventManager.markFileProcessing(path);
             }
@@ -576,6 +579,59 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 const vault = this.core.plugin.app.vault;
                 const existingFile = vault.getAbstractFileByPath(path);
                 
+                // ========== LiveSync Layer 3: Content Comparison ==========
+                // Check if write is actually needed (matching livesync's ModuleFileHandler.ts:276-305)
+                if (existingFile && existingFile instanceof TFile) {
+                    let shouldWrite = false;
+                    
+                    // 1. Check mtime freshness (2 second resolution)
+                    const localMtime = existingFile.stat.mtime;
+                    const remoteMtime = fullEntry.mtime || 0;
+                    
+                    // Use compareMtime from FridayStorageEventManager
+                    // This matches livesync's compareMtime with 2-second resolution
+                    const mtimeComparison = compareMtime(localMtime, remoteMtime);
+                    
+                    if (mtimeComparison !== "EVEN") {
+                        // Mtime is significantly different
+                        shouldWrite = true;
+                    } else {
+                        // 2. Mtime is similar, check content
+                        try {
+                            let localContent: string | ArrayBuffer;
+                            if (isText) {
+                                localContent = await vault.read(existingFile);
+                            } else {
+                                localContent = await vault.readBinary(existingFile);
+                            }
+                            
+                            // 3. Compare content using livesync's isDocContentSame
+                            const isSame = await isDocContentSame(content, localContent);
+                            
+                            if (isSame) {
+                                // Content is identical, no need to write
+                                // Mark mtimes as same to avoid future checks
+                                if (storageEventManager) {
+                                    storageEventManager.markChangesAreSame(path, localMtime, remoteMtime);
+                                }
+                                Logger(`Content same, skip write: ${path}`, LOG_LEVEL_VERBOSE);
+                                return true;
+                            } else {
+                                shouldWrite = true;
+                            }
+                        } catch (error) {
+                            // If content comparison fails, assume we need to write
+                            Logger(`Content comparison failed for ${path}, will write: ${error}`, LOG_LEVEL_VERBOSE);
+                            shouldWrite = true;
+                        }
+                    }
+                    
+                    if (!shouldWrite) {
+                        Logger(`Skipped write for ${path} (no changes)`, LOG_LEVEL_VERBOSE);
+                        return true;
+                    }
+                }
+                
                 // Ensure parent directories exist
                 const dirPath = path.substring(0, path.lastIndexOf("/"));
                 if (dirPath) {
@@ -601,7 +657,8 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                     }
                 }
                 
-                // Mark file as touched AFTER write (livesync pattern)
+                // ========== LiveSync Layer 2: Mark as touched ==========
+                // CRITICAL: Must be immediately after write
                 // This prevents the vault event from triggering another sync
                 // We need to get the file stat after write to get correct mtime/size
                 const writtenFile = vault.getAbstractFileByPath(path);
