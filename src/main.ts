@@ -61,6 +61,8 @@ interface FridaySettings {
 	// CouchDB Sync Settings (legacy, to be replaced by license-based sync)
 	syncEnabled: boolean;
 	syncConfig: SyncConfig;
+	// UI Display Settings
+	showEditorStatusDisplay: boolean;
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
@@ -89,6 +91,8 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	// CouchDB Sync Settings defaults
 	syncEnabled: false,
 	syncConfig: SyncService.getDefaultConfig(),
+	// UI Display Settings defaults
+	showEditorStatusDisplay: false,
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -2242,6 +2246,30 @@ class FridaySettingTab extends PluginSettingTab {
 		currentPatterns.forEach((pattern) => {
 			createPatternRow(pattern);
 		});
+		
+		// ========== UI Display Settings (Desktop only) ==========
+		// Mobile always shows editor status (no status bar), so no setting needed
+		if (Platform.isDesktop) {
+			const uiDisplayContainer = containerEl.createDiv('friday-ui-display-container');
+			uiDisplayContainer.createEl("h3", {text: "显示设置"});
+			
+			// Show Editor Status Display toggle
+			new Setting(uiDisplayContainer)
+				.setName(this.plugin.i18n.t('settings.show_editor_status'))
+				.setDesc(this.plugin.i18n.t('settings.show_editor_status_desc'))
+				.addToggle((toggle) => {
+					toggle.setValue(this.plugin.settings.showEditorStatusDisplay ?? false);
+					toggle.onChange(async (value) => {
+						this.plugin.settings.showEditorStatusDisplay = value;
+						await this.plugin.saveSettings();
+						// Apply visibility immediately
+						if (this.plugin.syncStatusDisplay) {
+							// @ts-ignore - access method
+							this.plugin.syncStatusDisplay.applyEditorStatusVisibility();
+						}
+					});
+				});
+		}
 
 		// ========== Danger Zone ==========
 		this.renderDangerZone(containerEl);

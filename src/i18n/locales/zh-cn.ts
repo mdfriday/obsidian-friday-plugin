@@ -56,6 +56,13 @@ export const zhCn: TranslationNamespace = {
 		sync_download_success: "云端数据已成功下载！",
 		sync_operation_failed: "同步操作失败，请重试。",
 
+		// UI Display Settings
+		show_editor_status: "显示编辑器内状态",
+		show_editor_status_desc: "在编辑器右上角显示同步状态信息（移动端始终显示）",
+		hide_editor_status: "隐藏编辑器内状态",
+		reconnect_sync: "重新连接同步",
+		sync_settings: "同步设置",
+
 		// Security Settings
 		security: "安全",
 		encryption_enabled: "端到端加密已启用",

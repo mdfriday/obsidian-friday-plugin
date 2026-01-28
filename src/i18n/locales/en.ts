@@ -56,6 +56,13 @@ export const en: TranslationNamespace = {
 		sync_download_success: "Cloud data downloaded successfully!",
 		sync_operation_failed: "Sync operation failed. Please try again.",
 
+		// UI Display Settings
+		show_editor_status: "Show Editor Status Display",
+		show_editor_status_desc: "Show sync status in the top-right corner of the editor (always shown on mobile)",
+		hide_editor_status: "Hide Editor Status Display",
+		reconnect_sync: "Reconnect Sync",
+		sync_settings: "Sync Settings",
+
 		// Security Settings
 		security: "Security",
 		encryption_enabled: "End-to-end encryption is enabled",

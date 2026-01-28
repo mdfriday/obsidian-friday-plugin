@@ -1074,6 +1074,20 @@ div.workspace-leaf-content[data-type=bases] .livesync-status {
   padding-right: 18px;
 }
 
+/* Mobile: Prevent text overflow and icon overlap */
+.is-mobile .livesync-status {
+  /* Ensure status doesn't overlap with right-side icons */
+  max-width: calc(100% - 60px); /* Prevent full width */
+}
+
+.is-mobile .livesync-status-logmessage {
+  /* Force text to wrap and truncate if still too long */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  display: block;
+}
+
 /* Default styling for all status divs */
 .livesync-status div {
   opacity: 0.6;
@@ -1108,6 +1122,16 @@ div.workspace-leaf-content[data-type=bases] .livesync-status {
 .syncstatusbar {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Clickable status bar styles */
+.syncstatusbar.clickable-statusbar {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.syncstatusbar.clickable-statusbar:hover {
+  opacity: 0.7;
 }
 
 /* src/styles/license-settings.css */

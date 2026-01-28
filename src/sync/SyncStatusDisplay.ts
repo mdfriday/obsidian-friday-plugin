@@ -4,12 +4,36 @@
  * This is a direct port of livesync's ModuleLog status display functionality
  */
 
-import { Plugin, Notice } from "obsidian";
+import { Plugin, Notice, Platform } from "obsidian";
 import { computed, reactive, reactiveSource, type ReactiveValue } from "octagonal-wheels/dataobject/reactive";
 import type { DatabaseConnectingStatus } from "./core/common/types";
 import type { FridaySyncCore } from "./FridaySyncCore";
 
 export const MARK_DONE = "\u{2009}\u{2009}";
+
+/**
+ * Truncate long text for mobile display
+ * Keeps important parts: direction (head) and filename (tail), omits middle path
+ * 
+ * Example: "DB:.git/objects/2f/8fb5836df82109160c5294a239af8e972a7written"
+ *   -> "DB:.git/objects/2f/8f...972a7written"
+ */
+function truncateMiddleForMobile(text: string, maxLength: number = 60): string {
+    if (!Platform.isMobile || text.length <= maxLength) {
+        return text;
+    }
+    
+    // Keep 40% at start (direction + beginning of path)
+    // Keep 40% at end (filename)
+    // Middle 20% replaced with "..."
+    const headLength = Math.floor(maxLength * 0.4);
+    const tailLength = Math.floor(maxLength * 0.4);
+    
+    const head = text.substring(0, headLength);
+    const tail = text.substring(text.length - tailLength);
+    
+    return `${head}...${tail}`;
+}
 
 export class SyncStatusDisplay {
     private plugin: Plugin;
@@ -35,6 +59,21 @@ export class SyncStatusDisplay {
     
     // Log message hide timer
     private logHideTimer?: ReturnType<typeof setTimeout>;
+    
+    /**
+     * Get whether editor status should be shown from plugin settings
+     * Mobile: Always show (no status bar on mobile)
+     * Desktop: Respect user settings
+     */
+    private get shouldShowEditorStatus(): boolean {
+        // Mobile always shows editor status (no status bar on mobile)
+        if (Platform.isMobile) {
+            return true;
+        }
+        // Desktop respects user settings
+        // @ts-ignore - plugin.settings type
+        return this.plugin.settings?.showEditorStatusDisplay ?? false;
+    }
     
     constructor(plugin: Plugin) {
         this.plugin = plugin;
@@ -73,6 +112,12 @@ export class SyncStatusDisplay {
         // Create status bar (bottom bar)
         this.statusBar = this.plugin.addStatusBarItem();
         this.statusBar.addClass("syncstatusbar");
+        this.statusBar.addClass("clickable-statusbar");
+        
+        // Make status bar clickable
+        this.statusBar.addEventListener('click', (e) => {
+            this.showStatusBarMenu(e);
+        });
         
         // Set up reactive observers (uses core if available)
         this.observeForLogs();
@@ -94,6 +139,9 @@ export class SyncStatusDisplay {
                 this.adjustStatusDivPosition();
             })
         );
+        
+        // Apply initial visibility setting
+        this.applyEditorStatusVisibility();
     }
     
     /**
@@ -265,6 +313,9 @@ export class SyncStatusDisplay {
             // Insert into the active leaf's container
             const container = mdv.view.containerEl;
             container.insertBefore(this.statusDiv, container.lastChild);
+            
+            // Apply visibility setting after position adjustment
+            this.applyEditorStatusVisibility();
         }
     }
     
@@ -273,6 +324,8 @@ export class SyncStatusDisplay {
      * Shows:
      * - statusLine: "Sync: ⚡ ↑ 0 (LIVE) ↓ 3 (LIVE)"
      * - logMessage: Current log message (e.g., "Replication activated")
+     * 
+     * Mobile: Truncates long messages to prevent UI overlap
      */
     applyStatusBarText() {
         if (this.nextFrameQueue) {
@@ -293,8 +346,9 @@ export class SyncStatusDisplay {
             }
             
             // Update log message below status line (like livesync)
+            // Mobile: Truncate long messages to prevent overlap with icons
             if (this.logMessage) {
-                this.logMessage.innerText = newLog;
+                this.logMessage.innerText = truncateMiddleForMobile(newLog);
             }
         });
     }
@@ -382,6 +436,91 @@ export class SyncStatusDisplay {
                 }
             }, timeout);
         }
+    }
+    
+    /**
+     * Apply editor status visibility based on settings
+     */
+    applyEditorStatusVisibility() {
+        if (this.statusDiv) {
+            if (this.shouldShowEditorStatus) {
+                this.statusDiv.style.display = '';  // Show
+            } else {
+                this.statusDiv.style.display = 'none';  // Hide
+            }
+        }
+    }
+    
+    /**
+     * Toggle editor status display visibility
+     */
+    async toggleEditorStatusDisplay() {
+        // @ts-ignore - plugin.settings type
+        const plugin = this.plugin as any;
+        plugin.settings.showEditorStatusDisplay = !plugin.settings.showEditorStatusDisplay;
+        await plugin.saveSettings();
+        
+        // Apply visibility immediately
+        this.applyEditorStatusVisibility();
+    }
+    
+    /**
+     * Show context menu when clicking on status bar
+     * Mobile: Simplified menu (no toggle option, always shows editor status)
+     */
+    private showStatusBarMenu(event: MouseEvent) {
+        const { Menu } = require('obsidian');
+        const menu = new Menu();
+        
+        // Menu item 1: Toggle editor status display (Desktop only)
+        // Mobile always shows editor status, no need for this option
+        if (Platform.isDesktop) {
+            menu.addItem((item: any) => {
+                item
+                    .setTitle(
+                        this.shouldShowEditorStatus 
+                            ? '隐藏编辑器内状态' 
+                            : '显示编辑器内状态'
+                    )
+                    .setIcon(this.shouldShowEditorStatus ? 'eye-off' : 'eye')
+                    .onClick(async () => {
+                        await this.toggleEditorStatusDisplay();
+                    });
+            });
+            
+            menu.addSeparator();
+        }
+        
+        // Menu item 2: Reconnect if not connected
+        const syncStatus = this.core?.replicationStat?.value?.syncStatus;
+        if (syncStatus === 'NOT_CONNECTED' || syncStatus === 'ERRORED') {
+            menu.addItem((item: any) => {
+                item
+                    .setTitle('重新连接同步')
+                    .setIcon('refresh-cw')
+                    .onClick(async () => {
+                        if (this.core) {
+                            await this.core.startSync();
+                        }
+                    });
+            });
+        }
+        
+        // Menu item 3: Open sync settings
+        menu.addItem((item: any) => {
+            item
+                .setTitle('同步设置')
+                .setIcon('settings')
+                .onClick(() => {
+                    // @ts-ignore - app.setting may not have complete types
+                    this.plugin.app.setting.open();
+                    // @ts-ignore
+                    this.plugin.app.setting.openTabById('mdfriday');
+                });
+        });
+        
+        // Show menu at mouse position
+        menu.showAtMouseEvent(event);
     }
     
     /**
