@@ -28,7 +28,7 @@ import {
 import { ServiceBackend } from "./core/services/ServiceBackend";
 import type { FridaySyncCore } from "./FridaySyncCore";
 import type { FetchHttpHandler } from "@smithy/fetch-http-handler";
-import { Logger, type LOG_LEVEL, LOG_LEVEL_INFO, LOG_LEVEL_VERBOSE } from "octagonal-wheels/common/logger";
+import { Logger, type LOG_LEVEL, LOG_LEVEL_INFO, LOG_LEVEL_NOTICE, LOG_LEVEL_VERBOSE } from "octagonal-wheels/common/logger";
 import type {
     DocumentID,
     EntryDoc,
