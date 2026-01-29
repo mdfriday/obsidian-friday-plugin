@@ -295,171 +295,16 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         this.handleProcessSynchroniseResult(this.defaultProcessSynchroniseResult.bind(this));
     }
 
-    // ==================== Smart Conflict Resolution System ====================
-    
-    // Deferred documents for files that are open
-    private deferredDocs = new Map<string, MetaEntry>();
-    
-    /**
-     * Check if a file is currently open in any editor
-     */
-    private isFileOpen(path: string): boolean {
-        const workspace = this.core.plugin.app.workspace;
-        return workspace.getLeavesOfType('markdown').some(leaf => {
-            const view = leaf.view as any;
-            return view.file?.path === path;
-        });
-    }
-    
-    /**
-     * Check if a file is actively being edited (has recent modifications or is in active leaf)
-     */
-    private isFileActivelyEditing(path: string): boolean {
-        const workspace = this.core.plugin.app.workspace;
-        const leaves = workspace.getLeavesOfType('markdown');
-        
-        for (const leaf of leaves) {
-            const view = leaf.view as any;
-            if (view.file?.path === path) {
-                // If file is in the active leaf, consider it actively being edited
-                if (leaf === workspace.activeLeaf) {
-                    return true;
-                }
-                
-                // Check if file was modified recently (within last 30 seconds)
-                const vault = this.core.plugin.app.vault;
-                const file = vault.getAbstractFileByPath(path);
-                if (file && 'stat' in file) {
-                    const lastModified = (file as any).stat.mtime;
-                    const now = Date.now();
-                    if (now - lastModified < 30000) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * Defer processing of a document until the file is closed
-     */
-    private deferProcessingForOpenFile(path: string, doc: MetaEntry) {
-        this.deferredDocs.set(path, doc);
-        Logger(`⏰ Deferred update for open file: ${path}`, LOG_LEVEL_INFO);
-        
-        const checkInterval = 3000;
-        const maxRetries = 20;
-        let retryCount = 0;
-        
-        const checkAndProcess = () => {
-            if (!this.deferredDocs.has(path)) {
-                return;
-            }
-            
-            const isStillOpen = this.isFileOpen(path);
-            
-            if (!isStillOpen) {
-                const deferredDoc = this.deferredDocs.get(path);
-                this.deferredDocs.delete(path);
-                Logger(`✅ Processing deferred update (file closed): ${path}`, LOG_LEVEL_INFO);
-                setTimeout(() => {
-                    this.defaultProcessSynchroniseResult(deferredDoc!);
-                }, 500);
-            } else if (retryCount < maxRetries) {
-                retryCount++;
-                setTimeout(checkAndProcess, checkInterval);
-            } else {
-                Logger(`⚠️ Deferred update timeout, processing anyway: ${path}`, LOG_LEVEL_NOTICE);
-                const deferredDoc = this.deferredDocs.get(path);
-                this.deferredDocs.delete(path);
-                this.defaultProcessSynchroniseResult(deferredDoc!);
-            }
-        };
-        
-        setTimeout(checkAndProcess, checkInterval);
-    }
-    
-    /**
-     * Smart conflict resolution strategy based on file state and mtime
-     * Returns: "ALLOW" | "BLOCK" | "DEFER"
-     */
-    private async smartConflictResolution(
-        path: string, 
-        remoteMtime: number, 
-        remoteContent: string | ArrayBuffer
-    ): Promise<"ALLOW" | "BLOCK" | "DEFER"> {
-        const vault = this.core.plugin.app.vault;
-        const existingFile = vault.getAbstractFileByPath(path);
-        
-        if (!existingFile || !('stat' in existingFile)) {
-            return "ALLOW";
-        }
-        
-        const localMtime = (existingFile as any).stat.mtime;
-        const isOpen = this.isFileOpen(path);
-        const isActivelyEditing = this.isFileActivelyEditing(path);
-        
-        // Strategy 1: File is actively being edited - BLOCK remote update
-        if (isActivelyEditing) {
-            Logger(`🛡️ BLOCK: File is actively being edited: ${path}`, LOG_LEVEL_NOTICE);
-            Logger(`  Local mtime: ${new Date(localMtime).toISOString()}, Remote mtime: ${new Date(remoteMtime).toISOString()}`, LOG_LEVEL_VERBOSE);
-            return "BLOCK";
-        }
-        
-        // Strategy 2: File is open but not actively editing - check mtime
-        if (isOpen) {
-            const RESOLUTION = 2000;
-            const localTrunc = Math.floor(localMtime / RESOLUTION) * RESOLUTION;
-            const remoteTrunc = Math.floor(remoteMtime / RESOLUTION) * RESOLUTION;
-            
-            if (localTrunc > remoteTrunc) {
-                Logger(`🛡️ BLOCK: Local file is newer (file is open): ${path}`, LOG_LEVEL_INFO);
-                return "BLOCK";
-            } else if (remoteTrunc > localTrunc) {
-                Logger(`⏰ DEFER: Remote is newer but file is open: ${path}`, LOG_LEVEL_INFO);
-                return "DEFER";
-            } else {
-                // Same mtime - check content
-                try {
-                    const localContent = await vault.adapter.read(path);
-                    const remoteContentStr = typeof remoteContent === 'string' 
-                        ? remoteContent 
-                        : new TextDecoder().decode(remoteContent);
-                    
-                    if (localContent === remoteContentStr) {
-                        Logger(`✅ SKIP: Content identical (file is open): ${path}`, LOG_LEVEL_VERBOSE);
-                        return "BLOCK";
-                    } else {
-                        Logger(`⏰ DEFER: Content differs but mtime same (file is open): ${path}`, LOG_LEVEL_INFO);
-                        return "DEFER";
-                    }
-                } catch (e) {
-                    return "ALLOW";
-                }
-            }
-        }
-        
-        // Strategy 3: File is NOT open - use mtime priority
-        const RESOLUTION = 2000;
-        const localTrunc = Math.floor(localMtime / RESOLUTION) * RESOLUTION;
-        const remoteTrunc = Math.floor(remoteMtime / RESOLUTION) * RESOLUTION;
-        
-        if (localTrunc > remoteTrunc) {
-            Logger(`🛡️ BLOCK: Local file is newer: ${path}`, LOG_LEVEL_INFO);
-            return "BLOCK";
-        } else {
-            Logger(`✅ ALLOW: Applying remote update: ${path}`, LOG_LEVEL_VERBOSE);
-            return "ALLOW";
-        }
-    }
+    // ==================== Document Processing (Aligned with LiveSync) ====================
+    // Note: Following LiveSync's approach - no custom conflict resolution
+    // Conflict handling is done by LiveSync's core ConflictChecker module
     
     /**
      * Default handler for processing synchronized documents
      * Writes the document content to the vault
      * 
      * This follows the same pattern as livesync's ModuleFileHandler.dbToStorage
-     * Enhanced with smart conflict resolution
+     * Completely aligned with livesync's approach - no custom conflict resolution
      */
     private async defaultProcessSynchroniseResult(doc: MetaEntry): Promise<boolean> {
         try {
@@ -489,46 +334,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             
             // Check if document is deleted first
             const isDeleted = doc._deleted === true || ("deleted" in doc && (doc as any).deleted === true);
-            
-            if (!isDeleted) {
-                // Get full document content from local database for conflict resolution
-                const localDB = this.core.localDatabase;
-                if (!localDB) {
-                    console.error("[Friday Sync] Local database not available");
-                    return false;
-                }
-                
-                // Fetch the full entry with data
-                const fullEntry = await localDB.getDBEntryFromMeta(doc, false, true);
-                if (!fullEntry) {
-                    console.error(`[Friday Sync] Could not get full entry for:`, {
-                        docId: doc._id,
-                        docPath: doc.path,
-                        docType: doc.type,
-                        docSize: doc.size,
-                        docChildren: doc.children?.length ?? 0,
-                    });
-                    return false;
-                }
-                
-                // Get content for conflict resolution
-                const content = readContent(fullEntry);
-                const remoteMtime = doc.mtime || 0;
-                
-                // Apply smart conflict resolution
-                const resolution = await this.smartConflictResolution(path, remoteMtime, content);
-                
-                if (resolution === "BLOCK") {
-                    // Block this update - local version takes priority
-                    Logger(`🛡️ Blocked remote update for: ${path}`, LOG_LEVEL_INFO);
-                    return true;
-                } else if (resolution === "DEFER") {
-                    // Defer this update until file is closed
-                    this.deferProcessingForOpenFile(path, doc);
-                    return true;
-                }
-                // If "ALLOW", continue with normal processing below
-            }
             
             // Mark file as being processed to prevent sync loop
             // (When we write the file, vault will emit 'modify' event, 

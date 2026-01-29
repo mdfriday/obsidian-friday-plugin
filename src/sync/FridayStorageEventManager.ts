@@ -49,10 +49,8 @@ export interface FileEvent {
 }
 
 // Resolution for mtime comparison
-// 2 seconds for general comparison (matching livesync for ZIP file compatibility)
-// 500ms for precise comparison when files are actively being edited
+// 2 seconds for comparison (matching livesync for ZIP file compatibility)
 const MTIME_RESOLUTION = 2000;
-const MTIME_RESOLUTION_PRECISE = 500;
 
 /**
  * Compare mtime with resolution (matching livesync's compareMtime)
@@ -117,48 +115,6 @@ export class FridayStorageEventManager {
     constructor(plugin: Plugin, core: FridaySyncCore) {
         this.plugin = plugin;
         this.core = core;
-    }
-    
-    // ==================== File Editing State Detection ====================
-    
-    /**
-     * Check if a file is currently open in any editor
-     */
-    private isFileOpen(path: string): boolean {
-        const workspace = this.plugin.app.workspace;
-        return workspace.getLeavesOfType('markdown').some(leaf => {
-            const view = leaf.view as any;
-            return view.file?.path === path;
-        });
-    }
-    
-    /**
-     * Check if a file is actively being edited
-     */
-    private isFileActivelyEditing(path: string): boolean {
-        const workspace = this.plugin.app.workspace;
-        const leaves = workspace.getLeavesOfType('markdown');
-        
-        for (const leaf of leaves) {
-            const view = leaf.view as any;
-            if (view.file?.path === path) {
-                // If in active leaf, consider actively editing
-                if (leaf === workspace.activeLeaf) {
-                    return true;
-                }
-                
-                // Check if modified recently (within last 30 seconds)
-                const file = this.plugin.app.vault.getAbstractFileByPath(path);
-                if (file && 'stat' in file) {
-                    const lastModified = (file as any).stat.mtime;
-                    const now = Date.now();
-                    if (now - lastModified < 30000) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
     }
     
     // ==================== Livesync's touched mechanism ====================
@@ -646,23 +602,15 @@ export class FridayStorageEventManager {
                             return true;
                         }
                         
-                        // 2. Compare mtime with appropriate resolution
-                        // Use precise resolution (500ms) if file is being actively edited
-                        const isActivelyEditing = this.isFileActivelyEditing(path);
-                        const resolution = isActivelyEditing ? MTIME_RESOLUTION_PRECISE : MTIME_RESOLUTION;
+                        // 2. Compare mtime with standard 2-second resolution (aligned with livesync)
+                        // LiveSync uses 2-second resolution for all files
+                        const resolution = MTIME_RESOLUTION;
                         
                         const fileMtimeTrunc = Math.floor(file.stat.mtime / resolution) * resolution;
                         const dbMtimeTrunc = Math.floor(existingEntry.mtime / resolution) * resolution;
                         
                         if (fileMtimeTrunc !== dbMtimeTrunc) {
                             shouldUpdate = true;
-                            
-                            // Enhanced logging for actively editing files
-                            if (isActivelyEditing) {
-                                Logger(`File is actively editing, using precise mtime check: ${path}`, LOG_LEVEL_VERBOSE);
-                                Logger(`  File mtime: ${new Date(file.stat.mtime).toISOString()}`, LOG_LEVEL_VERBOSE);
-                                Logger(`  DB mtime: ${new Date(existingEntry.mtime).toISOString()}`, LOG_LEVEL_VERBOSE);
-                            }
                         }
                         
                         // 3. If mtime is similar, compare content (livesync pattern)
