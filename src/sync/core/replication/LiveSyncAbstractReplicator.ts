@@ -150,6 +150,13 @@ export abstract class LiveSyncAbstractReplicator {
             // Compare salts
             if (storedSalt !== remoteSaltBase64) {
                 Logger(`Salt mismatch detected! Stored: ${storedSalt.substring(0, 16)}..., Remote: ${remoteSaltBase64.substring(0, 16)}...`, LOG_LEVEL_INFO);
+                
+                // Set persistent blocking flags (aligned with livesync)
+                // This ensures all subsequent sync operations are blocked until user performs "Fetch from Server"
+                this.remoteLockedAndDeviceNotAccepted = true;
+                this.remoteLocked = true;
+                this.remoteCleaned = true;  // Indicates need to fetch fresh data from remote
+                
                 return {
                     ok: false,
                     message: $msg("fridaySync.saltChanged.message"),

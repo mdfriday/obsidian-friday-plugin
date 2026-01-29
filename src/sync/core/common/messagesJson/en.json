@@ -607,5 +607,10 @@
     "fridaySync.status.reconnecting": "Reconnecting to sync server...",
     "fridaySync.error.noCacheOffline": "First-time setup requires server connection",
     "fridaySync.error.firstTimeNeedsConnection": "First-time setup requires server connection. Please connect to network and restart sync.",
-    "fridaySync.offline.workingMode": "Working offline - changes will sync when connected"
+    "fridaySync.offline.workingMode": "Working offline - changes will sync when connected",
+    "fridaySync.saltChanged.syncBlocked": "Synchronization is blocked because the remote database has been reset. Please use 'Fetch from Server' in Settings to re-sync.",
+    "fridaySync.saltChanged.actionRequired": "Remote database has been reset. Please go to Settings → 'Fetch from Server' to re-sync your vault.",
+    "fridaySync.saltChanged.deviceAccepted": "Device is now accepted by remote database. Synchronization can continue.",
+    "fridaySync.saltChanged.suspendingReflection": "Suspending reflection: Database and storage changes will not be reflected until fetching completes.",
+    "fridaySync.saltChanged.resumingReflection": "Database and storage reflection has been resumed!"
 }

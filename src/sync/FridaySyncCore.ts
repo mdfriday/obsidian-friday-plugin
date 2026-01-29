@@ -696,6 +696,19 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         
         Logger(`Starting sync (reason: ${reason}, forceCheck: ${forceCheck})`, LOG_LEVEL_VERBOSE);
 
+        // ========== Pre-Check: Device Acceptance (aligned with livesync) ==========
+        // If device is not accepted by remote (e.g., salt mismatch detected),
+        // block all sync operations and guide user to perform "Fetch from Server"
+        if (this._replicator.remoteLockedAndDeviceNotAccepted) {
+            Logger(
+                $msg("fridaySync.saltChanged.actionRequired") || 
+                "Remote database has been reset. Please go to Settings → 'Fetch from Server' to re-sync your vault.",
+                LOG_LEVEL_NOTICE
+            );
+            this.setStatus("ERRORED", "Device not accepted - Fetch required");
+            return false;
+        }
+
         try {
             this.setStatus("STARTED", "Checking server connectivity...");
             
@@ -1407,15 +1420,22 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      */
     async rebuildLocalFromRemote(): Promise<boolean> {
         // Save original state outside try block so it's accessible in catch
-        const originalSuspendState = this._settings.suspendParseReplicationResult;
+        const originalSuspendParseState = this._settings.suspendParseReplicationResult;
+        const originalSuspendFileWatchingState = this._settings.suspendFileWatching;
         
         try {
-            // ===== Phase 1: Suspend =====
-            // Following livesync's suspendReflectingDatabase()
+            // ===== Phase 1: Suspend (aligned with livesync suspendReflectingDatabase) =====
             Logger("Starting fetch from remote database...", LOG_LEVEL_NOTICE);
+            Logger(
+                $msg("fridaySync.saltChanged.suspendingReflection") ||
+                "Suspending reflection: Database and storage changes will not be reflected until fetching completes.",
+                LOG_LEVEL_NOTICE
+            );
             
             this._settings.suspendParseReplicationResult = true;
             this._settings.suspendFileWatching = true;
+            // Note: Settings are persisted in memory, livesync calls saveSettings() here
+            // but Friday's settings auto-persist via the plugin's data.json mechanism
             Logger("Suspended database and storage reflection", LOG_LEVEL_INFO);
             
             // ===== Phase 2: Reset & Reopen Database =====
@@ -1437,10 +1457,24 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             // For a fresh vault doing first fetch, this is a no-op
             // We skip this since Friday uses rebuildVaultFromDB instead
             
-            // ===== Phase 4: Mark Resolved =====
-            Logger("Marking remote as resolved...", LOG_LEVEL_INFO);
+            // ===== Phase 4: Mark Device as Resolved (aligned with livesync markResolved) =====
+            // This is CRITICAL: clears remoteLockedAndDeviceNotAccepted flags
+            // and allows device to sync again
+            Logger("Marking device as resolved...", LOG_LEVEL_INFO);
             if (this._replicator) {
+                // Clear blocking flags (aligned with livesync)
+                this._replicator.remoteLockedAndDeviceNotAccepted = false;
+                this._replicator.remoteLocked = false;
+                this._replicator.remoteCleaned = false;
+                
+                // Mark remote as accepting this device
                 await this._replicator.markRemoteResolved(this._settings);
+                
+                // Update stored salt to match new remote salt
+                // This prevents "Remote database has been reset" error after successful fetch
+                await this._replicator.updateStoredSalt(this._settings);
+                
+                Logger("Device is now accepted by remote database", LOG_LEVEL_INFO);
             }
             
             await this.delay(500);
@@ -1476,12 +1510,17 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             await this.delay(500);
             
-            // ===== Phase 7: Resume and Scan Vault =====
-            // Following livesync's resumeReflectingDatabase() pattern
-            Logger("Resuming database and storage reflection...", LOG_LEVEL_NOTICE);
+            // ===== Phase 7: Resume and Scan Vault (aligned with livesync resumeReflectingDatabase) =====
+            Logger(
+                $msg("fridaySync.saltChanged.resumingReflection") ||
+                "Database and storage reflection has been resumed!",
+                LOG_LEVEL_NOTICE
+            );
             
             this._settings.suspendParseReplicationResult = false;
             this._settings.suspendFileWatching = false;
+            // Note: Settings are persisted in memory, livesync calls saveSettings() here
+            // but Friday's settings auto-persist via the plugin's data.json mechanism
             
             // NOW call rebuildVaultFromDB which is similar to livesync's scanVault()
             // Chunks will be fetched on-demand as each file is processed
@@ -1505,9 +1544,10 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             Logger("Rebuild from remote failed", LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             
-            // Make sure to restore suspend state even on error
-            this._settings.suspendParseReplicationResult = originalSuspendState;
-            this._settings.suspendFileWatching = false;
+            // Make sure to restore suspend state even on error (aligned with livesync)
+            this._settings.suspendParseReplicationResult = originalSuspendParseState;
+            this._settings.suspendFileWatching = originalSuspendFileWatchingState;
+            // Note: Settings are persisted in memory
             
             return false;
         }

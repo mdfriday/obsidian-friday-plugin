@@ -442,5 +442,10 @@
     "fridaySync.status.reconnecting": "正在重新连接同步服务器...",
     "fridaySync.error.noCacheOffline": "首次使用需要连接服务器",
     "fridaySync.error.firstTimeNeedsConnection": "首次使用需要连接服务器。请连接网络后重新启动同步。",
-    "fridaySync.offline.workingMode": "离线工作中 - 连接后自动同步"
+    "fridaySync.offline.workingMode": "离线工作中 - 连接后自动同步",
+    "fridaySync.saltChanged.syncBlocked": "由于远程数据库已被重置，同步已被阻止。请前往设置→'从云端下载'来重新同步。",
+    "fridaySync.saltChanged.actionRequired": "远程数据库已被重置。请前往设置→'从云端下载'来重新同步您的库。",
+    "fridaySync.saltChanged.deviceAccepted": "设备已被远程数据库接受。可以继续同步。",
+    "fridaySync.saltChanged.suspendingReflection": "正在暂停反射：在获取完成前，数据库和存储的变化将不会相互反映。",
+    "fridaySync.saltChanged.resumingReflection": "数据库和存储反射已恢复！"
 }

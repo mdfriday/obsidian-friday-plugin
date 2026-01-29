@@ -345,6 +345,21 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         showResult: boolean,
         ignoreCleanLock: boolean
     ) {
+        // Pre-check: Device Acceptance (aligned with livesync)
+        // If device is not accepted by remote (e.g., salt mismatch detected),
+        // block all sync operations unless ignoreCleanLock is true
+        // (ignoreCleanLock allows Fetch/Unlock operations to proceed)
+        if (!ignoreCleanLock && this.remoteLockedAndDeviceNotAccepted) {
+            Logger(
+                $msg("fridaySync.saltChanged.syncBlocked") || 
+                "Synchronization is blocked because the remote database has been reset. Please use 'Fetch from Server'.",
+                LOG_LEVEL_NOTICE
+            );
+            this.syncStatus = "ERRORED";
+            this.updateInfo();
+            return false;
+        }
+        
         await this.initializeDatabaseForReplication();
         if (keepAlive) {
             void this.openContinuousReplication(setting, showResult, false);
@@ -1278,7 +1293,14 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         Logger($msg("liveSyncReplicator.markDeviceResolved"), LOG_LEVEL_NOTICE);
         const result = await dbRet.db.put(remoteMilestone);
         if (result.ok) {
+            // Clear blocking flags (aligned with livesync)
+            // This allows device to sync again after being marked as resolved
+            this.remoteLockedAndDeviceNotAccepted = false;
+            this.remoteLocked = false;
+            this.remoteCleaned = false;
+            
             Logger($msg("liveSyncReplicator.remoteDbMarkedResolved"), LOG_LEVEL_VERBOSE);
+            Logger("Device acceptance flags cleared", LOG_LEVEL_INFO);
         } else {
             Logger($msg("liveSyncReplicator.couldNotMarkResolveRemoteDb"), LOG_LEVEL_NOTICE);
         }
