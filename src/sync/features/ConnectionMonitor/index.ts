@@ -17,6 +17,7 @@ export class FridayConnectionMonitor {
     private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
     private isMonitoring: boolean = false;
     private healthCheckInterval: number = 60000; // 1 minute
+    private _pausedForManualOperation: boolean = false;
 
     constructor(core: FridaySyncCore) {
         this.core = core;
@@ -95,9 +96,37 @@ export class FridayConnectionMonitor {
     }
 
     /**
+     * Pause auto-reconnect during manual operations (RESET/Push/Fetch)
+     * This prevents ConnectionMonitor from interfering with user-initiated operations
+     */
+    pauseDuringManualOperation(): void {
+        if (this._pausedForManualOperation) return;
+        
+        this._pausedForManualOperation = true;
+        this.cancelReconnect();  // Cancel any pending reconnect
+        Logger("Manual operation started - pausing auto-reconnect", LOG_LEVEL_VERBOSE);
+    }
+    
+    /**
+     * Resume auto-reconnect after manual operation completes
+     */
+    resumeAfterManualOperation(): void {
+        if (!this._pausedForManualOperation) return;
+        
+        this._pausedForManualOperation = false;
+        Logger("Manual operation finished - resuming auto-reconnect", LOG_LEVEL_VERBOSE);
+    }
+
+    /**
      * Attempt to reconnect
      */
     private async attemptReconnect(): Promise<void> {
+        // Check if paused for manual operation
+        if (this._pausedForManualOperation) {
+            Logger("Skipping reconnect - manual operation in progress", LOG_LEVEL_VERBOSE);
+            return;
+        }
+
         if (!navigator.onLine) {
             Logger("Network offline, skipping reconnect attempt", LOG_LEVEL_VERBOSE);
             return;
@@ -117,7 +146,11 @@ export class FridayConnectionMonitor {
                 // Restart sync if configured
                 const settings = this.core.getSettings();
                 if (settings.liveSync) {
-                    await this.core.startSync(true);
+                    // Use AUTO_RECONNECT reason with forceCheck=false to use cooldown
+                    await this.core.startSync(true, {
+                        reason: "AUTO_RECONNECT",
+                        forceCheck: false
+                    });
                     Logger("Reconnected and sync restarted", LOG_LEVEL_NOTICE);
                 }
             } else {
