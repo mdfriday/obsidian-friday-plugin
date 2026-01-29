@@ -285,6 +285,11 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     getSettings(): RemoteDBSettings {
         return this._settings;
     }
+    
+    // Getter for direct property access (used by Services)
+    get settings(): ObsidianLiveSyncSettings {
+        return this._settings;
+    }
 
     get managers(): LiveSyncManagers {
         if (!this._managers) {
@@ -993,19 +998,16 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 Logger($msg("fridaySync.fetch.fetching"), LOG_LEVEL_NOTICE);
                 
                 // Step 1: Mark this device as resolved/accepted
+                // Note: This is now also called inside rebuildLocalFromRemote after database reset
                 Logger("Marking remote as resolved...", LOG_LEVEL_INFO);
                 await this._replicator.markRemoteResolved(this._settings);
                 
-                // Step 2: Pull all data from server
-                Logger("Pulling all data from server...", LOG_LEVEL_INFO);
-                const result = await this._replicator.replicateAllFromServer(this._settings, true);
+                // Step 2: Use the complete rebuild flow (same as livesync)
+                // This ensures chunks are fetched before attempting to rebuild files
+                Logger("Rebuilding local database from remote...", LOG_LEVEL_INFO);
+                const result = await this.rebuildLocalFromRemote();
                 
                 if (result) {
-                    // Step 3: Rebuild vault from local database
-                    Logger("Rebuilding vault from local database...", LOG_LEVEL_INFO);
-                    Logger($msg("fridaySync.fetch.writingFiles"), LOG_LEVEL_NOTICE);
-                    await this.rebuildVaultFromDB();
-                    
                     this.setStatus("COMPLETED", "Fetch completed");
                     Logger($msg("fridaySync.fetch.completed"), LOG_LEVEL_NOTICE);
                 } else {
@@ -1390,6 +1392,236 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             Logger(error, LOG_LEVEL_VERBOSE);
             return false;
         }
+    }
+
+    /**
+     * Fetch all data from remote database (Rebuild local from remote)
+     * This is the equivalent of livesync's "Fetch from Remote" feature
+     * 
+     * This method follows livesync's standard rebuild flow:
+     * 1. Reset local database
+     * 2. First replication pass (fetch all meta documents)
+     * 3. Fetch missing chunks explicitly
+     * 4. Second replication pass (ensure completeness)
+     * 5. Rebuild local files from database
+     */
+    async rebuildLocalFromRemote(): Promise<boolean> {
+        // Save original state outside try block so it's accessible in catch
+        const originalSuspendState = this._settings.suspendParseReplicationResult;
+        
+        try {
+            // ===== Phase 1: Suspend =====
+            // Following livesync's suspendReflectingDatabase()
+            Logger("Starting fetch from remote database...", LOG_LEVEL_NOTICE);
+            
+            this._settings.suspendParseReplicationResult = true;
+            this._settings.suspendFileWatching = true;
+            Logger("Suspended database and storage reflection", LOG_LEVEL_INFO);
+            
+            // ===== Phase 2: Reset & Reopen Database =====
+            // Following livesync's resetLocalDatabase() + openDatabase() pattern
+            if (this._storageEventManager) {
+                this._storageEventManager.stopWatch();
+            }
+            
+            Logger("Resetting local database...", LOG_LEVEL_NOTICE);
+            if (this._localDatabase) {
+                await this._localDatabase.resetDatabase();
+            }
+            
+            await this.delay(1000);
+            
+            // ===== Phase 3: Initial Scan (Optional, Database is Empty) =====
+            // Livesync calls initialiseDatabase() -> scanVault() here
+            // This syncs any existing storage files to the (now empty) database
+            // For a fresh vault doing first fetch, this is a no-op
+            // We skip this since Friday uses rebuildVaultFromDB instead
+            
+            // ===== Phase 4: Mark Resolved =====
+            Logger("Marking remote as resolved...", LOG_LEVEL_INFO);
+            if (this._replicator) {
+                await this._replicator.markRemoteResolved(this._settings);
+            }
+            
+            await this.delay(500);
+            
+            // ===== Phase 5: Fetch from Remote (First Pass) =====
+            // Following livesync: replicateAllFromRemote()
+            // readChunksOnline=true by default, so only meta is fetched
+            // Chunks will be fetched on-demand later
+            Logger("Fetching documents from remote (1st pass)...", LOG_LEVEL_NOTICE);
+            
+            const result1 = await this._replicator?.replicateAllFromServer(
+                this._settings, 
+                true
+            );
+            
+            if (!result1) {
+                throw new Error("First replication pass failed");
+            }
+            
+            await this.delay(1000);
+            
+            // ===== Phase 6: Fetch from Remote (Second Pass) =====
+            Logger("Fetching documents from remote (2nd pass)...", LOG_LEVEL_NOTICE);
+            
+            const result2 = await this._replicator?.replicateAllFromServer(
+                this._settings,
+                true
+            );
+            
+            if (!result2) {
+                Logger("Second replication pass failed, but continuing...", LOG_LEVEL_INFO);
+            }
+            
+            await this.delay(500);
+            
+            // ===== Phase 7: Resume and Scan Vault =====
+            // Following livesync's resumeReflectingDatabase() pattern
+            Logger("Resuming database and storage reflection...", LOG_LEVEL_NOTICE);
+            
+            this._settings.suspendParseReplicationResult = false;
+            this._settings.suspendFileWatching = false;
+            
+            // NOW call rebuildVaultFromDB which is similar to livesync's scanVault()
+            // Chunks will be fetched on-demand as each file is processed
+            Logger("Scanning and rebuilding vault from database...", LOG_LEVEL_NOTICE);
+            const rebuildResult = await this.rebuildVaultFromDB();
+            
+            if (!rebuildResult) {
+                throw new Error("Rebuild vault failed");
+            }
+            
+            // ===== Phase 8: Complete =====
+            Logger("Fetch from remote completed successfully!", LOG_LEVEL_NOTICE);
+            
+            // Restart sync if it was running
+            if (this._settings.liveSync) {
+                await this.startSync(true);
+            }
+            
+            return true;
+        } catch (error) {
+            Logger("Rebuild from remote failed", LOG_LEVEL_NOTICE);
+            Logger(error, LOG_LEVEL_VERBOSE);
+            
+            // Make sure to restore suspend state even on error
+            this._settings.suspendParseReplicationResult = originalSuspendState;
+            this._settings.suspendFileWatching = false;
+            
+            return false;
+        }
+    }
+
+    /**
+     * Fetch all missing chunks from remote database
+     * This ensures chunks are present before rebuildVaultFromDB
+     * 
+     * Equivalent to livesync's fetchAllUsedChunks()
+     * 
+     * Why this is needed:
+     * - ChunkFetcher is passive (responds to MISSING_CHUNKS events)
+     * - It only triggers when getDBEntryFromMeta is called
+     * - rebuildVaultFromDB would fail if chunks aren't present yet
+     * - This method ACTIVELY fetches all referenced chunks upfront
+     */
+    private async fetchAllMissingChunksFromRemote(): Promise<void> {
+        if (!this._replicator || !this._localDatabase) {
+            Logger("Cannot fetch chunks: Replicator or LocalDatabase not initialized", LOG_LEVEL_INFO);
+            return;
+        }
+        
+        try {
+            // Step 1: Collect all chunk IDs that are referenced by documents
+            Logger("Scanning database for referenced chunks...", LOG_LEVEL_INFO);
+            
+            const localDB = this._localDatabase.localDatabase;
+            const referencedChunkIds = new Set<string>();
+            
+            // Query all documents with children (i.e., files with chunks)
+            const allDocs = await localDB.allDocs({
+                include_docs: true,
+                attachments: false,
+            });
+            
+            for (const row of allDocs.rows) {
+                const doc = row.doc as any;
+                if (doc && doc.children && Array.isArray(doc.children)) {
+                    doc.children.forEach((chunkId: string) => {
+                        referencedChunkIds.add(chunkId);
+                    });
+                }
+            }
+            
+            Logger(`Found ${referencedChunkIds.size} referenced chunks`, LOG_LEVEL_INFO);
+            
+            if (referencedChunkIds.size === 0) {
+                Logger("No chunks referenced, skipping chunk fetch", LOG_LEVEL_INFO);
+                return;
+            }
+            
+            // Step 2: Check which chunks are missing locally
+            const chunkIds = Array.from(referencedChunkIds);
+            const localChunksResult = await localDB.allDocs({
+                keys: chunkIds,
+            });
+            
+            const missingChunkIds = localChunksResult.rows
+                .filter((row: any) => 'error' in row && row.error === 'not_found')
+                .map((row: any) => row.key);
+            
+            if (missingChunkIds.length === 0) {
+                Logger("All chunks present locally, no fetching needed", LOG_LEVEL_INFO);
+                return;
+            }
+            
+            Logger(`Found ${missingChunkIds.length} missing chunks, fetching from remote...`, LOG_LEVEL_NOTICE);
+            
+            // Step 3: Fetch missing chunks from remote using the replicator
+            const batchSize = 100;
+            let fetched = 0;
+            
+            for (let i = 0; i < missingChunkIds.length; i += batchSize) {
+                const batch = missingChunkIds.slice(i, i + batchSize);
+                
+                // Use the replicator's fetchRemoteChunks method
+                const chunks = await this._replicator.fetchRemoteChunks(batch, false);
+                
+                if (chunks === false) {
+                    Logger(`Failed to fetch chunk batch ${Math.floor(i / batchSize) + 1}`, LOG_LEVEL_INFO);
+                    continue;
+                }
+                
+                // Write chunks to local database
+                try {
+                    await localDB.bulkDocs(chunks, { new_edits: false });
+                    fetched += chunks.length;
+                    Logger(
+                        `Fetched chunks: ${fetched} / ${missingChunkIds.length}`,
+                        LOG_LEVEL_NOTICE,
+                        "fetch-chunks"
+                    );
+                } catch (ex) {
+                    Logger(`Error writing chunks to database: ${ex}`, LOG_LEVEL_VERBOSE);
+                }
+            }
+            
+            Logger(`Chunk fetching complete: ${fetched} chunks fetched`, LOG_LEVEL_NOTICE);
+        } catch (ex) {
+            // Log error but don't throw - allow rebuild to continue
+            // Some chunks may be missing due to database inconsistencies
+            // Those files will fail during rebuild but others will succeed
+            Logger("Error in fetchAllMissingChunksFromRemote", LOG_LEVEL_INFO);
+            Logger(ex, LOG_LEVEL_VERBOSE);
+            Logger("Continuing with rebuild despite chunk fetch errors...", LOG_LEVEL_INFO);
+        }
+    }
+
+    /**
+     * Helper function for delays
+     */
+    private delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**

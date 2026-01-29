@@ -278,7 +278,15 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
 
     constructor(backend: ServiceBackend, core: FridaySyncCore) {
         super(backend);
+        
+        if (!core) {
+            console.error("[Friday Sync] CRITICAL: FridayReplicationService created with undefined core!");
+            throw new Error("FridayReplicationService requires a valid core instance");
+        }
+        
         this.core = core;
+        console.log("[Friday Sync] FridayReplicationService initialized with core:", !!this.core, "settings:", !!this.core.settings);
+        
         [this.processOptionalSynchroniseResult, this.handleProcessOptionalSynchroniseResult] = this._first<
             typeof this.processOptionalSynchroniseResult
         >("processOptionalSynchroniseResult");
@@ -308,6 +316,23 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
      */
     private async defaultProcessSynchroniseResult(doc: MetaEntry): Promise<boolean> {
         try {
+            // Defensive check for this.core
+            if (!this.core) {
+                console.error("[Friday Sync] Critical error: this.core is undefined in defaultProcessSynchroniseResult");
+                return false;
+            }
+            
+            if (!this.core.settings) {
+                console.error("[Friday Sync] Critical error: this.core.settings is undefined");
+                return false;
+            }
+            
+            // Check if replication result processing is suspended
+            // This is used during rebuild operations to prevent premature chunk fetching
+            if (this.core.settings.suspendParseReplicationResult) {
+                return true; // Skip processing, will be handled after rebuild completes
+            }
+            
             // Check if this is an internal file (i: prefix for .obsidian files)
             // Need to check both _id and path, because when usePathObfuscation is enabled,
             // _id will be hashed (e.g., "h:xxxxx") but path still contains the "i:" prefix
