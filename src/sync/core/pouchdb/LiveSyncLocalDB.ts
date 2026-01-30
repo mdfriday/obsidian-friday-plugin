@@ -10,6 +10,7 @@ import {
     type DatabaseEntry,
     LOG_LEVEL_NOTICE,
     LOG_LEVEL_VERBOSE,
+	LOG_LEVEL_INFO,
     type LoadedEntry,
     type MetaEntry,
     type SavingEntry,
@@ -268,7 +269,8 @@ export class LiveSyncLocalDB {
         await this.managers.teardownManagers();
         this.env.services.replicator.getActiveReplicator()?.closeReplication();
         if (!(await this.env.services.databaseEvents.onResetDatabase(this))) {
-            Logger("Database reset has been prevented or failed on some modules.", LOG_LEVEL_NOTICE);
+            // Don't show technical "database reset" message to user
+            Logger("Database reset has been prevented or failed on some modules.", LOG_LEVEL_INFO);
             return false;
         }
         Logger("Database closed for reset Database.");
@@ -277,7 +279,8 @@ export class LiveSyncLocalDB {
         //@ts-ignore
         this.localDatabase = null;
         await this.initializeDatabase();
-        Logger("Local Database Reset", LOG_LEVEL_NOTICE);
+        // Don't show technical "Local Database Reset" message to user
+        Logger("Local Database Reset", LOG_LEVEL_INFO);
         return true;
     }
 

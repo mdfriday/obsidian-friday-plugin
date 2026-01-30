@@ -326,7 +326,8 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
 
     // eslint-disable-next-line require-await
     async migrate(from: number, to: number): Promise<boolean> {
-        Logger(`Database updated from ${from} to ${to}`, LOG_LEVEL_NOTICE);
+        // Don't show technical "Database updated" message to user
+        Logger(`Database updated from ${from} to ${to}`, LOG_LEVEL_INFO);
         // no op now,
         return Promise.resolve(true);
     }
@@ -370,7 +371,8 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
     replicationActivated(showResult: boolean) {
         this.syncStatus = "CONNECTED";
         this.updateInfo();
-        Logger("Replication activated", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "sync");
+        // Don't show technical "Replication activated" to user
+        Logger("Replication activated", showResult ? LOG_LEVEL_INFO : LOG_LEVEL_VERBOSE, "sync");
     }
     async replicationChangeDetected(
         e: PouchDB.Replication.SyncResult<EntryDoc>,
@@ -421,21 +423,24 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
     replicationCompleted(showResult: boolean) {
         this.syncStatus = "COMPLETED";
         this.updateInfo();
-        Logger("Replication completed", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, showResult ? "sync" : "");
+        // Don't show technical "Replication completed" to user - they can see sync status icon
+        Logger("Replication completed", showResult ? LOG_LEVEL_INFO : LOG_LEVEL_VERBOSE, showResult ? "sync" : "");
         this.terminateSync();
     }
     replicationDenied(e: any) {
         this.syncStatus = "ERRORED";
         this.updateInfo();
         this.terminateSync();
-        Logger("Replication denied", LOG_LEVEL_NOTICE, "sync");
+        // Keep this as NOTICE - user needs to know when access is denied
+        Logger($msg("liveSyncReplicator.replicationDenied") || "Sync access denied. Please check your credentials.", LOG_LEVEL_NOTICE, "sync");
         Logger(e, LOG_LEVEL_VERBOSE);
     }
     replicationErrored(e: any) {
         this.syncStatus = "ERRORED";
         this.terminateSync();
         this.updateInfo();
-        Logger("Replication error", LOG_LEVEL_NOTICE, "sync");
+        // Simplify error message for users
+        Logger($msg("liveSyncReplicator.replicationErrored") || "Sync error occurred", LOG_LEVEL_NOTICE, "sync");
         Logger(e, LOG_LEVEL_VERBOSE);
     }
     replicationPaused() {
@@ -464,7 +469,8 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                 // Pacing replication.
                 const releaser = await globalConcurrencyController.tryAcquire(1, REPLICATION_BUSY_TIMEOUT);
                 if (releaser === false) {
-                    Logger("Replication stopped for busy.", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "sync");
+                    // Downgrade to INFO - this is normal behavior, not an error
+                    Logger("Sync paused temporarily.", showResult ? LOG_LEVEL_INFO : LOG_LEVEL_VERBOSE, "sync");
                     return "FAILED";
                 }
                 releaser();
@@ -517,11 +523,13 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                         return "FAILED";
                     case "error":
                         this.replicationErrored(e);
-                        Logger("Replication stopped.", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "sync");
+                        // Don't show technical "Replication stopped" message
+                        Logger("Replication stopped.", showResult ? LOG_LEVEL_INFO : LOG_LEVEL_VERBOSE, "sync");
                         if (this.env.services.API.isLastPostFailedDueToPayloadSize()) {
                             if (e && e?.status == 413) {
                                 Logger(
-                                    `Something went wrong during synchronisation. Please check the log!`,
+                                    $msg("liveSyncReplicator.syncFileSizeError") ||
+                                    `Sync failed due to file size. Please check the log for details.`,
                                     LOG_LEVEL_NOTICE
                                 );
                                 return "FAILED";
@@ -529,7 +537,8 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                             return "NEED_RETRY";
                             // Duplicate settings for smaller batch.
                         } else {
-                            Logger("Replication error", LOG_LEVEL_NOTICE, "sync");
+                            // Already logged in replicationErrored(), don't duplicate
+                            Logger("Replication error", LOG_LEVEL_VERBOSE, "sync");
                             Logger(e, LOG_LEVEL_VERBOSE);
                         }
                         return "FAILED";
@@ -646,7 +655,8 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         }
         // To create salt
         await this.checkReplicationConnectivity(setting, false, false, false, false);
-        Logger(`Bulk sending chunks to remote database...`, showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "fetch");
+        // Don't show "chunks" to user - they don't care about technical details
+        Logger(`Uploading files to server...`, showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "fetch");
         const remoteMilestone = await remoteDB.get(MILESTONE_DOCID);
         const remoteID = (remoteMilestone as any)?.created;
         const localDB = this.env.getDatabase();
@@ -725,8 +735,13 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             );
             const releaser = await semaphore.acquire(1);
             sendingDocs += bulkDocs.length;
+            // Show user-friendly message: number of files uploading
             Logger(
-                `↑ Uploading chunks \n${sendingDocs}/(${sentDocsCount} done)`,
+                $msg("fridaySync.rebuildRemote.uploadingProgress", {
+                    sending: sendingDocs.toString(),
+                    done: sentDocsCount.toString()
+                }) ||
+                `↑ Uploading files: ${sendingDocs} (${sentDocsCount} completed)`,
                 showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO,
                 "send"
             );
@@ -738,12 +753,12 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                 await this.updateMaxTransferredSeqOnChunks(localDB, remoteID, sentMap);
                 sentDocsCount += bulkDocs.length;
                 Logger(
-                    `↑ Uploading chunks \n${sendingDocs}/(${sentDocsCount} done)`,
+                    `↑ Uploading files: ${sendingDocs} (${sentDocsCount} completed)`,
                     showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO,
                     "send"
                 );
             } catch (ex) {
-                Logger("Bulk sending failed.", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "send");
+                Logger("Upload failed.", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "send");
                 Logger(ex, LOG_LEVEL_VERBOSE);
                 return false;
             } finally {
@@ -788,7 +803,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                     try {
                         await e;
                     } catch (ex) {
-                        Logger("Bulk sending failed.", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "send");
+                        Logger("Upload failed.", showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO, "send");
                         Logger(ex, LOG_LEVEL_VERBOSE);
                         return false;
                     }
@@ -844,7 +859,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             if (this.controller) {
                 Logger(
                     $msg("liveSyncReplicator.replicationInProgress"),
-                    showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO,
+                    showResult ? LOG_LEVEL_INFO : LOG_LEVEL_VERBOSE,
                     "sync"
                 );
                 return false;
@@ -866,8 +881,9 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             }
             this.maxPullSeq = Number(`${ret.info.update_seq}`.split("-")[0]);
             this.maxPushSeq = Number(`${(await localDB.info()).update_seq}`.split("-")[0]);
+            // Don't show technical "checking last sync point" message to user
             if (showResult) {
-                Logger($msg("liveSyncReplicator.checkingLastSyncPoint"), LOG_LEVEL_NOTICE, "sync");
+                Logger($msg("liveSyncReplicator.checkingLastSyncPoint"), LOG_LEVEL_INFO, "sync");
             }
             const { db, syncOptionBase } = ret;
             this.syncStatus = "STARTED";
@@ -926,7 +942,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                 if (tempSetting.batch_size <= 5 && tempSetting.batches_limit <= 5) {
                     Logger(
                         $msg("liveSyncReplicator.cantReplicateLowerValue"),
-                        showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO
+                        showResult ? LOG_LEVEL_INFO : LOG_LEVEL_VERBOSE
                     );
                     return false;
                 } else {
@@ -935,7 +951,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                             batch_size: tempSetting.batch_size.toString(),
                             batches_limit: tempSetting.batches_limit.toString(),
                         }),
-                        showResult ? LOG_LEVEL_NOTICE : LOG_LEVEL_INFO
+                        showResult ? LOG_LEVEL_INFO : LOG_LEVEL_VERBOSE
                     );
                     return async () =>
                         await this.openOneShotReplication(tempSetting, showResult, true, syncMode, ignoreCleanLock);
@@ -1439,7 +1455,13 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             );
             return false;
         }
-        Logger(`Connected to ${db.info.db_name} successfully`, LOG_LEVEL_NOTICE);
+        Logger(
+            $msg("liveSyncReplicator.connectedSuccessfully", { 
+                dbName: db.info.db_name 
+            }) ||
+            `Connected to ${db.info.db_name} successfully`,
+            LOG_LEVEL_NOTICE
+        );
         return true;
     }
 
@@ -1463,7 +1485,11 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             Logger(`tweak values on the remote database have been cleared`, LOG_LEVEL_VERBOSE);
         } catch (ex) {
             // While trying unlocking and not exist on the remote, it is not normal.
-            Logger(`Could not retrieve remote milestone`, LOG_LEVEL_NOTICE);
+            Logger(
+                $msg("liveSyncReplicator.couldNotRetrieveMilestone") ||
+                `Could not retrieve remote milestone`,
+                LOG_LEVEL_NOTICE
+            );
             throw ex;
         }
     }
@@ -1488,7 +1514,11 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             Logger(`Preferred tweak values has been registered`, LOG_LEVEL_VERBOSE);
         } catch (ex) {
             // While trying unlocking and not exist on the remote, it is not normal.
-            Logger(`Could not retrieve remote milestone`, LOG_LEVEL_NOTICE);
+            Logger(
+                $msg("liveSyncReplicator.couldNotRetrieveMilestone") ||
+                `Could not retrieve remote milestone`,
+                LOG_LEVEL_NOTICE
+            );
             throw ex;
         }
     }
@@ -1511,7 +1541,11 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             return remoteMilestone?.tweak_values?.[DEVICE_ID_PREFERRED] || false;
         } catch (ex) {
             // While trying unlocking and not exist on the remote, it is not normal.
-            Logger(`Could not retrieve remote milestone`, LOG_LEVEL_NOTICE);
+            Logger(
+                $msg("liveSyncReplicator.couldNotRetrieveMilestone") ||
+                `Could not retrieve remote milestone`,
+                LOG_LEVEL_NOTICE
+            );
             Logger(ex, LOG_LEVEL_VERBOSE);
             return false;
         }
@@ -1565,7 +1599,11 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         }
         const milestoneDoc = await dbRet.db.get(MILESTONE_DOCID);
         if (!milestoneDoc) {
-            Logger("Could not retrieve remote milestone", LOG_LEVEL_NOTICE);
+            Logger(
+                $msg("liveSyncReplicator.couldNotRetrieveMilestone") ||
+                "Could not retrieve remote milestone",
+                LOG_LEVEL_NOTICE
+            );
             return false;
         }
         const nodeInfo = (milestoneDoc as EntryMilestoneInfo).node_info;

@@ -1061,7 +1061,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
         return this._executeManualOperation("RESET", async () => {
             try {
-                this.setStatus("STARTED", "Rebuilding remote database from local files...");
+                this.setStatus("STARTED", "Uploading your files...");
                 Logger($msg("fridaySync.rebuildRemote.rebuilding"), LOG_LEVEL_NOTICE);
                 
                 // Step 1: Scan local vault and store all files to local database
@@ -1075,7 +1075,8 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 
                 // Step 2: Reset remote database
                 Logger("Step 2: Resetting remote database...", LOG_LEVEL_INFO);
-                Logger($msg("fridaySync.rebuildRemote.resettingRemote"), LOG_LEVEL_NOTICE);
+                // Don't show technical "resetting" message to user
+                Logger($msg("fridaySync.rebuildRemote.resettingRemote"), LOG_LEVEL_INFO);
                 try {
                     await this._replicator.tryResetRemoteDatabase(this._settings);
                 } catch (error) {
@@ -1188,7 +1189,12 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             }
             
             Logger(`Vault scan complete: ${stored} stored, ${skipped} skipped (hidden), ${ignored} ignored (patterns), ${errors} errors`, LOG_LEVEL_INFO);
-            Logger(`Stored ${stored} files to local database`, LOG_LEVEL_NOTICE);
+            // Show user-friendly message without technical jargon
+            Logger(
+                $msg("fridaySync.rebuildRemote.filesPrepared", { count: stored.toString() }) || 
+                `Prepared ${stored} files for upload`,
+                LOG_LEVEL_NOTICE
+            );
             
             return errors === 0 || stored > 0;
         } catch (error) {
@@ -1379,24 +1385,37 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 const sampleFiles = missingChunksFiles.slice(0, 3).join(", ");
                 const moreText = missingChunksErrors > 3 ? ` and ${missingChunksErrors - 3} more` : "";
                 Logger(
+                    $msg("fridaySync.rebuild.missingChunks", { 
+                        count: missingChunksErrors.toString(),
+                        examples: sampleFiles,
+                        more: moreText
+                    }) ||
                     `${missingChunksErrors} files could not be read (missing data). This usually happens after a database reset. Consider using "Fetch from Server" to re-sync. Examples: ${sampleFiles}${moreText}`,
                     LOG_LEVEL_NOTICE
                 );
-                console.log(`[Friday Sync] Missing chunks for ${missingChunksErrors} files:`, missingChunksFiles);
+                console.error(`[Friday Sync] Missing chunks for ${missingChunksErrors} files:`, missingChunksFiles);
             }
             
             if (errors > 0) {
-                console.log(`[Friday Sync] Rebuild completed with ${errors} write errors. Check console for details.`);
+                console.error(`[Friday Sync] Rebuild completed with ${errors} write errors. Check console for details.`);
             }
             
             if (internalFilesErrors > 0) {
-                console.log(`[Friday Sync] ${internalFilesErrors} internal files had errors. Check console for details.`);
+                console.error(`[Friday Sync] ${internalFilesErrors} internal files had errors. Check console for details.`);
             }
             
             // Show success message with summary
             const successCount = created + updated;
             if (successCount > 0 || totalErrors === 0) {
-                Logger(`Rebuild complete: ${successCount} files written (${created} new, ${updated} updated)`, LOG_LEVEL_NOTICE);
+                Logger(
+                    $msg("fridaySync.rebuild.complete", {
+                        count: successCount.toString(),
+                        created: created.toString(),
+                        updated: updated.toString()
+                    }) || 
+                    `Rebuild complete: ${successCount} files written (${created} new, ${updated} updated)`,
+                    LOG_LEVEL_NOTICE
+                );
             }
             
             return true;
@@ -1425,11 +1444,12 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         
         try {
             // ===== Phase 1: Suspend (aligned with livesync suspendReflectingDatabase) =====
-            Logger("Starting fetch from remote database...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.fetch.starting") || "Starting download from server...", LOG_LEVEL_NOTICE);
+            // Technical message - user doesn't need to know about "reflection"
             Logger(
                 $msg("fridaySync.saltChanged.suspendingReflection") ||
-                "Suspending reflection: Database and storage changes will not be reflected until fetching completes.",
-                LOG_LEVEL_NOTICE
+                "Preparing to download files...",
+                LOG_LEVEL_INFO
             );
             
             this._settings.suspendParseReplicationResult = true;
@@ -1444,7 +1464,8 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 this._storageEventManager.stopWatch();
             }
             
-            Logger("Resetting local database...", LOG_LEVEL_NOTICE);
+            // Don't show technical "Resetting local database" to user
+            Logger("Resetting local database...", LOG_LEVEL_INFO);
             if (this._localDatabase) {
                 await this._localDatabase.resetDatabase();
             }
@@ -1483,7 +1504,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             // Following livesync: replicateAllFromRemote()
             // readChunksOnline=true by default, so only meta is fetched
             // Chunks will be fetched on-demand later
-            Logger("Fetching documents from remote (1st pass)...", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.fetch.downloading") || "Downloading files from server (this may take a while)...", LOG_LEVEL_NOTICE);
             
             const result1 = await this._replicator?.replicateAllFromServer(
                 this._settings, 
@@ -1497,7 +1518,8 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             await this.delay(1000);
             
             // ===== Phase 6: Fetch from Remote (Second Pass) =====
-            Logger("Fetching documents from remote (2nd pass)...", LOG_LEVEL_NOTICE);
+            // Don't show separate message for second pass - user doesn't need to know
+            Logger("Fetching documents from remote (2nd pass)...", LOG_LEVEL_INFO);
             
             const result2 = await this._replicator?.replicateAllFromServer(
                 this._settings,
@@ -1511,11 +1533,8 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             await this.delay(500);
             
             // ===== Phase 7: Resume and Scan Vault (aligned with livesync resumeReflectingDatabase) =====
-            Logger(
-                $msg("fridaySync.saltChanged.resumingReflection") ||
-                "Database and storage reflection has been resumed!",
-                LOG_LEVEL_NOTICE
-            );
+            // User-friendly message about writing files
+            Logger($msg("fridaySync.fetch.writingFiles") || "Writing files to your vault...", LOG_LEVEL_NOTICE);
             
             this._settings.suspendParseReplicationResult = false;
             this._settings.suspendFileWatching = false;
@@ -1524,7 +1543,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             // NOW call rebuildVaultFromDB which is similar to livesync's scanVault()
             // Chunks will be fetched on-demand as each file is processed
-            Logger("Scanning and rebuilding vault from database...", LOG_LEVEL_NOTICE);
+            Logger("Scanning and rebuilding vault from database...", LOG_LEVEL_INFO);
             const rebuildResult = await this.rebuildVaultFromDB();
             
             if (!rebuildResult) {
@@ -1532,7 +1551,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             }
             
             // ===== Phase 8: Complete =====
-            Logger("Fetch from remote completed successfully!", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.fetch.downloadComplete") || "Download complete!", LOG_LEVEL_NOTICE);
             
             // Restart sync if it was running
             if (this._settings.liveSync) {
@@ -1541,7 +1560,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             return true;
         } catch (error) {
-            Logger("Rebuild from remote failed", LOG_LEVEL_NOTICE);
+            Logger($msg("fridaySync.fetch.downloadFailed") || "Download from server failed", LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             
             // Make sure to restore suspend state even on error (aligned with livesync)
@@ -1615,7 +1634,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 return;
             }
             
-            Logger(`Found ${missingChunkIds.length} missing chunks, fetching from remote...`, LOG_LEVEL_NOTICE);
+            Logger(
+                $msg("fridaySync.fetch.fetchingMissingChunks", { 
+                    count: missingChunkIds.length.toString() 
+                }) ||
+                `Found ${missingChunkIds.length} missing chunks, fetching from remote...`,
+                LOG_LEVEL_NOTICE
+            );
             
             // Step 3: Fetch missing chunks from remote using the replicator
             const batchSize = 100;
@@ -1646,7 +1671,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 }
             }
             
-            Logger(`Chunk fetching complete: ${fetched} chunks fetched`, LOG_LEVEL_NOTICE);
+            Logger(
+                $msg("fridaySync.fetch.chunkFetchComplete", { 
+                    count: fetched.toString() 
+                }) ||
+                `Chunk fetching complete: ${fetched} chunks fetched`,
+                LOG_LEVEL_NOTICE
+            );
         } catch (ex) {
             // Log error but don't throw - allow rebuild to continue
             // Some chunks may be missing due to database inconsistencies
