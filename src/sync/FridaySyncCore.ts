@@ -224,6 +224,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     // Track if file watcher has been started (to avoid duplicate starts)
     private _fileWatcherStarted: boolean = false;
     
+    // Track if network monitoring has been started (to avoid duplicate starts)
+    private _networkMonitoringStarted: boolean = false;
+    
     // Track manual operations (RESET/Push/Fetch) to pause auto-reconnect
     private _manualOperationType: "RESET" | "PUSH" | "FETCH" | "PULL" | null = null;
     
@@ -376,6 +379,56 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      */
     get manualOperationType(): string | null {
         return this._manualOperationType;
+    }
+    
+    /**
+     * Start network monitoring (event listeners and connection monitoring)
+     * 
+     * This should be called:
+     * - After first-time upload completes (rebuildRemote)
+     * - After first-time download completes (fetchFromServer)
+     * - Automatically during normal sync startup (if not first-time)
+     */
+    startNetworkMonitoring(): void {
+        if (this._networkMonitoringStarted) {
+            Logger("Network monitoring already started", LOG_LEVEL_VERBOSE);
+            return;
+        }
+        
+        // Register network event listeners
+        if (this._networkEvents) {
+            this._networkEvents.registerEvents();
+        }
+        
+        // Start connection monitoring
+        if (this._connectionMonitor) {
+            this._connectionMonitor.startMonitoring();
+        }
+        
+        this._networkMonitoringStarted = true;
+        Logger("Network monitoring started (auto-reconnect enabled)", LOG_LEVEL_INFO);
+    }
+    
+    /**
+     * Stop network monitoring
+     */
+    stopNetworkMonitoring(): void {
+        if (!this._networkMonitoringStarted) {
+            return;
+        }
+        
+        // Stop connection monitoring
+        if (this._connectionMonitor) {
+            this._connectionMonitor.stopMonitoring();
+        }
+        
+        // Unload network events
+        if (this._networkEvents) {
+            this._networkEvents.unload();
+        }
+        
+        this._networkMonitoringStarted = false;
+        Logger("Network monitoring stopped", LOG_LEVEL_VERBOSE);
     }
 
     onStatusChange(callback: SyncStatusCallback) {
@@ -555,13 +608,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             await this._offlineTracker.initialize();
             
-            // Register network event listeners
-            this._networkEvents.registerEvents();
+            // NOTE: Network event listeners and connection monitoring are NOT started here
+            // They will be started by startNetworkMonitoring() after:
+            // - First-time upload completes (rebuildRemote)
+            // - First-time download completes (fetchFromServer)
+            // - Or automatically if not first-time scenario
             
-            // Start connection monitoring
-            this._connectionMonitor.startMonitoring();
-            
-            Logger("Network error handling modules initialized", LOG_LEVEL_INFO);
+            Logger("Network error handling modules initialized (monitoring not started yet)", LOG_LEVEL_INFO);
 
             // Set up status monitoring for debugging
             this.setupStatusMonitoring();
@@ -792,6 +845,11 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 this.setStatus("ERRORED", "Database reset detected");
                 return false;
             }
+            
+            // Start network monitoring if not already started
+            // This is for non-first-time scenarios (normal sync startup)
+            // First-time scenarios will call startNetworkMonitoring() explicitly after upload/download
+            this.startNetworkMonitoring();
             
             // Status will be updated by replicator via updateInfo
             return true;
@@ -1114,6 +1172,10 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     this.setStatus("COMPLETED", "Remote database rebuilt successfully");
                     Logger($msg("fridaySync.rebuildRemote.success"), LOG_LEVEL_NOTICE);
                     Logger("Other devices should now use 'Fetch from Server' to sync", LOG_LEVEL_INFO);
+                    
+                    // Start network monitoring after successful first-time upload
+                    // This enables auto-reconnect for future network changes
+                    this.startNetworkMonitoring();
                 } else {
                     this.setStatus("ERRORED", "Rebuild remote failed");
                     Logger($msg("fridaySync.rebuildRemote.failed"), LOG_LEVEL_NOTICE);
@@ -1553,6 +1615,10 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             // ===== Phase 8: Complete =====
             Logger($msg("fridaySync.fetch.downloadComplete") || "Download complete!", LOG_LEVEL_NOTICE);
             
+            // Start network monitoring after successful first-time download
+            // This enables auto-reconnect for future network changes
+            this.startNetworkMonitoring();
+            
             // Restart sync if it was running
             if (this._settings.liveSync) {
                 await this.startSync(true);
@@ -1714,11 +1780,8 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      * Close and clean up
      */
     async close(): Promise<void> {
-        // Stop connection monitoring
-        this._connectionMonitor?.stopMonitoring();
-
-        // Unload network events
-        this._networkEvents?.unload();
+        // Stop network monitoring (will check if it's started)
+        this.stopNetworkMonitoring();
 
         await this.stopSync();
         if (this._localDatabase) {

@@ -1037,11 +1037,11 @@ export default class FridayPlugin extends Plugin {
 	/**
 	 * Initialize Sync Service with current settings
 	 * 
-	 * @param autoStart - If false, skip automatic sync startup even if syncOnStart is true.
-	 *                    This is used during first-time license activation to give users
-	 *                    full control over when to start syncing.
+	 * Network monitoring will be started based on the scenario:
+	 * - First-time upload/download: Started after successful operation
+	 * - Normal scenarios: Started automatically during initialization
 	 */
-	async initializeSyncService(autoStart: boolean = true) {
+	async initializeSyncService() {
 		try {
 			// Clean up existing status display before creating new one
 			if (this.syncStatusDisplay) {
@@ -1070,9 +1070,7 @@ export default class FridayPlugin extends Plugin {
 					});
 					
 					// Start LiveSync (continuous replication) by default
-					// autoStart=false is used during first-time activation to prevent
-					// automatic sync before user clicks "Upload to Cloud" button
-					if (autoStart && this.settings.syncConfig.syncOnStart) {
+					if (this.settings.syncConfig.syncOnStart) {
 						await this.syncService.startSync(true); // true = liveSync mode
 					}
 				}
@@ -2426,9 +2424,8 @@ class FridaySettingTab extends PluginSettingTab {
 			await this.plugin.saveSettings();
 
 			// Step 7: Re-initialize sync service
-			// Pass autoStart=false to prevent automatic sync, same as first-time activation
-			// User must click "Upload to Cloud" button to start syncing
-			await this.plugin.initializeSyncService(false);  // false = don't auto-start sync
+			// Network monitoring will be started after user clicks "Upload to Cloud"
+			await this.plugin.initializeSyncService();
 
 			// Step 8: Set first time flag to show upload option
 			this.firstTimeSync = true;
@@ -2554,10 +2551,9 @@ class FridaySettingTab extends PluginSettingTab {
 
 		// Step 12: Initialize sync service only for first-time activation
 		// For non-first-time, user needs to input passphrase first, then manually download
-		// IMPORTANT: Pass autoStart=false to prevent automatic sync startup before user clicks button
-		// This gives users full control - sync only starts when they click "Upload to Cloud"
+		// Network monitoring will be started after successful upload/download
 		if (this.plugin.settings.syncEnabled && response.first_time) {
-			await this.plugin.initializeSyncService(false);  // false = don't auto-start sync
+			await this.plugin.initializeSyncService();
 		}
 
 		// Step 13: Refresh license state in Site panel (if open)
