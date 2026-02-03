@@ -361,6 +361,55 @@ export class Hugoverse {
 	}
 
 	/**
+	 * Get license information (plan, expiration, features)
+	 * 
+	 * GET /api/license/info?key=<license_key>&_t=<timestamp>
+	 * Authorization: Bearer <token>
+	 * 
+	 * Returns up-to-date license information including:
+	 * - expires_at: expiration timestamp
+	 * - plan: license plan type
+	 * - features.max_storage: maximum storage quota
+	 */
+	async getLicenseInfo(
+		token: string,
+		licenseKey: string
+	): Promise<any | null> {
+		try {
+			// Add timestamp to prevent caching
+			const timestamp = Date.now();
+			const infoUrl = `${this.apiUrl}/api/license/info?key=${licenseKey}&_t=${timestamp}`;
+
+			const response: RequestUrlResponse = await requestUrl({
+				url: infoUrl,
+				method: "GET",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+					"Cache-Control": "no-cache",
+					"Pragma": "no-cache"
+				},
+			});
+
+			// Check response status
+			if (response.status !== 200) {
+				console.error(`License info fetch failed: ${response.text}`);
+				throw new Error(`License info fetch failed: ${response.status}`);
+			}
+
+			// Parse response
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0];
+			}
+
+			throw new Error("Invalid license info response format");
+		} catch (error) {
+			console.error("Failed to get license info:", error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Reset license usage (clear sync database and publish data)
 	 * 
 	 * POST /api/license/usage/reset?key=<license_key>

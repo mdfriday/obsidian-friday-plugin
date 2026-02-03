@@ -41,6 +41,10 @@ export const zhCn: TranslationNamespace = {
 		license_invalid_format: "许可证密钥格式无效。正确格式：MDF-XXXX-XXXX-XXXX",
 		license_activation_failed: "许可证激活失败，请检查您的许可证密钥。",
 		license_activated_success: "许可证激活成功！",
+		click_to_refresh_license_info: "点击刷新许可证信息",
+		refreshing: "正在刷新...",
+		license_info_refreshed: "许可证信息已更新",
+		refresh_failed: "刷新许可证信息失败",
 
 		// Sync Settings (License-based)
 		sync_enabled: "同步已启用",

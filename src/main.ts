@@ -959,8 +959,47 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
+	 * Refresh license information from API
+	 * Called when user clicks on plan badge in settings
+	 */
+	async refreshLicenseInfo(): Promise<void> {
+		// Check if dependencies are initialized
+		if (!this.hugoverse) {
+			return;
+		}
+
+		const { license, userToken } = this.settings;
+		
+		// Only fetch if license is active and not expired
+		if (!license || isLicenseExpired(license.expiresAt)) {
+			return;
+		}
+
+		try {
+			const licenseInfo = await this.hugoverse.getLicenseInfo(userToken, license.key);
+			if (licenseInfo) {
+				// Update license data with latest info from server
+				this.settings.license = {
+					...license,
+					expiresAt: licenseInfo.expires_at || license.expiresAt,
+					plan: licenseInfo.plan || license.plan,
+					features: {
+						...license.features,
+						max_storage: licenseInfo.features?.max_storage || license.features.max_storage
+					}
+				};
+				await this.saveData(this.settings);
+			}
+		} catch (error) {
+			console.warn('[Friday] Failed to refresh license info:', error);
+			// Re-throw to let caller handle error display
+			throw error;
+		}
+	}
+
+	/**
 	 * Refresh subdomain information from API
-	 * Called when Settings page is displayed (lazy loading)
+	 * Called when user clicks refresh in settings
 	 */
 	async refreshSubdomainInfo(): Promise<void> {
 		// Check if dependencies are initialized
@@ -1221,9 +1260,8 @@ class FridaySettingTab extends PluginSettingTab {
 	private isActivating: boolean = false;
 	private activationError: string = '';
 	private firstTimeSync: boolean = false;
-	private isRefreshingUsage: boolean = false;
-	private isRefreshingSubdomain: boolean = false;
-	private lastSubdomainRefresh: number = 0;
+	private isRefreshingLicenseInfo: boolean = false;
+	private lastLicenseInfoRefresh: number = 0;
 
 	constructor(app: App, plugin: FridayPlugin) {
 		super(app, plugin);
@@ -1249,38 +1287,6 @@ class FridaySettingTab extends PluginSettingTab {
 
 		const {license, licenseSync} = this.plugin.settings;
 		
-		// Refresh license usage in background when settings page opens
-		// Only fetch if last update was more than 5 seconds ago to avoid excessive API calls
-		const existingUsage = this.plugin.settings.licenseUsage;
-		const usageStale = !existingUsage?.lastUpdated || (Date.now() - existingUsage.lastUpdated > 5000);
-		
-		if (!this.isRefreshingUsage && license && !isLicenseExpired(license.expiresAt) && usageStale) {
-			this.isRefreshingUsage = true;
-			this.plugin.refreshLicenseUsage().then(() => {
-				// Refresh display to show updated usage data
-				this.display();
-				this.isRefreshingUsage = false;
-			}).catch(() => {
-				this.isRefreshingUsage = false;
-			});
-		}
-
-		// Refresh subdomain info in background when settings page opens
-		// Only fetch if last update was more than 5 seconds ago
-		const subdomainStale = !this.lastSubdomainRefresh || (Date.now() - this.lastSubdomainRefresh > 5000);
-		
-		if (!this.isRefreshingSubdomain && license && !isLicenseExpired(license.expiresAt) && subdomainStale) {
-			this.isRefreshingSubdomain = true;
-			this.plugin.refreshSubdomainInfo().then(() => {
-				this.lastSubdomainRefresh = Date.now();
-				this.isRefreshingSubdomain = false;
-				// Re-render to show updated subdomain
-				this.display();
-			}).catch(() => {
-				this.isRefreshingSubdomain = false;
-			});
-		}
-
 		// =========================================
 		// License Section (Always at top - both platforms)
 		// =========================================
@@ -1817,15 +1823,63 @@ class FridaySettingTab extends PluginSettingTab {
 		if (license && !isLicenseExpired(license.expiresAt)) {
 			// ========== License Active State ==========
 			
-			// Row 1: License Key (masked) + Valid Until + Plan Badge
+			// Row 1: License Key (masked) + Valid Until + Plan Badge (clickable)
 			const licenseKeySetting = new Setting(containerEl)
 				.setName(maskLicenseKey(license.key))
 				.setDesc(this.plugin.i18n.t('settings.valid_until') + ': ' + formatExpirationDate(license.expiresAt));
 			
-			// Add plan badge to the right
+			// Add clickable plan badge to the right
 			const planBadge = licenseKeySetting.controlEl.createSpan({
-				cls: `friday-plan-badge ${license.plan.toLowerCase()}`,
+				cls: `friday-plan-badge ${license.plan.toLowerCase()} clickable`,
 				text: formatPlanName(license.plan)
+			});
+			
+			// Make plan badge clickable to refresh license info
+			planBadge.style.cursor = 'pointer';
+			planBadge.title = this.plugin.i18n.t('settings.click_to_refresh_license_info') || 'Click to refresh license info';
+			
+			planBadge.addEventListener('click', async () => {
+				// Check 5 second cooldown
+				const now = Date.now();
+				if (this.isRefreshingLicenseInfo || (now - this.lastLicenseInfoRefresh < 5000)) {
+					return;
+				}
+				
+				// Set refreshing state
+				this.isRefreshingLicenseInfo = true;
+				this.lastLicenseInfoRefresh = now;
+				
+				// Update UI to show loading state
+				const originalText = planBadge.textContent || '';
+				planBadge.textContent = this.plugin.i18n.t('settings.refreshing') || 'Refreshing...';
+				planBadge.addClass('refreshing');
+				
+				try {
+					// Refresh license info (expires_at, plan, max_storage)
+					await this.plugin.refreshLicenseInfo();
+					
+					// Refresh usage data
+					await this.plugin.refreshLicenseUsage();
+
+					// Refresh subdomain info if applicable
+					await this.plugin.refreshSubdomainInfo();
+					
+					// Show success notification
+					new Notice(this.plugin.i18n.t('settings.license_info_refreshed') || 'License info updated');
+					
+					// Refresh display to show updated data
+					this.display();
+				} catch (error) {
+					// Show error notification
+					new Notice(this.plugin.i18n.t('settings.refresh_failed') || 'Failed to refresh license info');
+					console.error('Failed to refresh license info:', error);
+					
+					// Restore original state
+					planBadge.textContent = originalText;
+					planBadge.removeClass('refreshing');
+				} finally {
+					this.isRefreshingLicenseInfo = false;
+				}
 			});
 
 			// Row 2: Storage Usage

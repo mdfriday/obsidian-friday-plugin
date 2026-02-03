@@ -28,22 +28,79 @@
     text-transform: capitalize;
     min-height: 28px;
     line-height: 1;
+    transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
+/* Clickable state */
+.friday-plan-badge.clickable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.friday-plan-badge.clickable:hover {
+    transform: scale(1.05);
+    opacity: 0.9;
+}
+
+.friday-plan-badge.clickable:active {
+    transform: scale(0.98);
+}
+
+/* Refreshing state */
+.friday-plan-badge.refreshing {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Free Plan - Gray (基础免费版) */
+.friday-plan-badge.free {
+    background: linear-gradient(135deg, #9CA3AF, #6B7280);
+    color: white;
+    padding-top: 6px !important;
+}
+
+/* Starter Plan - Blue (入门版) */
 .friday-plan-badge.starter {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-	padding-top: 6px! important
+    background: linear-gradient(135deg, #3B82F6, #2563EB);
+    color: white;
+    padding-top: 6px !important;
 }
 
+/* Enjoy Plan - Cyan/Teal (享受版 - 轻松愉快) */
+.friday-plan-badge.enjoy {
+    background: linear-gradient(135deg, #06B6D4, #0891B2);
+    color: white;
+    padding-top: 6px !important;
+}
+
+/* Creator Plan - Purple/Pink (创作者版 - 创意艺术) */
+.friday-plan-badge.creator {
+    background: linear-gradient(135deg, #EC4899, #D946EF);
+    color: white;
+    padding-top: 6px !important;
+}
+
+/* Pro Plan - Gold (专业版 - 金色尊贵) */
 .friday-plan-badge.pro {
     background: linear-gradient(135deg, #FFD700, #FFA500);
     color: #1a1a1a;
+    padding-top: 6px !important;
 }
 
+/* Enterprise Plan - Black Gold (企业版 - 黑金高端) */
+.friday-plan-badge.enterprise {
+    background: linear-gradient(135deg, #1F2937, #374151);
+    color: #FFD700;
+    border: 1px solid #FFD700;
+    padding-top: 6px !important;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+/* Team Plan - Keep for backward compatibility */
 .friday-plan-badge.team {
     background: linear-gradient(135deg, #9333EA, #7C3AED);
     color: white;
+    padding-top: 6px !important;
 }
 
 /* Device Count */

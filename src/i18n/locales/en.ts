@@ -41,6 +41,10 @@ export const en: TranslationNamespace = {
 		license_invalid_format: "Invalid license key format. Expected: MDF-XXXX-XXXX-XXXX",
 		license_activation_failed: "License activation failed. Please check your license key.",
 		license_activated_success: "License activated successfully!",
+		click_to_refresh_license_info: "Click to refresh license info",
+		refreshing: "Refreshing...",
+		license_info_refreshed: "License info updated",
+		refresh_failed: "Failed to refresh license info",
 
 		// Sync Settings (License-based)
 		sync_enabled: "Sync is enabled",
