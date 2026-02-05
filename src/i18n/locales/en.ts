@@ -107,6 +107,7 @@ export const en: TranslationNamespace = {
 		publish_method_mdfriday: "MDFriday Subdomain",
 		publish_method_netlify: "Netlify",
 		publish_method_ftp: "FTP",
+		publish_method_mdfriday_custom: "MDFriday Custom Domain",
 		license_required: "Please activate a license to use this feature",
 
 		// Netlify settings
@@ -145,6 +146,26 @@ export const en: TranslationNamespace = {
 		// MDFriday Subdomain Settings
 		mdfriday_app: "MDFriday Subdomain",
 		mdfriday_app_desc: "Configure your personal subdomain for publishing sites",
+		
+		// MDFriday Custom Domain Settings
+		mdfriday_custom_domain: "MDFriday Custom Domain",
+		custom_domain_desc: "Your custom domain",
+		custom_domain_placeholder: "Enter your custom domain (e.g. example.com)",
+		domain_check: "Check DNS",
+		domain_checking: "Checking...",
+		domain_check_success: "Domain DNS is configured correctly",
+		domain_check_failed: "Domain DNS check failed",
+		domain_save: "Save",
+		domain_saving: "Saving...",
+		domain_saved: "Custom domain saved successfully",
+		domain_save_failed: "Failed to save custom domain",
+		domain_https_check: "Check HTTPS",
+		domain_https_checking: "Checking...",
+		domain_https_ready: "HTTPS is fully operational",
+		domain_https_pending: "HTTPS certificate is being issued (1-2 minutes)",
+		domain_https_error: "HTTPS certificate error",
+		domain_https_check_failed: "Failed to check HTTPS status",
+		
 		subdomain: "Subdomain",
 		subdomain_desc: "Your personal subdomain for MDFriday Subdomain",
 		subdomain_placeholder: "Enter subdomain",
@@ -256,10 +277,12 @@ export const en: TranslationNamespace = {
 		publish_method: "Publish Method",
 		publish_option_mdfriday_share: "MDFriday Share",
 		publish_option_mdfriday_app: "MDFriday Subdomain",
+		publish_option_mdfriday_custom: "MDFriday Custom Domain",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP Upload",
 		mdfriday_share_hint: "MDFriday Share allows you to share your site instantly. Your site will be published to your personal MDFriday space.",
 		mdfriday_app_hint: "MDFriday Subdomain publishes your site to your personal subdomain. Your site will be available at your-subdomain.mdfriday.com.",
+		mdfriday_custom_hint: "MDFriday Custom Domain publishes your site to your custom domain. Make sure DNS is configured correctly.",
 		mdfriday_license_required: "This feature requires an activated license. Please activate your license in Settings.",
 		publish_building: "Publishing...",
 		publish_success: "Published successfully!",

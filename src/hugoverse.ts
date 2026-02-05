@@ -2,7 +2,7 @@ import {App, FileSystemAdapter, Notice, Platform, requestUrl, TFile, TFolder, Va
 import type {RequestUrlResponse} from "obsidian";
 import type {User} from "./user";
 import type FridayPlugin from "./main";
-import type { LicenseActivationResponse, LicenseUsageResponse, SubdomainInfo, SubdomainCheckResponse, SubdomainUpdateResponse } from "./license";
+import type { LicenseActivationResponse, LicenseUsageResponse, DomainInfo, SubdomainCheckResponse, SubdomainUpdateResponse } from "./license";
 
 const NEW_ID = "-1"
 const COUNTER_REQUEST_ID_KEY = "friday_counter_request_id"
@@ -453,12 +453,12 @@ export class Hugoverse {
 	 * GET /api/license/subdomain?key={license_key}
 	 * Authorization: Bearer <token>
 	 */
-	async getSubdomain(
+	async getDomains(
 		token: string,
 		licenseKey: string
-	): Promise<SubdomainInfo | null> {
+	): Promise<DomainInfo | null> {
 		try {
-			const url = `${this.apiUrl}/api/license/subdomain?key=${licenseKey}`;
+			const url = `${this.apiUrl}/api/license/domains?key=${licenseKey}`;
 			
 			const response: RequestUrlResponse = await requestUrl({
 				url,
@@ -475,7 +475,7 @@ export class Hugoverse {
 			
 			const data = response.json;
 			if (data && data.data && data.data.length > 0) {
-				return data.data[0] as SubdomainInfo;
+				return data.data[0] as DomainInfo;
 			}
 			
 			return null;
@@ -580,6 +580,159 @@ export class Hugoverse {
 		} catch (error) {
 			console.error("Failed to update subdomain:", error);
 			return null;
+		}
+	}
+	
+	/**
+	 * Check custom domain DNS configuration
+	 * 
+	 * POST /api/license/domain/check
+	 * Authorization: Bearer <token>
+	 * FormData: license_key, domain
+	 */
+	async checkCustomDomain(
+		token: string,
+		licenseKey: string,
+		domain: string
+	): Promise<{ dns_valid: boolean; ready: boolean; message: string; resolved_ips?: string[] } | null> {
+		try {
+			const url = `${this.apiUrl}/api/license/domain/check`;
+			
+			const body = new FormData();
+			body.append("license_key", licenseKey);
+			body.append("domain", domain);
+			
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+			
+			const response: RequestUrlResponse = await requestUrl({
+				url,
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+					"Content-Type": `multipart/form-data; boundary=${boundary}`
+				},
+				body: arrayBufferBody,
+			});
+			
+			if (response.status !== 200) {
+				console.error(`Check custom domain failed: ${response.text}`);
+				return null;
+			}
+			
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0];
+			}
+			
+			return null;
+		} catch (error) {
+			console.error("Failed to check custom domain:", error);
+			throw error;
+		}
+	}
+	
+	/**
+	 * Add custom domain to license
+	 * 
+	 * POST /api/license/domain/add
+	 * Authorization: Bearer <token>
+	 * FormData: license_key, domain
+	 */
+	async addCustomDomain(
+		token: string,
+		licenseKey: string,
+		domain: string
+	): Promise<{ domain: string; status: string; message: string } | null> {
+		try {
+			const url = `${this.apiUrl}/api/license/domain/add`;
+			
+			const body = new FormData();
+			body.append("license_key", licenseKey);
+			body.append("domain", domain);
+			
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+			
+			const response: RequestUrlResponse = await requestUrl({
+				url,
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+					"Content-Type": `multipart/form-data; boundary=${boundary}`
+				},
+				body: arrayBufferBody,
+			});
+			
+			if (response.status !== 200 && response.status !== 201) {
+				console.error(`Add custom domain failed: ${response.text}`);
+				return null;
+			}
+			
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0];
+			}
+			
+			return null;
+		} catch (error) {
+			console.error("Failed to add custom domain:", error);
+			throw error;
+		}
+	}
+	
+	/**
+	 * Check HTTPS certificate status for custom domain
+	 * 
+	 * POST /api/license/domain/https-status
+	 * Authorization: Bearer <token>
+	 * FormData: license_key, domain
+	 */
+	async checkCustomDomainHttpsStatus(
+		token: string,
+		licenseKey: string,
+		domain: string
+	): Promise<{ 
+		status: string; 
+		tls_ready: boolean; 
+		dns_valid: boolean;
+		message: string;
+		certificate?: any;
+	} | null> {
+		try {
+			const url = `${this.apiUrl}/api/license/domain/https-status`;
+			
+			const body = new FormData();
+			body.append("license_key", licenseKey);
+			body.append("domain", domain);
+			
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+			
+			const response: RequestUrlResponse = await requestUrl({
+				url,
+				method: "POST",
+				headers: {
+					"Authorization": `Bearer ${token}`,
+					"Content-Type": `multipart/form-data; boundary=${boundary}`
+				},
+				body: arrayBufferBody,
+			});
+			
+			if (response.status !== 200) {
+				console.error(`Check HTTPS status failed: ${response.text}`);
+				return null;
+			}
+			
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0];
+			}
+			
+			return null;
+		} catch (error) {
+			console.error("Failed to check HTTPS status:", error);
+			throw error;
 		}
 	}
 

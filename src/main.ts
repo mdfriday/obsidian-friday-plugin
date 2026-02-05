@@ -46,10 +46,12 @@ interface FridaySettings {
 	// Custom subdomain (only set when user modifies from default)
 	// If null/undefined, use licenseUser.userDir as default
 	customSubdomain: string | null;
+	// Custom domain for publishing
+	customDomain: string | null;
 	// General Settings
 	downloadServer: 'global' | 'east';
 	// Publish Settings
-	publishMethod: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app';
+	publishMethod: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom';
 	netlifyAccessToken: string;
 	netlifyProjectId: string;
 	// FTP Settings
@@ -78,6 +80,7 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	licenseUsage: null,
 	encryptionPassphrase: '',
 	customSubdomain: null,
+	customDomain: null,
 	// General Settings defaults
 	downloadServer: 'global',
 	// Publish Settings defaults
@@ -1032,12 +1035,23 @@ export default class FridayPlugin extends Plugin {
 		}
 
 		try {
-			const subdomainInfo = await this.hugoverse.getSubdomain(userToken, license.key);
-			if (subdomainInfo && subdomainInfo.subdomain) {
-				// Only update customSubdomain if it differs from the default (userDir)
-				// This handles the case where user's subdomain was changed from another device
-				if (subdomainInfo.subdomain !== this.settings.licenseUser?.userDir) {
-					this.settings.customSubdomain = subdomainInfo.subdomain;
+			const domainInfo = await this.hugoverse.getDomains(userToken, license.key);
+			if (domainInfo) {
+				var updated = false;
+				if (domainInfo.subdomain) {
+					// Only update customSubdomain if it differs from the default (userDir)
+					// This handles the case where user's subdomain was changed from another device
+					if (domainInfo.subdomain !== this.settings.licenseUser?.userDir) {
+						this.settings.customSubdomain = domainInfo.subdomain;
+						updated = true;
+					}
+				}
+				if (domainInfo.cus_domain) {
+					this.settings.customDomain = domainInfo.cus_domain;
+					updated = true;
+				}
+
+				if (updated){
 					await this.saveData(this.settings);
 				}
 			}
@@ -1352,6 +1366,7 @@ class FridaySettingTab extends PluginSettingTab {
 		
 		// Create containers for dynamic content
 		let mdfridaySettingsContainer: HTMLElement;
+		let mdfridayCustomDomainContainer: HTMLElement;
 		let netlifySettingsContainer: HTMLElement;
 		let ftpSettingsContainer: HTMLElement;
 		
@@ -1362,26 +1377,31 @@ class FridaySettingTab extends PluginSettingTab {
 			.addDropdown((dropdown) => {
 				dropdown
 					.addOption('mdfriday', this.plugin.i18n.t('settings.publish_method_mdfriday'))
+					.addOption('mdf-custom', this.plugin.i18n.t('settings.publish_method_mdfriday_custom'))
 					.addOption('netlify', this.plugin.i18n.t('settings.publish_method_netlify'))
 					.addOption('ftp', this.plugin.i18n.t('settings.publish_method_ftp'))
 					.setValue(publishMethod || 'mdfriday')
 					.onChange(async (value) => {
-						this.plugin.settings.publishMethod = value as 'mdfriday' | 'netlify' | 'ftp';
+						this.plugin.settings.publishMethod = value as 'mdfriday' | 'mdf-custom' | 'netlify' | 'ftp' ;
 						await this.plugin.saveSettings();
-						showPublishSettings(value as 'mdfriday' | 'netlify' | 'ftp');
+						showPublishSettings(value as 'mdfriday'| 'mdf-custom' | 'netlify' | 'ftp' );
 					});
 			});
 
 		// Create containers for different publish methods
 		mdfridaySettingsContainer = containerEl.createDiv('mdfriday-settings-container');
+		mdfridayCustomDomainContainer = containerEl.createDiv('mdfriday-custom-domain-container');
 		netlifySettingsContainer = containerEl.createDiv('netlify-settings-container');
 		ftpSettingsContainer = containerEl.createDiv('ftp-settings-container');
 
 		// Function to show/hide publish settings based on selected method
 		// Note: 'mdf-share' and 'mdf-app' from Site.svelte map to 'mdfriday' settings container
-		const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app') => {
+		// 'mdf-custom' maps to 'mdfridayCustomDomainContainer'
+		const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom') => {
 			const isMdfriday = method === 'mdfriday' || method === 'mdf-share' || method === 'mdf-app';
+			const isMdfridayCustom = method === 'mdf-custom';
 			mdfridaySettingsContainer.style.display = isMdfriday ? 'block' : 'none';
+			mdfridayCustomDomainContainer.style.display = isMdfridayCustom ? 'block' : 'none';
 			netlifySettingsContainer.style.display = method === 'netlify' ? 'block' : 'none';
 			ftpSettingsContainer.style.display = method === 'ftp' ? 'block' : 'none';
 		};
@@ -1594,6 +1614,232 @@ class FridaySettingTab extends PluginSettingTab {
 			// Show message to activate license
 			new Setting(mdfridaySettingsContainer)
 				.setName(this.plugin.i18n.t('settings.subdomain_desc'))
+				.setDesc(this.plugin.i18n.t('settings.license_required'));
+		}
+
+		// =========================================
+		// MDFriday Custom Domain Settings (Independent Container)
+		// =========================================
+		mdfridayCustomDomainContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_custom_domain')});
+		
+		// Only show custom domain settings if license is active
+		if (license && !isLicenseExpired(license.expiresAt)) {
+			const {customDomain} = this.plugin.settings;
+			
+			// State variables
+			let currentDomain = customDomain || '';
+			let inputDomain = currentDomain;
+			let isChecking = false;
+			let isSaving = false;
+			let isCheckingHttps = false;
+			let checkStatus: 'success' | 'error' | null = null;
+			let httpsStatus: 'active' | 'pending' | 'error' | null = null;
+			let statusMessage = '';
+			
+			// UI elements
+			let domainInput: HTMLInputElement;
+			let checkButton: HTMLButtonElement;
+			let saveButton: HTMLButtonElement;
+			let httpsButton: HTMLButtonElement;
+			let statusEl: HTMLElement | null = null;
+			
+			// Helper to update status display
+			const updateStatusDisplay = () => {
+				// Remove existing status
+				if (statusEl) {
+					statusEl.remove();
+					statusEl = null;
+				}
+
+				if (statusMessage) {
+					const statusClass = checkStatus === 'success' ? 'subdomain-status available' : 
+									   checkStatus === 'error' ? 'subdomain-status error' :
+									   httpsStatus === 'active' ? 'subdomain-status available' :
+									   httpsStatus === 'pending' ? 'subdomain-status unavailable' :
+									   httpsStatus === 'error' ? 'subdomain-status error' : 'subdomain-status';
+					
+					statusEl = mdfridayCustomDomainContainer.createDiv({
+						cls: statusClass,
+						text: statusMessage
+					});
+				}
+			};
+
+			// Helper to update button states
+			const updateButtonStates = () => {
+				// Check button
+				checkButton.disabled = isChecking || isSaving || !inputDomain.trim();
+				checkButton.textContent = isChecking 
+					? this.plugin.i18n.t('settings.domain_checking')
+					: this.plugin.i18n.t('settings.domain_check');
+
+				// Save button - only enabled when check is successful
+				saveButton.disabled = isSaving || isChecking || checkStatus !== 'success';
+				saveButton.textContent = isSaving 
+					? this.plugin.i18n.t('settings.domain_saving')
+					: this.plugin.i18n.t('settings.domain_save');
+
+				// HTTPS button
+				httpsButton.disabled = isCheckingHttps || !currentDomain.trim();
+				httpsButton.textContent = isCheckingHttps 
+					? this.plugin.i18n.t('settings.domain_https_checking')
+					: this.plugin.i18n.t('settings.domain_https_check');
+			};
+
+			const domainSetting = new Setting(mdfridayCustomDomainContainer)
+				.setName(this.plugin.i18n.t('settings.custom_domain_desc'))
+				.setDesc(currentDomain ? currentDomain : this.plugin.i18n.t('settings.custom_domain_placeholder'));
+
+			// Domain input
+			domainSetting.addText((text) => {
+				domainInput = text.inputEl;
+				text
+					.setPlaceholder('example.com')
+					.setValue(currentDomain)
+					.onChange((value) => {
+						inputDomain = value.trim();
+						// Reset check status when input changes
+						if (inputDomain !== currentDomain) {
+							checkStatus = null;
+							statusMessage = '';
+							updateStatusDisplay();
+							updateButtonStates();
+						}
+					});
+				text.inputEl.style.width = '200px';
+			});
+
+			// Check button
+			domainSetting.addButton((button) => {
+				checkButton = button.buttonEl;
+				button
+					.setButtonText(this.plugin.i18n.t('settings.domain_check'))
+					.onClick(async () => {
+						if (!inputDomain.trim()) return;
+
+						isChecking = true;
+						checkStatus = null;
+						statusMessage = '';
+						updateStatusDisplay();
+						updateButtonStates();
+
+						try {
+							const result = await this.plugin.hugoverse?.checkCustomDomain(
+								userToken, license.key, inputDomain
+							);
+
+							if (result && result.dns_valid && result.ready) {
+								checkStatus = 'success';
+								statusMessage = result.message || this.plugin.i18n.t('settings.domain_check_success');
+							} else {
+								checkStatus = 'error';
+								statusMessage = result?.message || this.plugin.i18n.t('settings.domain_check_failed');
+							}
+						} catch (error) {
+							checkStatus = 'error';
+							statusMessage = this.plugin.i18n.t('settings.domain_check_failed');
+						} finally {
+							isChecking = false;
+							updateStatusDisplay();
+							updateButtonStates();
+						}
+					});
+			});
+
+			// Save button
+			domainSetting.addButton((button) => {
+				saveButton = button.buttonEl;
+				button
+					.setButtonText(this.plugin.i18n.t('settings.domain_save'))
+					.setCta()
+					.onClick(async () => {
+						if (checkStatus !== 'success') return;
+
+						isSaving = true;
+						updateButtonStates();
+
+						try {
+							const result = await this.plugin.hugoverse?.addCustomDomain(
+								userToken, license.key, inputDomain
+							);
+
+							if (result && result.domain) {
+								currentDomain = result.domain;
+								domainSetting.setDesc(currentDomain);
+								
+								// Save custom domain to settings
+								this.plugin.settings.customDomain = result.domain;
+								await this.plugin.saveSettings();
+								
+								checkStatus = null;
+								httpsStatus = result.status === 'active' ? 'active' : 'pending';
+								statusMessage = result.message || this.plugin.i18n.t('settings.domain_saved');
+								
+								new Notice(this.plugin.i18n.t('settings.domain_saved'));
+							} else {
+								statusMessage = this.plugin.i18n.t('settings.domain_save_failed');
+							}
+						} catch (error) {
+							statusMessage = this.plugin.i18n.t('settings.domain_save_failed');
+						} finally {
+							isSaving = false;
+							updateStatusDisplay();
+							updateButtonStates();
+						}
+					});
+			});
+
+			// HTTPS status button
+			domainSetting.addButton((button) => {
+				httpsButton = button.buttonEl;
+				button
+					.setButtonText(this.plugin.i18n.t('settings.domain_https_check'))
+					.onClick(async () => {
+						if (!currentDomain.trim()) return;
+
+						isCheckingHttps = true;
+						httpsStatus = null;
+						statusMessage = '';
+						updateStatusDisplay();
+						updateButtonStates();
+
+						try {
+							const result = await this.plugin.hugoverse?.checkCustomDomainHttpsStatus(
+								userToken, license.key, currentDomain
+							);
+
+							if (result) {
+								if (result.status === 'active' && result.tls_ready) {
+									httpsStatus = 'active';
+									statusMessage = result.message || this.plugin.i18n.t('settings.domain_https_ready');
+								} else if (result.status === 'cert_pending') {
+									httpsStatus = 'pending';
+									statusMessage = result.message || this.plugin.i18n.t('settings.domain_https_pending');
+								} else {
+									httpsStatus = 'error';
+									statusMessage = result.message || this.plugin.i18n.t('settings.domain_https_error');
+								}
+							} else {
+								httpsStatus = 'error';
+								statusMessage = this.plugin.i18n.t('settings.domain_https_check_failed');
+							}
+						} catch (error) {
+							httpsStatus = 'error';
+							statusMessage = this.plugin.i18n.t('settings.domain_https_check_failed');
+						} finally {
+							isCheckingHttps = false;
+							updateStatusDisplay();
+							updateButtonStates();
+						}
+					});
+			});
+
+			// Initial button states
+			updateButtonStates();
+		} else {
+			// Show message to activate license
+			new Setting(mdfridayCustomDomainContainer)
+				.setName(this.plugin.i18n.t('settings.custom_domain_desc'))
 				.setDesc(this.plugin.i18n.t('settings.license_required'));
 		}
 

@@ -107,6 +107,7 @@ export const zhCn: TranslationNamespace = {
 		publish_method_mdfriday: "MDFriday 子域名",
 		publish_method_netlify: "Netlify",
 		publish_method_ftp: "FTP",
+		publish_method_mdfriday_custom: "MDFriday 自定义域名",
 		license_required: "请先激活许可证以使用此功能",
 
 		// Netlify settings
@@ -143,6 +144,26 @@ export const zhCn: TranslationNamespace = {
 		// MDFriday 子域名设置
 		mdfriday_app: "MDFriday 子域名",
 		mdfriday_app_desc: "配置您的个人子域名，用于发布站点",
+		
+		// MDFriday 自定义域名设置
+		mdfriday_custom_domain: "MDFriday 自定义域名",
+		custom_domain_desc: "您的自定义域名",
+		custom_domain_placeholder: "输入您的自定义域名（例如 example.com）",
+		domain_check: "检查 DNS",
+		domain_checking: "检查中...",
+		domain_check_success: "域名 DNS 配置正确",
+		domain_check_failed: "域名 DNS 检查失败",
+		domain_save: "保存",
+		domain_saving: "保存中...",
+		domain_saved: "自定义域名保存成功",
+		domain_save_failed: "保存自定义域名失败",
+		domain_https_check: "检查 HTTPS",
+		domain_https_checking: "检查中...",
+		domain_https_ready: "HTTPS 已完全就绪",
+		domain_https_pending: "HTTPS 证书正在签发中（1-2分钟）",
+		domain_https_error: "HTTPS 证书错误",
+		domain_https_check_failed: "HTTPS 状态检查失败",
+		
 		subdomain: "子域名",
 		subdomain_desc: "您的 MDFriday 子域名",
 		subdomain_placeholder: "输入子域名",
@@ -247,10 +268,12 @@ export const zhCn: TranslationNamespace = {
 		publish_method: "发布方式",
 		publish_option_mdfriday_share: "MDFriday 分享",
 		publish_option_mdfriday_app: "MDFriday 子域名",
+		publish_option_mdfriday_custom: "MDFriday 自定义域名",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP 上传",
 		mdfriday_share_hint: "MDFriday 分享允许您即时分享站点。您的站点将发布到您的个人 MDFriday 空间。",
 		mdfriday_app_hint: "MDFriday 子域名将您的站点发布到个人子域名。您的站点将可通过 your-subdomain.mdfriday.com 访问。",
+		mdfriday_custom_hint: "MDFriday 自定义域名将您的站点发布到您的自定义域名。请确保 DNS 已正确配置。",
 		mdfriday_license_required: "此功能需要激活许可证。请在设置中激活您的许可证。",
 		publish_building: "正在发布...",
 		publish_success: "发布成功！",

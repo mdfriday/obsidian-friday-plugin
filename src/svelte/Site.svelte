@@ -100,7 +100,7 @@
 	let publishSuccess = false;
 	let publishUrl = '';
 	// Map 'mdfriday' from settings to 'netlify' as default (settings uses 'mdfriday' for display config)
-let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' = 
+let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom' = 
 	(plugin.settings.publishMethod === 'mdfriday' ? 'netlify' : plugin.settings.publishMethod) || 'netlify';
 	
 	// Netlify configuration (project-specific)
@@ -140,17 +140,18 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 		// Check if license is activated (required for MDFriday Share and MDFriday Subdomain)
 		isLicenseActivated = !!(plugin.settings.license && userDir);
 		
-		// Update publish options - MDFriday Share and MDFriday Subdomain are always shown
+		// Update publish options - MDFriday Share, MDFriday Subdomain, and MDFriday Custom Domain are always shown
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
 			{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') },
 			{ value: 'mdf-app', label: t('ui.publish_option_mdfriday_app') },
+			{ value: 'mdf-custom', label: t('ui.publish_option_mdfriday_custom') },
 		];
 	}
 
 	// Check if current publish option requires license
-	$: requiresLicense = selectedPublishOption === 'mdf-share' || selectedPublishOption === 'mdf-app';
+	$: requiresLicense = selectedPublishOption === 'mdf-share' || selectedPublishOption === 'mdf-app' || selectedPublishOption === 'mdf-custom';
 	$: isPublishDisabled = requiresLicense && !isLicenseActivated;
 
 	// HTTP server related
@@ -1302,8 +1303,60 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 				plugin.hugoverse.sendCounter('mdf-app').catch(error => {
 					console.warn('Counter request failed (non-critical):', error);
 				});
-			}
+			} else if (selectedPublishOption === 'mdf-custom') {
+				// MDFriday Custom Domain deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
 
+				// MDFriday Custom Domain uses sitePath as name and type 'custom'
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'custom', sitePath);
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday Custom Domain preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%)
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday Custom Domain');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL for MDFriday Custom Domain
+				// deployPath is the path, need to build full URL: https://<customdomain>/<deployPath>
+				const customDomain = plugin.settings.customDomain;
+				if (!customDomain) {
+					throw new Error('Custom domain not configured');
+				}
+				const basePath = deployPath.startsWith('/') ? deployPath : `/${deployPath}`;
+				const normalizedPath = basePath === '/' ? '' : basePath;
+				publishUrl = `https://${customDomain}${normalizedPath}`;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-custom',
+							url: publishUrl
+						});
+					}
+				}
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-custom').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			}
+			
 		} catch (error) {
 			console.error('Publishing failed:', error);
 			new Notice(t('messages.publishing_failed', { error: error.message }), 5000);
@@ -2539,6 +2592,20 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 				<div class="publish-config">
 					<div class="field-hint">
 						{t('ui.mdfriday_app_hint')}
+					</div>
+					{#if !isLicenseActivated}
+						<div class="license-warning">
+							⚠️ {t('ui.mdfriday_license_required')}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- MDFriday Custom Domain Info -->
+			{#if selectedPublishOption === 'mdf-custom'}
+				<div class="publish-config">
+					<div class="field-hint">
+						{t('ui.mdfriday_custom_hint')}
 					</div>
 					{#if !isLicenseActivated}
 						<div class="license-warning">

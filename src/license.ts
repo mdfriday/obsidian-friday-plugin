@@ -149,9 +149,10 @@ export interface StoredUsageData {
 /**
  * Subdomain information from API
  */
-export interface SubdomainInfo {
+export interface DomainInfo {
     subdomain: string;
     full_domain: string;
+    cus_domain: string;
     folder: string;
     created_at: number;
 }

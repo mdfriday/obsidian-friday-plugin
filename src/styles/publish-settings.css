@@ -2,6 +2,7 @@
 
 /* Publish Method Containers */
 .mdfriday-settings-container,
+.mdfriday-custom-domain-container,
 .netlify-settings-container,
 .ftp-settings-container {
   margin-top: 16px;
@@ -12,6 +13,7 @@
 }
 
 .mdfriday-settings-container h3,
+.mdfriday-custom-domain-container h3,
 .netlify-settings-container h3,
 .ftp-settings-container h3 {
   margin-top: 0;
