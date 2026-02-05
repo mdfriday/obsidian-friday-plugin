@@ -1387,7 +1387,7 @@ class FridaySettingTab extends PluginSettingTab {
 		};
 
 		// =========================================
-		// MDFriday App Settings
+		// MDFriday Subdomain Settings
 		// =========================================
 		mdfridaySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_app')});
 		

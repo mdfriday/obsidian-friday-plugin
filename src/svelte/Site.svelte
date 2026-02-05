@@ -137,10 +137,10 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 		// Update userDir from settings
 		userDir = plugin.settings.licenseUser?.userDir || '';
 		
-		// Check if license is activated (required for MDFriday Share and MDFriday App)
+		// Check if license is activated (required for MDFriday Share and MDFriday Subdomain)
 		isLicenseActivated = !!(plugin.settings.license && userDir);
 		
-		// Update publish options - MDFriday Share and MDFriday App are always shown
+		// Update publish options - MDFriday Share and MDFriday Subdomain are always shown
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
@@ -207,7 +207,7 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 		userDir = plugin.settings.licenseUser?.userDir || '';
 		isLicenseActivated = !!(plugin.settings.license && userDir);
 		
-		// Update publish options - MDFriday Share and MDFriday App are always shown
+		// Update publish options - MDFriday Share and MDFriday Subdomain are always shown
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
@@ -1254,25 +1254,25 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 					console.warn('Counter request failed (non-critical):', error);
 				});
 			} else if (selectedPublishOption === 'mdf-app') {
-				// MDFriday App deployment
+				// MDFriday Subdomain deployment
 				const zipContent = await createZipFromDirectory(publicDir);
 				publishProgress = 50;
 
-				// MDFriday App uses sitePath as name and type 'sub'
+				// MDFriday Subdomain uses sitePath as name and type 'sub'
 				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'sub', sitePath);
 				if (!previewApiId) {
-					throw new Error('Failed to create MDFriday App preview');
+					throw new Error('Failed to create MDFriday Subdomain preview');
 				}
 				publishProgress = 80;
 
 				// Step 3: Deploy the preview (80-100%)
 				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
 				if (!deployPath) {
-					throw new Error('Failed to deploy MDFriday App');
+					throw new Error('Failed to deploy MDFriday Subdomain');
 				}
 				publishProgress = 100;
 
-				// Step 4: Construct final publish URL for MDFriday App
+				// Step 4: Construct final publish URL for MDFriday Subdomain
 				// deployPath is the path, need to build full URL: https://<subdomain>.mdfriday.com/<deployPath>
 				const subdomain = plugin.getEffectiveSubdomain();
 				const basePath = deployPath.startsWith('/') ? deployPath : `/${deployPath}`;
@@ -2534,7 +2534,7 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' =
 				</div>
 			{/if}
 
-			<!-- MDFriday App Info -->
+			<!-- MDFriday Subdomain Info -->
 			{#if selectedPublishOption === 'mdf-app'}
 				<div class="publish-config">
 					<div class="field-hint">
