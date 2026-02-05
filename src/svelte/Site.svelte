@@ -130,6 +130,9 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 	// Local variables for license-based features
 	let userDir = '';
 	let isLicenseActivated = false;
+	let hasPublishPermission = false;
+	let hasSubdomainPermission = false;
+	let hasCustomDomainPermission = false;
 	let publishOptions: Array<{ value: string; label: string }> = [];
 
 	// Reactive block to update license-related state (similar to theme selection at line 64-79)
@@ -137,8 +140,14 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 		// Update userDir from settings
 		userDir = plugin.settings.licenseUser?.userDir || '';
 		
-		// Check if license is activated (required for MDFriday Share and MDFriday Subdomain)
+		// Check if license is activated (required for MDFriday features)
 		isLicenseActivated = !!(plugin.settings.license && userDir);
+		
+		// Check feature permissions from license
+		const features = plugin.settings.license?.features;
+		hasPublishPermission = isLicenseActivated && features?.publish_enabled === true;
+		hasSubdomainPermission = isLicenseActivated && features?.custom_sub_domain === true;
+		hasCustomDomainPermission = isLicenseActivated && features?.custom_domain === true;
 		
 		// Update publish options - MDFriday Share, MDFriday Subdomain, and MDFriday Custom Domain are always shown
 		publishOptions = [
@@ -150,9 +159,14 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 		];
 	}
 
-	// Check if current publish option requires license
-	$: requiresLicense = selectedPublishOption === 'mdf-share' || selectedPublishOption === 'mdf-app' || selectedPublishOption === 'mdf-custom';
-	$: isPublishDisabled = requiresLicense && !isLicenseActivated;
+	// Check if current publish option requires license and permissions
+	$: requiresPublishPermission = selectedPublishOption === 'mdf-share';
+	$: requiresSubdomainPermission = selectedPublishOption === 'mdf-app';
+	$: requiresCustomDomainPermission = selectedPublishOption === 'mdf-custom';
+	$: isPublishDisabled = 
+		(requiresPublishPermission && !hasPublishPermission) ||
+		(requiresSubdomainPermission && !hasSubdomainPermission) ||
+		(requiresCustomDomainPermission && !hasCustomDomainPermission);
 
 	// HTTP server related
 	let httpServer: IncrementalBuildCoordinator;
@@ -1726,7 +1740,7 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 				]
 			},
 			params: {
-				branding: true,
+				branding: !hasPublishPermission, // Hide branding if user has publish permission
 				...(sitePassword && sitePassword.trim() ? { password: sitePassword.trim() } : {})
 			}
 		};
@@ -2579,9 +2593,9 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 					<div class="field-hint">
 						{t('ui.mdfriday_share_hint')}
 					</div>
-					{#if !isLicenseActivated}
+					{#if !hasPublishPermission}
 						<div class="license-warning">
-							⚠️ {t('ui.mdfriday_license_required')}
+							⚠️ {t('settings.upgrade_for_mdfshare')}
 						</div>
 					{/if}
 				</div>
@@ -2593,9 +2607,9 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 					<div class="field-hint">
 						{t('ui.mdfriday_app_hint')}
 					</div>
-					{#if !isLicenseActivated}
+					{#if !hasSubdomainPermission}
 						<div class="license-warning">
-							⚠️ {t('ui.mdfriday_license_required')}
+							⚠️ {t('settings.upgrade_for_subdomain')}
 						</div>
 					{/if}
 				</div>
@@ -2607,9 +2621,9 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 					<div class="field-hint">
 						{t('ui.mdfriday_custom_hint')}
 					</div>
-					{#if !isLicenseActivated}
+					{#if !hasCustomDomainPermission}
 						<div class="license-warning">
-							⚠️ {t('ui.mdfriday_license_required')}
+							⚠️ {t('settings.upgrade_for_custom_domain')}
 						</div>
 					{/if}
 				</div>
@@ -2976,8 +2990,9 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 
 	.license-warning {
 		font-size: 12px;
-		color: var(--text-warning);
-		background: var(--background-modifier-error);
+		color: var(--text-accent);
+		background: var(--background-secondary);
+		border: 1px solid var(--background-modifier-border);
 		padding: 8px 12px;
 		border-radius: 4px;
 		margin-top: 8px;

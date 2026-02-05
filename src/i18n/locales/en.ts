@@ -108,7 +108,10 @@ export const en: TranslationNamespace = {
 		publish_method_netlify: "Netlify",
 		publish_method_ftp: "FTP",
 		publish_method_mdfriday_custom: "MDFriday Custom Domain",
-		license_required: "Please activate a license to use this feature",
+		license_required: "Please upgrade your plan to use this feature",
+		upgrade_for_mdfshare: "Please upgrade your plan to use MDFriday Share",
+		upgrade_for_subdomain: "Please upgrade your plan to use MDFriday Subdomain",
+		upgrade_for_custom_domain: "Please upgrade your plan to use MDFriday Custom Domain",
 
 		// Netlify settings
 		netlify_settings: "Netlify Settings",

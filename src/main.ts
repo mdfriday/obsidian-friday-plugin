@@ -999,13 +999,22 @@ export default class FridayPlugin extends Plugin {
 			const licenseInfo = await this.hugoverse.getLicenseInfo(userToken, license.key);
 			if (licenseInfo) {
 				// Update license data with latest info from server
+				// Merge all features from server, fallback to existing values
 				this.settings.license = {
 					...license,
 					expiresAt: licenseInfo.expires_at || license.expiresAt,
 					plan: licenseInfo.plan || license.plan,
 					features: {
-						...license.features,
-						max_storage: licenseInfo.features?.max_storage || license.features.max_storage
+						max_devices: licenseInfo.features?.max_devices ?? license.features.max_devices,
+						max_ips: licenseInfo.features?.max_ips ?? license.features.max_ips,
+						sync_enabled: licenseInfo.features?.sync_enabled ?? license.features.sync_enabled,
+						sync_quota: licenseInfo.features?.sync_quota ?? license.features.sync_quota,
+						publish_enabled: licenseInfo.features?.publish_enabled ?? license.features.publish_enabled,
+						max_sites: licenseInfo.features?.max_sites ?? license.features.max_sites,
+						max_storage: licenseInfo.features?.max_storage ?? license.features.max_storage,
+						custom_domain: licenseInfo.features?.custom_domain ?? license.features.custom_domain,
+						custom_sub_domain: licenseInfo.features?.custom_sub_domain ?? license.features.custom_sub_domain,
+						validity_days: licenseInfo.features?.validity_days ?? license.features.validity_days,
 					}
 				};
 				await this.saveData(this.settings);
@@ -1411,8 +1420,10 @@ class FridaySettingTab extends PluginSettingTab {
 		// =========================================
 		mdfridaySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_app')});
 		
-		// Only show subdomain settings if license is active
-		if (license && !isLicenseExpired(license.expiresAt)) {
+		// Check if license is active and has custom_sub_domain permission
+		const hasSubdomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.custom_sub_domain === true;
+		
+		if (hasSubdomainPermission) {
 			// Get effective subdomain: customSubdomain (if set) or default userDir
 			const effectiveSubdomain = customSubdomain ?? licenseUser?.userDir ?? '';
 			
@@ -1622,8 +1633,10 @@ class FridaySettingTab extends PluginSettingTab {
 		// =========================================
 		mdfridayCustomDomainContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_custom_domain')});
 		
-		// Only show custom domain settings if license is active
-		if (license && !isLicenseExpired(license.expiresAt)) {
+		// Check if license is active and has custom_domain permission
+		const hasCustomDomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.custom_domain === true;
+		
+		if (hasCustomDomainPermission) {
 			const {customDomain} = this.plugin.settings;
 			
 			// State variables
@@ -1837,10 +1850,10 @@ class FridaySettingTab extends PluginSettingTab {
 			// Initial button states
 			updateButtonStates();
 		} else {
-			// Show message to activate license
+			// Show upgrade message - user needs to upgrade their plan
 			new Setting(mdfridayCustomDomainContainer)
 				.setName(this.plugin.i18n.t('settings.custom_domain_desc'))
-				.setDesc(this.plugin.i18n.t('settings.license_required'));
+				.setDesc(this.plugin.i18n.t('settings.upgrade_for_custom_domain'));
 		}
 
 		// Netlify Settings

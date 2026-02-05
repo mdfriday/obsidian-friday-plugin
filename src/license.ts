@@ -24,6 +24,7 @@ export interface LicenseFeatures {
     max_sites: number;
     max_storage: number;
     custom_domain: boolean;
+    custom_sub_domain: boolean;
     validity_days: number;
 }
 

@@ -108,7 +108,10 @@ export const zhCn: TranslationNamespace = {
 		publish_method_netlify: "Netlify",
 		publish_method_ftp: "FTP",
 		publish_method_mdfriday_custom: "MDFriday 自定义域名",
-		license_required: "请先激活许可证以使用此功能",
+		license_required: "请升级您的套餐以使用此功能",
+		upgrade_for_mdfshare: "请升级您的套餐以使用 MDFriday 分享功能",
+		upgrade_for_subdomain: "请升级您的套餐以使用 MDFriday 子域名功能",
+		upgrade_for_custom_domain: "请升级您的套餐以使用 MDFriday 自定义域名功能",
 
 		// Netlify settings
 		netlify_settings: "Netlify 设置",
