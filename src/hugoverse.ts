@@ -77,7 +77,7 @@ export class Hugoverse {
 	* -F "type=MDFPreview" \
 	* -F "host_name=MDFriday Share"
 	*/
-	async deployMDFridayPreview(id: string): Promise<string> {
+	async deployMDFridayPreview(id: string, licenseKey: string = ''): Promise<string> {
 		try {
 			const createPostUrl = `${this.apiUrl}/api/mdf/preview/deploy?type=MDFPreview&id=${id}`;
 
@@ -86,6 +86,7 @@ export class Hugoverse {
 			body.append("type", "MDFPreview");
 			body.append("id", id);
 			body.append("host_name", "MDFriday Preview");
+			body.append("license_key", licenseKey);
 
 			// 将 FormData 转换为 ArrayBuffer
 			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
@@ -121,7 +122,7 @@ export class Hugoverse {
 	* -F "size=12345" \
 	* -F "asset=@/Users/weisun/Downloads/site.zip"
 	*/
-	async createMDFPreview(name:string, content:Uint8Array, type: 'share' | 'sub' = 'share', path:string = ''): Promise<string> {
+	async createMDFPreview(name:string, content:Uint8Array, type: 'share' | 'sub' | 'custom' | 'enterprise' = 'share', path:string = ''): Promise<string> {
 		try {
 			const createResourceUrl = `${this.apiUrl}/api/mdf/preview?type=MDFPreview`;
 

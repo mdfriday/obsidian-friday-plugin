@@ -112,6 +112,7 @@ export const en: TranslationNamespace = {
 		upgrade_for_mdfshare: "Please upgrade your plan to use MDFriday Share",
 		upgrade_for_subdomain: "Please upgrade your plan to use MDFriday Subdomain",
 		upgrade_for_custom_domain: "Please upgrade your plan to use MDFriday Custom Domain",
+		upgrade_for_enterprise: "Please upgrade to Enterprise plan and configure enterprise server URL",
 
 		// Netlify settings
 		netlify_settings: "Netlify Settings",
@@ -281,11 +282,13 @@ export const en: TranslationNamespace = {
 		publish_option_mdfriday_share: "MDFriday Share",
 		publish_option_mdfriday_app: "MDFriday Subdomain",
 		publish_option_mdfriday_custom: "MDFriday Custom Domain",
+		publish_option_mdfriday_enterprise: "MDFriday Enterprise",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP Upload",
 		mdfriday_share_hint: "MDFriday Share allows you to share your site instantly. Your site will be published to your personal MDFriday space.",
 		mdfriday_app_hint: "MDFriday Subdomain publishes your site to your personal subdomain. Your site will be available at your-subdomain.mdfriday.com.",
 		mdfriday_custom_hint: "MDFriday Custom Domain publishes your site to your custom domain. Make sure DNS is configured correctly.",
+		mdfriday_enterprise_hint: "MDFriday Enterprise publishes your site to your enterprise server. Make sure enterprise server URL is configured.",
 		mdfriday_license_required: "This feature requires an activated license. Please activate your license in Settings.",
 		publish_building: "Publishing...",
 		publish_success: "Published successfully!",

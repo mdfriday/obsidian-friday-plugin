@@ -100,7 +100,7 @@
 	let publishSuccess = false;
 	let publishUrl = '';
 	// Map 'mdfriday' from settings to 'netlify' as default (settings uses 'mdfriday' for display config)
-let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom' = 
+	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' =
 	(plugin.settings.publishMethod === 'mdfriday' ? 'netlify' : plugin.settings.publishMethod) || 'netlify';
 	
 	// Netlify configuration (project-specific)
@@ -133,6 +133,7 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 	let hasPublishPermission = false;
 	let hasSubdomainPermission = false;
 	let hasCustomDomainPermission = false;
+	let hasEnterprisePermission = false;
 	let publishOptions: Array<{ value: string; label: string }> = [];
 
 	// Reactive block to update license-related state (similar to theme selection at line 64-79)
@@ -145,17 +146,20 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 		
 		// Check feature permissions from license
 		const features = plugin.settings.license?.features;
+		const licenseplan = plugin.settings.license?.plan;
 		hasPublishPermission = isLicenseActivated && features?.publish_enabled === true;
 		hasSubdomainPermission = isLicenseActivated && features?.custom_sub_domain === true;
 		hasCustomDomainPermission = isLicenseActivated && features?.custom_domain === true;
+		hasEnterprisePermission = isLicenseActivated && licenseplan === 'enterprise' && !!plugin.settings.enterpriseServerUrl;
 		
-		// Update publish options - MDFriday Share, MDFriday Subdomain, and MDFriday Custom Domain are always shown
+		// Update publish options - MDFriday Share, MDFriday Subdomain, MDFriday Custom Domain, and MDFriday Enterprise are always shown
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
 			{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') },
 			{ value: 'mdf-app', label: t('ui.publish_option_mdfriday_app') },
 			{ value: 'mdf-custom', label: t('ui.publish_option_mdfriday_custom') },
+			{ value: 'mdf-enterprise', label: t('ui.publish_option_mdfriday_enterprise') },
 		];
 	}
 
@@ -163,10 +167,12 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 	$: requiresPublishPermission = selectedPublishOption === 'mdf-share';
 	$: requiresSubdomainPermission = selectedPublishOption === 'mdf-app';
 	$: requiresCustomDomainPermission = selectedPublishOption === 'mdf-custom';
+	$: requiresEnterprisePermission = selectedPublishOption === 'mdf-enterprise';
 	$: isPublishDisabled = 
 		(requiresPublishPermission && !hasPublishPermission) ||
 		(requiresSubdomainPermission && !hasSubdomainPermission) ||
-		(requiresCustomDomainPermission && !hasCustomDomainPermission);
+		(requiresCustomDomainPermission && !hasCustomDomainPermission) ||
+		(requiresEnterprisePermission && !hasEnterprisePermission);
 
 	// HTTP server related
 	let httpServer: IncrementalBuildCoordinator;
@@ -1236,7 +1242,8 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 				publishProgress = 80;
 
 				// Step 3: Deploy the preview (80-100%)
-				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
 				if (!deployPath) {
 					throw new Error('Failed to deploy MDFriday preview');
 				}
@@ -1281,7 +1288,8 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 				publishProgress = 80;
 
 				// Step 3: Deploy the preview (80-100%)
-				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
 				if (!deployPath) {
 					throw new Error('Failed to deploy MDFriday Subdomain');
 				}
@@ -1330,7 +1338,8 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 				publishProgress = 80;
 
 				// Step 3: Deploy the preview (80-100%)
-				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId);
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
 				if (!deployPath) {
 					throw new Error('Failed to deploy MDFriday Custom Domain');
 				}
@@ -1367,6 +1376,64 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 
 				// Send counter for publish (don't wait for result)
 				plugin.hugoverse.sendCounter('mdf-custom').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			} else if (selectedPublishOption === 'mdf-enterprise') {
+				// MDFriday Enterprise deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
+
+				// MDFriday Enterprise uses sitePath as name and type 'enterprise'
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'enterprise', sitePath);
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday Enterprise preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%) with license key
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday Enterprise');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL for MDFriday Enterprise
+				// Use enterprise server URL from settings
+				const enterpriseServerUrl = plugin.settings.enterpriseServerUrl;
+				if (!enterpriseServerUrl) {
+					throw new Error('Enterprise server URL not configured');
+				}
+				// Extract main domain from URL (e.g., mdfriday.sunwei.xyz -> sunwei.xyz)
+				const fullHost = enterpriseServerUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+				const hostParts = fullHost.split('.');
+				// Get last 2 parts (domain.tld), e.g., sunwei.xyz
+				const host = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : fullHost;
+				const basePath = deployPath.startsWith('/') ? deployPath : `/${deployPath}`;
+				const normalizedPath = basePath === '/' ? '' : basePath;
+				publishUrl = `https://${host}${normalizedPath}`;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-enterprise',
+							url: publishUrl
+						});
+					}
+				}
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-enterprise').catch(error => {
 					console.warn('Counter request failed (non-critical):', error);
 				});
 			}
@@ -2624,6 +2691,20 @@ let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-cu
 					{#if !hasCustomDomainPermission}
 						<div class="license-warning">
 							⚠️ {t('settings.upgrade_for_custom_domain')}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- MDFriday Enterprise Info -->
+			{#if selectedPublishOption === 'mdf-enterprise'}
+				<div class="publish-config">
+					<div class="field-hint">
+						{t('ui.mdfriday_enterprise_hint')}
+					</div>
+					{#if !hasEnterprisePermission}
+						<div class="license-warning">
+							⚠️ {t('settings.upgrade_for_enterprise')}
 						</div>
 					{/if}
 				</div>

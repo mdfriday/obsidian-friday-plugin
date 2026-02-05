@@ -112,6 +112,7 @@ export const zhCn: TranslationNamespace = {
 		upgrade_for_mdfshare: "请升级您的套餐以使用 MDFriday 分享功能",
 		upgrade_for_subdomain: "请升级您的套餐以使用 MDFriday 子域名功能",
 		upgrade_for_custom_domain: "请升级您的套餐以使用 MDFriday 自定义域名功能",
+		upgrade_for_enterprise: "请升级到企业版套餐并配置企业服务器地址",
 
 		// Netlify settings
 		netlify_settings: "Netlify 设置",
@@ -272,11 +273,13 @@ export const zhCn: TranslationNamespace = {
 		publish_option_mdfriday_share: "MDFriday 分享",
 		publish_option_mdfriday_app: "MDFriday 子域名",
 		publish_option_mdfriday_custom: "MDFriday 自定义域名",
+		publish_option_mdfriday_enterprise: "MDFriday 企业版",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP 上传",
 		mdfriday_share_hint: "MDFriday 分享允许您即时分享站点。您的站点将发布到您的个人 MDFriday 空间。",
 		mdfriday_app_hint: "MDFriday 子域名将您的站点发布到个人子域名。您的站点将可通过 your-subdomain.mdfriday.com 访问。",
 		mdfriday_custom_hint: "MDFriday 自定义域名将您的站点发布到您的自定义域名。请确保 DNS 已正确配置。",
+		mdfriday_enterprise_hint: "MDFriday 企业版将您的站点发布到企业服务器。请确保已配置企业服务器地址。",
 		mdfriday_license_required: "此功能需要激活许可证。请在设置中激活您的许可证。",
 		publish_building: "正在发布...",
 		publish_success: "发布成功！",
