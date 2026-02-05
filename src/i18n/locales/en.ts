@@ -172,6 +172,11 @@ export const en: TranslationNamespace = {
 		download_server_global: "Global",
 		download_server_east: "East",
 
+		// Enterprise settings
+		enterprise_settings: "Enterprise Settings",
+		enterprise_server_url: "Enterprise Server URL",
+		enterprise_server_url_desc: "Custom server URL for enterprise users. Leave empty to use default server.",
+
 		// MDFriday Account
 		mdfriday_account: "MDFriday Account (Optional)",
 		mdfriday_account_desc:

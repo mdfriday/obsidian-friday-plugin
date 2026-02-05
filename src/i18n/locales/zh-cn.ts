@@ -169,6 +169,11 @@ export const zhCn: TranslationNamespace = {
 		download_server_global: "全球",
 		download_server_east: "东区",
 
+		// 企业设置
+		enterprise_settings: "企业设置",
+		enterprise_server_url: "企业服务器地址",
+		enterprise_server_url_desc: "企业用户自定义服务器地址。留空则使用默认服务器。",
+
 		// MDFriday Account
 		mdfriday_account: "MDFriday 账户（可选）",
 		mdfriday_account_desc: "登录以使用高级功能，如主题市场和云端发布。",

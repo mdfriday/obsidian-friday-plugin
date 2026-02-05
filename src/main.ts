@@ -63,6 +63,8 @@ interface FridaySettings {
 	syncConfig: SyncConfig;
 	// UI Display Settings
 	showEditorStatusDisplay: boolean;
+	// Enterprise Settings
+	enterpriseServerUrl: string;
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
@@ -93,13 +95,28 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	syncConfig: SyncService.getDefaultConfig(),
 	// UI Display Settings defaults
 	showEditorStatusDisplay: false,
+	// Enterprise Settings defaults
+	enterpriseServerUrl: '',
 }
 
 export const FRIDAY_ICON = 'dice-5';
 export const API_URL_DEV = 'http://127.0.0.1:1314';
 export const API_URL_PRO = 'https://app.mdfriday.com';
-export function GetBaseUrl(): string {
-	return process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+
+/**
+ * Get base URL for API requests
+ * Priority: Enterprise Server URL > Development Mode > Production
+ */
+export function GetBaseUrl(settings?: FridaySettings): string {
+	if (process.env.NODE_ENV === 'development') {
+		return API_URL_DEV
+	}
+
+	if (settings?.enterpriseServerUrl && settings.enterpriseServerUrl.trim()) {
+		return settings.enterpriseServerUrl.trim();
+	}
+	
+	return API_URL_PRO;
 }
 
 export default class FridayPlugin extends Plugin {
@@ -170,7 +187,7 @@ export default class FridayPlugin extends Plugin {
 	 * Initialize core services (common for all platforms)
 	 */
 	private async initCore(): Promise<void> {
-		this.apiUrl = process.env.NODE_ENV === 'development' ? API_URL_DEV : API_URL_PRO;
+		this.apiUrl = GetBaseUrl(this.settings);
 		
 		// Initialize i18n service first
 		this.i18n = new I18nService(this);
@@ -1033,6 +1050,18 @@ export default class FridayPlugin extends Plugin {
 		// Check if download server changed
 		const downloadServerChanged = this.previousDownloadServer !== this.settings.downloadServer;
 		
+		// Check if enterprise server URL changed
+		const newApiUrl = GetBaseUrl(this.settings);
+		if (this.apiUrl !== newApiUrl) {
+			this.apiUrl = newApiUrl;
+			
+			// Reinitialize Hugoverse with new URL
+			if (this.hugoverse) {
+				const { Hugoverse } = await import('./hugoverse');
+				this.hugoverse = new Hugoverse(this);
+			}
+		}
+		
 		await this.saveData(this.settings);
 		
 		// Clear theme cache if download server changed (desktop only)
@@ -1305,6 +1334,11 @@ class FridaySettingTab extends PluginSettingTab {
 			this.renderPublishSettings(containerEl);
 			this.renderGeneralSettings(containerEl);
 		}
+
+		// =========================================
+		// Enterprise Settings (both platforms)
+		// =========================================
+		this.renderEnterpriseSettings(containerEl);
 	}
 
 	/**
@@ -1809,6 +1843,34 @@ class FridaySettingTab extends PluginSettingTab {
 		// MDFriday Account Section - Hidden from UI
 		// Users should only use License Key activation, not direct login
 		// Login functionality is preserved but not exposed in settings
+	}
+
+	/**
+	 * Render Enterprise Settings Section (All platforms)
+	 * For enterprise users to configure custom server URL
+	 */
+	private renderEnterpriseSettings(containerEl: HTMLElement): void {
+		const { enterpriseServerUrl } = this.plugin.settings;
+
+		// =========================================
+		// Enterprise Settings Section (at the bottom)
+		// =========================================
+		containerEl.createEl("h2", { text: this.plugin.i18n.t('settings.enterprise_settings') });
+		
+		// Enterprise Server URL Setting
+		new Setting(containerEl)
+			.setName(this.plugin.i18n.t('settings.enterprise_server_url'))
+			.setDesc(this.plugin.i18n.t('settings.enterprise_server_url_desc'))
+			.addText((text) => {
+				text
+					.setPlaceholder('https://your-enterprise-server.com')
+					.setValue(enterpriseServerUrl || '')
+					.onChange(async (value) => {
+						this.plugin.settings.enterpriseServerUrl = value.trim();
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.style.width = '100%';
+			});
 	}
 
 	/**
