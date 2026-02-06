@@ -1,0 +1,96 @@
+/* ========================================
+ * Friday Sync Status Display (from livesync)
+ * Status display in top right corner of editor
+ * Copied exactly from livesync/styles.css
+ * ======================================== */
+
+/* Main status container - positioned in top right corner */
+.livesync-status {
+	user-select: none;
+	pointer-events: none;
+	height: auto;
+	min-height: 1em;
+	position: absolute;
+	background-color: transparent;
+	width: 100%;
+	padding: 10px;
+	padding-right: 16px;
+	top: var(--header-height);
+	z-index: calc(var(--layer-cover) + 1);
+	font-variant-numeric: tabular-nums;
+	tab-size: 4;
+	text-align: right;
+	white-space: pre-wrap;
+	display: inline-block;
+	color: var(--text-normal);
+	font-size: 80%;
+}
+
+/* Special positioning for bases view type */
+div.workspace-leaf-content[data-type=bases] .livesync-status {
+	top: calc(var(--bases-header-height) + var(--header-height));
+	padding: 5px;
+	padding-right: 18px;
+}
+
+/* Mobile adjustments for bases view */
+.is-mobile div.workspace-leaf-content[data-type=bases] .livesync-status {
+	top: calc(var(--bases-header-height) + var(--view-header-height));
+	padding: 6px;
+	padding-right: 18px;
+}
+
+/* Mobile: Prevent text overflow and icon overlap */
+.is-mobile .livesync-status-logmessage {
+	/* Force text to wrap and truncate if still too long */
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+	max-width: 100%;
+	display: block;
+}
+
+/* Default styling for all status divs */
+.livesync-status div {
+	opacity: 0.6;
+	-webkit-filter: grayscale(100%);
+	filter: grayscale(100%);
+}
+
+/* Log history area */
+.livesync-status .livesync-status-loghistory {
+	text-align: left;
+	opacity: 0.4;
+}
+
+/* Hide empty message area */
+.livesync-status div.livesync-status-messagearea:empty {
+	display: none;
+}
+
+/* Error/warning message area styling */
+.livesync-status div.livesync-status-messagearea:not(:empty) {
+	opacity: 0.6;
+	color: var(--text-on-accent);
+	border: 1px solid var(--background-modifier-error);
+	background-color: rgba(var(--background-modifier-error-rgb), 0.2);
+	-webkit-filter: unset;
+	filter: unset;
+	width: fit-content;
+	margin-left: auto;
+}
+
+/* Status bar in bottom bar */
+.syncstatusbar {
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Clickable status bar styles */
+.syncstatusbar.clickable-statusbar {
+	cursor: pointer;
+	transition: opacity 0.2s ease;
+}
+
+.syncstatusbar.clickable-statusbar:hover {
+	opacity: 0.7;
+}
