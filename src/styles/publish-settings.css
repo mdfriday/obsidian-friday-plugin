@@ -79,7 +79,12 @@
   border: 1px solid rgba(var(--color-green-rgb), 0.3);
 }
 
-.subdomain-status.unavailable,
+.subdomain-status.unavailable {
+  background-color: rgba(var(--color-blue-rgb), 0.1);
+  color: var(--color-blue);
+  border: 1px solid rgba(var(--color-blue-rgb), 0.3);
+}
+
 .subdomain-status.error {
   background-color: rgba(var(--color-red-rgb), 0.1);
   color: var(--color-red);
