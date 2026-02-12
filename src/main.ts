@@ -237,7 +237,8 @@ export default class FridayPlugin extends Plugin {
 		await Promise.all([
 			import('./styles/theme-modal.css'),
 			import('./styles/publish-settings.css'),
-			import('./styles/project-modal.css')
+			import('./styles/project-modal.css'),
+			import('./styles/live-sync.css')
 		]);
 		
 		// Store dynamic module references

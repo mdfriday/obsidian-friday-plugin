@@ -9,7 +9,7 @@ import type FridayPlugin from '../main';
 // Define the themes JSON URLs
 const THEMES_JSON_URLS = {
     global: 'https://gohugo.net/themes.json',
-    east: 'https://sunwei.xyz/mdf/themes-zh.json'
+    east: 'https://mdfriday.com/mdf/themes-zh.json'
 };
 
 // Cache for themes data (separate cache for each server)
@@ -33,6 +33,7 @@ interface RawThemeData {
     demo_url: string;
     demo_notes_url: string;
     tags: string[];
+    kind?: string[]; // Plan types (e.g., ["Free"], ["Creator"], ["Pro"])
 }
 
 /**
@@ -50,6 +51,7 @@ function mapRawThemeToThemeItem(rawTheme: RawThemeData): ThemeItem {
         demo_url: rawTheme.demo_url,
         demo_notes_url: rawTheme.demo_notes_url,
         tags: Array.isArray(rawTheme.tags) ? rawTheme.tags : [],
+        kind: Array.isArray(rawTheme.kind) ? rawTheme.kind : undefined,
         
         // Computed fields for UI
         title: rawTheme.name || `Theme ${rawTheme.id}`,

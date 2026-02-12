@@ -11,6 +11,7 @@ export interface ThemeItem {
     demo_url: string;
     demo_notes_url: string;
     tags: string[];
+    kind?: string[]; // Plan types (e.g., ["Free"], ["Creator"], ["Pro"])
     // Computed fields for UI
     title: string; // Computed from name
     description?: string; // Computed description

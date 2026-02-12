@@ -75,7 +75,7 @@
 		}
 	},
 	"dependencies": {
-		"@mdfriday/foundry": "^25.12.1",
+		"@mdfriday/foundry": "^26.2.4",
 		"@smithy/fetch-http-handler": "^5.0.2",
 		"@smithy/protocol-http": "^5.1.0",
 		"@smithy/querystring-builder": "^4.0.2",

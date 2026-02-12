@@ -126,6 +126,8 @@
 	let isDownloadingSample = false;
 	let sampleDownloadProgress = 0;
 	let currentThemeWithSample: any = null;
+
+	let hasOBTag = false;
 	
 	// Local variables for license-based features
 	let userDir = '';
@@ -859,13 +861,7 @@
 	async function createRendererBasedOnTheme() {
 		try {
 			// Get theme information by ID
-			const themeInfo = await themeApiService.getThemeById(selectedThemeId, plugin);
 			const obImagesDir = path.join(absPreviewDir, 'public', 'ob-images');
-			
-			// Check if theme has "Book" tag (case-insensitive)
-			const hasOBTag = themeInfo?.tags?.some(tag =>
-				tag.toLowerCase() === 'obsidian'
-			) || false;
 			
 			if (hasOBTag) {
 				// Use OBStyleRenderer for themes with "Book" tag
@@ -997,6 +993,12 @@
 			const previewDir = path.join(plugin.pluginDir, 'preview', previewId);
 			await createPreviewDirectory(previewDir);
 			buildProgress = 5;
+
+			const themeInfo = await themeApiService.getThemeById(selectedThemeId, plugin);
+			// Check if theme has "Book" tag (case-insensitive)
+			hasOBTag = themeInfo?.tags?.some(tag =>
+				tag.toLowerCase() === 'obsidian'
+			) || false;
 
 			// Create config file
 			// Update sitePath for MDFriday Share only if user selected mdf-share
@@ -1805,6 +1807,9 @@
 						path: selectedThemeDownloadUrl,
 					}
 				]
+			},
+			markdown: {
+				useInternalRenderer: !hasOBTag,
 			},
 			params: {
 				branding: !hasPublishPermission, // Hide branding if user has publish permission

@@ -15,43 +15,56 @@ if you want to view the source, please visit the github repository of this plugi
 const prod = process.argv[2] === 'production'
 const pluginDir = '/Users/sunwei/Desktop/mdf-661/.obsidian/plugins/mdfriday';
 
-// 复制项目根目录的 styles.css 到插件目录
-const copyStylesCss = () => {
-	const srcStylesPath = path.join(process.cwd(), 'styles.css');
-	if (fs.existsSync(srcStylesPath)) {
-		if (prod) {
-			// 生产模式：styles.css 已经在根目录，不需要移动
-			console.log('Production: styles.css is in place');
-		} else {
-			// 开发模式：复制到插件目录
-			const destStylesPath = path.join(pluginDir, 'styles.css');
-			fs.copyFileSync(srcStylesPath, destStylesPath);
-			console.log(`Copied styles.css to ${destStylesPath}`);
+// 重命名 CSS 文件的函数
+const renameCssFile = (cssPath, targetPath) => {
+	try {
+		if (fs.existsSync(cssPath)) {
+			// 重命名（移动）CSS 文件
+			fs.renameSync(cssPath, targetPath);
+			console.log(`✓ Renamed CSS to ${targetPath}`);
+			return true;
 		}
-	} else {
-		console.warn('Warning: styles.css not found in project root');
+	} catch (error) {
+		console.error(`Failed to rename CSS file: ${error.message}`);
+	}
+	return false;
+};
+
+// esbuild 插件：在构建完成后重命名 main.css 为 styles.css
+const cssRenamePlugin = {
+	name: 'css-rename',
+	setup(build) {
+		build.onEnd((result) => {
+			// 检查是否有 metafile 信息
+			if (result && result.metafile) {
+				// 查找所有输出的 CSS 文件
+				const outputs = Object.keys(result.metafile.outputs).filter(file => file.endsWith('.css'));
+				
+				if (outputs.length > 0) {
+					console.log(`Found CSS outputs: ${outputs.join(', ')}`);
+					
+					// 将 main.css 重命名为 styles.css（Obsidian 要求的文件名）
+					outputs.forEach(cssFile => {
+						const cssPath = path.resolve(cssFile);
+						
+						// 如果是 main.css，重命名为 styles.css
+						if (cssFile.includes('main.css')) {
+							const targetPath = prod 
+								? path.join(process.cwd(), 'styles.css')
+								: path.join(pluginDir, 'styles.css');
+							
+							renameCssFile(cssPath, targetPath);
+						}
+					});
+				}
+			}
+		});
 	}
 };
 
-// 构建完成后的回调函数，用于处理CSS文件
+// 构建完成后的回调函数（用于生产模式）
 const onBuildComplete = (result) => {
-	// 首先复制项目根目录的 styles.css（这是主要的样式文件）
-	copyStylesCss();
-	
-	// 检查是否有 metafile 信息（处理 Svelte 等生成的 CSS）
-	if (result && result.metafile) {
-		// 查找所有输出的 CSS 文件
-		const outputs = Object.keys(result.metafile.outputs).filter(file => file.endsWith('.css'));
-		
-		if (outputs.length > 0) {
-			console.log(`Found CSS outputs: ${outputs.join(', ')}`);
-			
-			// 处理每个 CSS 文件（这些是构建过程中生成的，与 styles.css 不同）
-			outputs.forEach(cssFile => {
-				console.log(`Note: Build generated ${cssFile} (Svelte CSS is injected, this may be empty)`);
-			});
-		}
-	}
+	console.log('✓ Build completed successfully');
 };
 
 // External modules that should not be bundled
@@ -100,10 +113,14 @@ const externals = [
 	'https',
 	'util',
 	'os',
+	'process',
+	'url',
 	'node:fs',
 	'node:fs/promises',
 	'node:path',
 	'node:stream',
+	'node:process',
+	'node:url',
 ];
 
 const buildOptions = {
@@ -142,6 +159,7 @@ const buildOptions = {
 				}
 			},
 		}),
+		cssRenamePlugin, // 添加 CSS 重命名插件
 	],
 	outfile: prod ? 'main.js' : path.join(pluginDir, 'main.js'),
 };
@@ -156,17 +174,6 @@ if (prod) {
 		.then(onBuildComplete)
 		.catch(() => process.exit(1));
 } else {
-	// 开发模式：首先复制 styles.css
-	copyStylesCss();
-	
-	// 监听 styles.css 变化并复制
-	const stylesPath = path.join(process.cwd(), 'styles.css');
-	fs.watchFile(stylesPath, { interval: 500 }, (curr, prev) => {
-		if (curr.mtime !== prev.mtime) {
-			copyStylesCss();
-		}
-	});
-	
 	const context = await esbuild.context(buildOptions);
 	await context.watch();
 }

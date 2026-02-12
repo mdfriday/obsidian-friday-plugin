@@ -212,6 +212,11 @@ export interface TranslationNamespace {
 		use_it: string;
 		current: string;
 		free: string;
+		starter: string;
+		enjoy: string;
+		creator: string;
+		pro: string;
+		enterprise: string;
 		by_author: string;
 		retry: string;
 	};

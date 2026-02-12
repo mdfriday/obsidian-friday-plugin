@@ -294,9 +294,24 @@ export class ThemeSelectionModal extends Modal {
 			
 			leftInfo.createEl('p', {text: theme.description || '', cls: 'theme-description'});
 
-			// Right side: price
+			// Right side: price/plan badge
 			const rightInfo = infoSection.createDiv('theme-info-right');
-			rightInfo.createEl('div', {text: this.t('theme.free'), cls: 'theme-price'});
+			
+			// Get the plan kind from the theme
+			// If kind exists and has values, use the first one; otherwise default to 'free'
+			const planKind = (theme.kind && theme.kind.length > 0) 
+				? theme.kind[0].toLowerCase() 
+				: 'free';
+			
+			// Get the translation key for this plan
+			const planTranslationKey = `theme.${planKind}`;
+			const planText = this.t(planTranslationKey);
+			
+			// Create plan badge with styling
+			const planBadge = rightInfo.createDiv({
+				text: planText, 
+				cls: `theme-price ${planKind}`
+			});
 
 			// Bottom actions: tags and use button
 			const bottomSection = themeCard.createDiv('theme-bottom-section');
