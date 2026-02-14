@@ -2291,6 +2291,81 @@ class FridaySettingTab extends PluginSettingTab {
 
 			// Add status element
 			statusEl = licenseSetting.descEl.createSpan({cls: 'friday-license-status-text'});
+			
+			// ========== Trial License Request State ==========
+			let trialEmailEl: HTMLInputElement;
+			let trialRequestBtn: HTMLButtonElement;
+			let trialStatusEl: HTMLElement;
+			
+			const trialSetting = new Setting(containerEl)
+				.setName(this.plugin.i18n.t('settings.trial_license'))
+				.setDesc(this.plugin.i18n.t('settings.trial_email'))
+				.addText((text) => {
+					trialEmailEl = text.inputEl;
+					text
+						.setPlaceholder(this.plugin.i18n.t('settings.trial_email_placeholder'))
+						.setValue('');
+				})
+				.addButton((button) => {
+					trialRequestBtn = button.buttonEl;
+					button
+						.setButtonText(this.plugin.i18n.t('settings.trial_request'))
+						.onClick(async () => {
+							const email = trialEmailEl.value.trim();
+							
+							// Clear previous status
+							if (trialStatusEl) {
+								trialStatusEl.setText('');
+								trialStatusEl.removeClass('friday-license-error', 'friday-license-success');
+							}
+							
+							// Validate email format
+							const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+							if (!email || !emailRegex.test(email)) {
+								trialStatusEl.setText(this.plugin.i18n.t('settings.trial_invalid_email'));
+								trialStatusEl.addClass('friday-license-error');
+								return;
+							}
+							
+							// Start trial request
+							trialRequestBtn.setText(this.plugin.i18n.t('settings.trial_requesting'));
+							trialRequestBtn.disabled = true;
+							trialEmailEl.disabled = true;
+							
+							try {
+								const result = await this.plugin.hugoverse.requestTrialLicense(email);
+								
+								if (result && result.success && result.license_key) {
+									// Success - fill the license key in the input above
+									inputEl.value = result.license_key;
+									
+									// Show success message
+									trialStatusEl.setText(this.plugin.i18n.t('settings.trial_request_success'));
+									trialStatusEl.addClass('friday-license-success');
+									
+									// Also show a notice
+									new Notice(this.plugin.i18n.t('settings.trial_request_success'));
+									
+									// Clear the email field
+									trialEmailEl.value = '';
+								} else {
+									throw new Error('Invalid trial response');
+								}
+							} catch (error) {
+								// Show error
+								trialStatusEl.setText(this.plugin.i18n.t('settings.trial_request_failed'));
+								trialStatusEl.addClass('friday-license-error');
+								console.error('Trial license request error:', error);
+							} finally {
+								trialRequestBtn.setText(this.plugin.i18n.t('settings.trial_request'));
+								trialRequestBtn.disabled = false;
+								trialEmailEl.disabled = false;
+							}
+						});
+				});
+			
+			// Add trial status element
+			trialStatusEl = trialSetting.descEl.createSpan({cls: 'friday-license-status-text'});
 		}
 	}
 

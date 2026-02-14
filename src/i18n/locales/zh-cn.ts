@@ -45,6 +45,16 @@ export const zhCn: TranslationNamespace = {
 		refreshing: "正在刷新...",
 		license_info_refreshed: "许可证信息已更新",
 		refresh_failed: "刷新许可证信息失败",
+		
+		// Trial License
+		trial_license: "申请试用许可证",
+		trial_email: "接收试用码的邮箱",
+		trial_email_placeholder: "your@email.com",
+		trial_request: "申请试用",
+		trial_requesting: "申请中...",
+		trial_request_success: "试用许可证创建成功！许可证密钥已填入上方。",
+		trial_request_failed: "申请试用许可证失败，请重试。",
+		trial_invalid_email: "请输入有效的邮箱地址",
 
 		// Sync Settings (License-based)
 		sync_enabled: "同步已启用",

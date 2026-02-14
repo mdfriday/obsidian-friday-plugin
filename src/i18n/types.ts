@@ -39,6 +39,77 @@ export interface TranslationNamespace {
 		register: string;
 		login: string;
 		logout: string;
+		
+		// License settings
+		license: string;
+		license_key: string;
+		license_key_placeholder: string;
+		activate: string;
+		activating: string;
+		license_active: string;
+		plan: string;
+		valid_until: string;
+		devices: string;
+		devices_registered: string;
+		storage_usage: string;
+		storage_usage_desc: string;
+		sync: string;
+		publish: string;
+		enabled: string;
+		disabled: string;
+		details: string;
+		hide_details: string;
+		license_invalid_format: string;
+		license_activation_failed: string;
+		license_activated_success: string;
+		click_to_refresh_license_info: string;
+		refreshing: string;
+		license_info_refreshed: string;
+		refresh_failed: string;
+		
+		// Trial license
+		trial_license: string;
+		trial_email: string;
+		trial_email_placeholder: string;
+		trial_request: string;
+		trial_requesting: string;
+		trial_request_success: string;
+		trial_request_failed: string;
+		trial_invalid_email: string;
+		
+		// Sync settings
+		sync_enabled: string;
+		sync_description: string;
+		sync_first_time_title: string;
+		sync_first_time_desc: string;
+		upload_local_to_cloud: string;
+		download_from_cloud: string;
+		sync_data_available: string;
+		sync_uploading: string;
+		sync_downloading: string;
+		sync_upload_success: string;
+		sync_download_success: string;
+		sync_operation_failed: string;
+		show_editor_status: string;
+		show_editor_status_desc: string;
+		hide_editor_status: string;
+		reconnect_sync: string;
+		sync_settings: string;
+		encryption_password_desc: string;
+		encryption_password_placeholder: string;
+		encryption_password_required: string;
+		
+		// Selective sync
+		selective_sync: string;
+		selective_sync_desc: string;
+		selective_sync_status: string;
+		files_synced: string;
+		files_ignored: string;
+		view_ignored_files: string;
+		hide_ignored_files: string;
+		file_path: string;
+		reason: string;
+		matched_pattern: string;
 
 		// Publish settings
 		publish_settings: string;

@@ -37,6 +37,55 @@ export class Hugoverse {
 	}
 
 	/**
+	 * Wrapper method to handle 401 errors and auto-retry with refreshed token
+	 * 
+	 * @param requestFn - Function that makes the API request, receives token as parameter
+	 * @param requireAuth - Whether this request requires authentication (default: true)
+	 * @returns The result from requestFn
+	 */
+	private async requestWithTokenRefresh<T>(
+		requestFn: (token: string) => Promise<T>,
+		requireAuth: boolean = true
+	): Promise<T> {
+		if (!requireAuth) {
+			return requestFn(this.user.token);
+		}
+
+		try {
+			// First attempt with current token
+			return await requestFn(this.user.token);
+		} catch (error: any) {
+			// Check if it's a 401 error
+			// The error might be thrown in different ways:
+			// 1. Error message contains "401"
+			// 2. Error object has status property === 401
+			// 3. Error string representation contains "401"
+			const errorMessage = error?.message || error?.toString?.() || String(error);
+			const is401 = errorMessage.includes('401') || 
+						  (error?.status && error.status === 401);
+
+			if (is401) {
+				console.log("Received 401 error, attempting to refresh token...");
+				
+				// Try to refresh token by logging in again
+				await this.user.login();
+				
+				// Check if login was successful
+				if (!this.user.token) {
+					throw new Error("Failed to refresh token - login unsuccessful");
+				}
+
+				// Retry the request with new token
+				console.log("Token refreshed, retrying request...");
+				return await requestFn(this.user.token);
+			}
+
+			// If not 401, throw the original error
+			throw error;
+		}
+	}
+
+	/**
 	 * 生成简单的 UUID（不使用第三方库）
 	 */
 	private generateUUID(): string {
@@ -78,40 +127,43 @@ export class Hugoverse {
 	* -F "host_name=MDFriday Share"
 	*/
 	async deployMDFridayPreview(id: string, licenseKey: string = ''): Promise<string> {
-		try {
-			const createPostUrl = `${this.apiUrl}/api/mdf/preview/deploy?type=MDFPreview&id=${id}`;
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const createPostUrl = `${this.apiUrl}/api/mdf/preview/deploy?type=MDFPreview&id=${id}`;
 
-			// 创建 FormData 并添加基本字段
-			let body: FormData = new FormData();
-			body.append("type", "MDFPreview");
-			body.append("id", id);
-			body.append("host_name", "MDFriday Preview");
-			body.append("license_key", licenseKey);
+				// 创建 FormData 并添加基本字段
+				let body: FormData = new FormData();
+				body.append("type", "MDFPreview");
+				body.append("id", id);
+				body.append("host_name", "MDFriday Preview");
+				body.append("license_key", licenseKey);
 
-			// 将 FormData 转换为 ArrayBuffer
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				// 将 FormData 转换为 ArrayBuffer
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
 
-			const response: RequestUrlResponse = await requestUrl({
-				url: createPostUrl,
-				method: "POST",
-				headers: {
-					"Content-Type": `multipart/form-data; boundary=${boundary}`,
-					"Authorization": `Bearer ${this.user.token}`,
-				},
-				body: arrayBufferBody,
-			});
+				const response: RequestUrlResponse = await requestUrl({
+					url: createPostUrl,
+					method: "POST",
+					headers: {
+						"Content-Type": `multipart/form-data; boundary=${boundary}`,
+						"Authorization": `Bearer ${freshToken}`,
+					},
+					body: arrayBufferBody,
+				});
 
-			// 检查响应状态
-			if (response.status !== 200) {
-				throw new Error(`Post creation failed: ${response.text}`);
+				// 检查响应状态
+				if (response.status !== 200) {
+					throw new Error(`Post creation failed: ${response.text}`);
+				}
+
+				return response.json.data[0];
+			} catch (error) {
+				console.error("Failed to create post:", error.toString());
+				new Notice(this.plugin.i18n.t('messages.failed_to_create_post'), 5000);
+				throw error;
 			}
-
-			return response.json.data[0];
-		} catch (error) {
-			console.error("Failed to create post:", error.toString());
-			new Notice(this.plugin.i18n.t('messages.failed_to_create_post'), 5000);
-		}
+		});
 	}
 
 	/*
@@ -123,46 +175,49 @@ export class Hugoverse {
 	* -F "asset=@/Users/weisun/Downloads/site.zip"
 	*/
 	async createMDFPreview(name:string, content:Uint8Array, type: 'share' | 'sub' | 'custom' | 'enterprise' = 'share', path:string = ''): Promise<string> {
-		try {
-			const createResourceUrl = `${this.apiUrl}/api/mdf/preview?type=MDFPreview`;
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const createResourceUrl = `${this.apiUrl}/api/mdf/preview?type=MDFPreview`;
 
-			// 创建 FormData 并添加基本字段
-			let body: FormData = new FormData();
-			body.append("type", type);
-			body.append("path", path);
-			body.append("id", NEW_ID);
-			body.append("name", name);
-			body.append("size", content.byteLength.toString());
+				// 创建 FormData 并添加基本字段
+				let body: FormData = new FormData();
+				body.append("type", type);
+				body.append("path", path);
+				body.append("id", NEW_ID);
+				body.append("name", name);
+				body.append("size", content.byteLength.toString());
 
-			const mimeType = "application/zip"; // 默认 MIME 类型
+				const mimeType = "application/zip"; // 默认 MIME 类型
 
-			const blob = new Blob([new Uint8Array(content)], {type: mimeType});
-			body.append(`asset`, blob, `${name}.zip`);
+				const blob = new Blob([new Uint8Array(content)], {type: mimeType});
+				body.append(`asset`, blob, `${name}.zip`);
 
-			// 将 FormData 转换为 ArrayBuffer
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				// 将 FormData 转换为 ArrayBuffer
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
 
-			const response: RequestUrlResponse = await requestUrl({
-				url: createResourceUrl,
-				method: "POST",
-				headers: {
-					"Content-Type": `multipart/form-data; boundary=${boundary}`,
-					"Authorization": `Bearer ${this.user.token}`,
-				},
-				body: arrayBufferBody,
-			});
+				const response: RequestUrlResponse = await requestUrl({
+					url: createResourceUrl,
+					method: "POST",
+					headers: {
+						"Content-Type": `multipart/form-data; boundary=${boundary}`,
+						"Authorization": `Bearer ${freshToken}`,
+					},
+					body: arrayBufferBody,
+				});
 
-			// 检查响应状态
-			if (response.status !== 200) {
-				throw new Error(`Resource creation failed: ${response.text}`);
+				// 检查响应状态
+				if (response.status !== 200) {
+					throw new Error(`Resource creation failed: ${response.text}`);
+				}
+
+				return response.json.data[0].id;
+			} catch (error) {
+				console.error("Failed to create resource:", error.toString());
+				new Notice(this.plugin.i18n.t('messages.failed_to_create_resource'), 5000);
+				throw error;
 			}
-
-			return response.json.data[0].id;
-		} catch (error) {
-			console.error("Failed to create resource:", error.toString());
-			new Notice(this.plugin.i18n.t('messages.failed_to_create_resource'), 5000);
-		}
+		});
 	}
 
 	async formDataToArrayBuffer(formData: FormData, boundary: string): Promise<ArrayBuffer> {
@@ -254,6 +309,72 @@ export class Hugoverse {
 	}
 
 	/**
+	 * Request a trial license key
+	 * 
+	 * POST /api/license/trial
+	 * No Authorization required (public endpoint)
+	 * 
+	 * FormData:
+	 * - email
+	 * 
+	 * Returns:
+	 * - email: Generated trial email
+	 * - license_key: Trial license key
+	 * - password: Password for the trial account
+	 * - message: Success message
+	 * - success: true/false
+	 * - validity_days: Trial validity period (days)
+	 */
+	async requestTrialLicense(
+		email: string
+	): Promise<{ 
+		email: string;
+		license_key: string;
+		password: string;
+		message: string;
+		success: boolean;
+		validity_days: number;
+	} | null> {
+		try {
+			const trialUrl = `${this.apiUrl}/api/license/trial`;
+
+			// Create FormData
+			const body: FormData = new FormData();
+			body.append("email", email);
+
+			// Convert FormData to ArrayBuffer
+			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+
+			const response: RequestUrlResponse = await requestUrl({
+				url: trialUrl,
+				method: "POST",
+				headers: {
+					"Content-Type": `multipart/form-data; boundary=${boundary}`,
+				},
+				body: arrayBufferBody,
+			});
+
+			// Check response status
+			if (response.status !== 200 && response.status !== 201) {
+				console.error(`Trial license request failed: ${response.text}`);
+				throw new Error(`Trial request failed: ${response.status}`);
+			}
+
+			// Parse response
+			const data = response.json;
+			if (data && data.data && data.data.length > 0) {
+				return data.data[0];
+			}
+
+			throw new Error("Invalid trial response format");
+		} catch (error) {
+			console.error("Failed to request trial license:", error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Activate a license key
 	 * 
 	 * POST /api/license/activate
@@ -272,47 +393,49 @@ export class Hugoverse {
 		deviceName: string,
 		deviceType: string
 	): Promise<LicenseActivationResponse | null> {
-		try {
-			const activateUrl = `${this.apiUrl}/api/license/activate`;
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const activateUrl = `${this.apiUrl}/api/license/activate`;
 
-			// Create FormData
-			const body: FormData = new FormData();
-			body.append("license_key", licenseKey);
-			body.append("device_id", deviceId);
-			body.append("device_name", deviceName);
-			body.append("device_type", deviceType);
+				// Create FormData
+				const body: FormData = new FormData();
+				body.append("license_key", licenseKey);
+				body.append("device_id", deviceId);
+				body.append("device_name", deviceName);
+				body.append("device_type", deviceType);
 
-			// Convert FormData to ArrayBuffer
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				// Convert FormData to ArrayBuffer
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
 
-			const response: RequestUrlResponse = await requestUrl({
-				url: activateUrl,
-				method: "POST",
-				headers: {
-					"Content-Type": `multipart/form-data; boundary=${boundary}`,
-					"Authorization": `Bearer ${token}`,
-				},
-				body: arrayBufferBody,
-			});
+				const response: RequestUrlResponse = await requestUrl({
+					url: activateUrl,
+					method: "POST",
+					headers: {
+						"Content-Type": `multipart/form-data; boundary=${boundary}`,
+						"Authorization": `Bearer ${freshToken}`,
+					},
+					body: arrayBufferBody,
+				});
 
-			// Check response status
-			if (response.status !== 200 && response.status !== 201) {
-				console.error(`License activation failed: ${response.text}`);
-				throw new Error(`License activation failed: ${response.status}`);
+				// Check response status
+				if (response.status !== 200 && response.status !== 201) {
+					console.error(`License activation failed: ${response.text}`);
+					throw new Error(`License activation failed: ${response.status}`);
+				}
+
+				// Parse response
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0] as LicenseActivationResponse;
+				}
+
+				throw new Error("Invalid activation response format");
+			} catch (error) {
+				console.error("Failed to activate license:", error);
+				throw error;
 			}
-
-			// Parse response
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0] as LicenseActivationResponse;
-			}
-
-			throw new Error("Invalid activation response format");
-		} catch (error) {
-			console.error("Failed to activate license:", error);
-			throw error;
-		}
+		});
 	}
 
 	/**
@@ -327,38 +450,40 @@ export class Hugoverse {
 		token: string,
 		licenseKey: string
 	): Promise<LicenseUsageResponse | null> {
-		try {
-			// Add timestamp to prevent caching
-			const timestamp = Date.now();
-			const usageUrl = `${this.apiUrl}/api/license/usage?key=${licenseKey}&_t=${timestamp}`;
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				// Add timestamp to prevent caching
+				const timestamp = Date.now();
+				const usageUrl = `${this.apiUrl}/api/license/usage?key=${licenseKey}&_t=${timestamp}`;
 
-			const response: RequestUrlResponse = await requestUrl({
-				url: usageUrl,
-				method: "GET",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-					"Cache-Control": "no-cache",
-					"Pragma": "no-cache"
-				},
-			});
+				const response: RequestUrlResponse = await requestUrl({
+					url: usageUrl,
+					method: "GET",
+					headers: {
+						"Authorization": `Bearer ${freshToken}`,
+						"Cache-Control": "no-cache",
+						"Pragma": "no-cache"
+					},
+				});
 
-			// Check response status
-			if (response.status !== 200) {
-				console.error(`License usage fetch failed: ${response.text}`);
-				throw new Error(`License usage fetch failed: ${response.status}`);
+				// Check response status
+				if (response.status !== 200) {
+					console.error(`License usage fetch failed: ${response.text}`);
+					throw new Error(`License usage fetch failed: ${response.status}`);
+				}
+
+				// Parse response
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0] as LicenseUsageResponse;
+				}
+
+				throw new Error("Invalid usage response format");
+			} catch (error) {
+				console.error("Failed to get license usage:", error);
+				throw error;
 			}
-
-			// Parse response
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0] as LicenseUsageResponse;
-			}
-
-			throw new Error("Invalid usage response format");
-		} catch (error) {
-			console.error("Failed to get license usage:", error);
-			throw error;
-		}
+		});
 	}
 
 	/**
@@ -376,38 +501,40 @@ export class Hugoverse {
 		token: string,
 		licenseKey: string
 	): Promise<any | null> {
-		try {
-			// Add timestamp to prevent caching
-			const timestamp = Date.now();
-			const infoUrl = `${this.apiUrl}/api/license/info?key=${licenseKey}&_t=${timestamp}`;
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				// Add timestamp to prevent caching
+				const timestamp = Date.now();
+				const infoUrl = `${this.apiUrl}/api/license/info?key=${licenseKey}&_t=${timestamp}`;
 
-			const response: RequestUrlResponse = await requestUrl({
-				url: infoUrl,
-				method: "GET",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-					"Cache-Control": "no-cache",
-					"Pragma": "no-cache"
-				},
-			});
+				const response: RequestUrlResponse = await requestUrl({
+					url: infoUrl,
+					method: "GET",
+					headers: {
+						"Authorization": `Bearer ${freshToken}`,
+						"Cache-Control": "no-cache",
+						"Pragma": "no-cache"
+					},
+				});
 
-			// Check response status
-			if (response.status !== 200) {
-				console.error(`License info fetch failed: ${response.text}`);
-				throw new Error(`License info fetch failed: ${response.status}`);
+				// Check response status
+				if (response.status !== 200) {
+					console.error(`License info fetch failed: ${response.text}`);
+					throw new Error(`License info fetch failed: ${response.status}`);
+				}
+
+				// Parse response
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0];
+				}
+
+				throw new Error("Invalid license info response format");
+			} catch (error) {
+				console.error("Failed to get license info:", error);
+				throw error;
 			}
-
-			// Parse response
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0];
-			}
-
-			throw new Error("Invalid license info response format");
-		} catch (error) {
-			console.error("Failed to get license info:", error);
-			throw error;
-		}
+		});
 	}
 
 	/**
@@ -424,28 +551,30 @@ export class Hugoverse {
 		token: string,
 		licenseKey: string
 	): Promise<{ success: boolean; message?: string }> {
-		try {
-			const resetUrl = `${this.apiUrl}/api/license/usage/reset?key=${licenseKey}`;
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const resetUrl = `${this.apiUrl}/api/license/usage/reset?key=${licenseKey}`;
 
-			const response: RequestUrlResponse = await requestUrl({
-				url: resetUrl,
-				method: "POST",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-				},
-			});
+				const response: RequestUrlResponse = await requestUrl({
+					url: resetUrl,
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${freshToken}`,
+					},
+				});
 
-			// Check response status
-			if (response.status !== 200 && response.status !== 201) {
-				console.error(`License usage reset failed: ${response.text}`);
-				throw new Error(`Reset failed: ${response.status}`);
+				// Check response status
+				if (response.status !== 200 && response.status !== 201) {
+					console.error(`License usage reset failed: ${response.text}`);
+					throw new Error(`Reset failed: ${response.status}`);
+				}
+
+				return { success: true };
+			} catch (error) {
+				console.error("Failed to reset license usage:", error);
+				throw error;
 			}
-
-			return { success: true };
-		} catch (error) {
-			console.error("Failed to reset license usage:", error);
-			throw error;
-		}
+		});
 	}
 
 	/**
@@ -458,32 +587,34 @@ export class Hugoverse {
 		token: string,
 		licenseKey: string
 	): Promise<DomainInfo | null> {
-		try {
-			const url = `${this.apiUrl}/api/license/domains?key=${licenseKey}`;
-			
-			const response: RequestUrlResponse = await requestUrl({
-				url,
-				method: "GET",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-				},
-			});
-			
-			if (response.status !== 200) {
-				console.error(`Get subdomain failed: ${response.text}`);
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const url = `${this.apiUrl}/api/license/domains?key=${licenseKey}`;
+				
+				const response: RequestUrlResponse = await requestUrl({
+					url,
+					method: "GET",
+					headers: {
+						"Authorization": `Bearer ${freshToken}`,
+					},
+				});
+				
+				if (response.status !== 200) {
+					console.error(`Get subdomain failed: ${response.text}`);
+					return null;
+				}
+				
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0] as DomainInfo;
+				}
+				
+				return null;
+			} catch (error) {
+				console.error("Failed to get subdomain:", error);
 				return null;
 			}
-			
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0] as DomainInfo;
-			}
-			
-			return null;
-		} catch (error) {
-			console.error("Failed to get subdomain:", error);
-			return null;
-		}
+		});
 	}
 
 	/**
@@ -498,41 +629,43 @@ export class Hugoverse {
 		licenseKey: string,
 		subdomain: string
 	): Promise<SubdomainCheckResponse | null> {
-		try {
-			const url = `${this.apiUrl}/api/license/subdomain/check`;
-			
-			const body = new FormData();
-			body.append("license_key", licenseKey);
-			body.append("subdomain", subdomain);
-			
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
-			
-			const response: RequestUrlResponse = await requestUrl({
-				url,
-				method: "POST",
-				headers: {
-					"Content-Type": `multipart/form-data; boundary=${boundary}`,
-					"Authorization": `Bearer ${token}`,
-				},
-				body: arrayBufferBody,
-			});
-			
-			if (response.status !== 200) {
-				console.error(`Check subdomain failed: ${response.text}`);
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const url = `${this.apiUrl}/api/license/subdomain/check`;
+				
+				const body = new FormData();
+				body.append("license_key", licenseKey);
+				body.append("subdomain", subdomain);
+				
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				
+				const response: RequestUrlResponse = await requestUrl({
+					url,
+					method: "POST",
+					headers: {
+						"Content-Type": `multipart/form-data; boundary=${boundary}`,
+						"Authorization": `Bearer ${freshToken}`,
+					},
+					body: arrayBufferBody,
+				});
+				
+				if (response.status !== 200) {
+					console.error(`Check subdomain failed: ${response.text}`);
+					return null;
+				}
+				
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0] as SubdomainCheckResponse;
+				}
+				
+				return null;
+			} catch (error) {
+				console.error("Failed to check subdomain:", error);
 				return null;
 			}
-			
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0] as SubdomainCheckResponse;
-			}
-			
-			return null;
-		} catch (error) {
-			console.error("Failed to check subdomain:", error);
-			return null;
-		}
+		});
 	}
 
 	/**
@@ -547,41 +680,43 @@ export class Hugoverse {
 		licenseKey: string,
 		newSubdomain: string
 	): Promise<SubdomainUpdateResponse | null> {
-		try {
-			const url = `${this.apiUrl}/api/license/subdomain/update`;
-			
-			const body = new FormData();
-			body.append("license_key", licenseKey);
-			body.append("new_subdomain", newSubdomain);
-			
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
-			
-			const response: RequestUrlResponse = await requestUrl({
-				url,
-				method: "POST",
-				headers: {
-					"Content-Type": `multipart/form-data; boundary=${boundary}`,
-					"Authorization": `Bearer ${token}`,
-				},
-				body: arrayBufferBody,
-			});
-			if (response.status !== 200) {
-				console.error(`Update subdomain failed: ${response.text}`);
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const url = `${this.apiUrl}/api/license/subdomain/update`;
+				
+				const body = new FormData();
+				body.append("license_key", licenseKey);
+				body.append("new_subdomain", newSubdomain);
+				
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				
+				const response: RequestUrlResponse = await requestUrl({
+					url,
+					method: "POST",
+					headers: {
+						"Content-Type": `multipart/form-data; boundary=${boundary}`,
+						"Authorization": `Bearer ${freshToken}`,
+					},
+					body: arrayBufferBody,
+				});
+				if (response.status !== 200) {
+					console.error(`Update subdomain failed: ${response.text}`);
+					return null;
+				}
+				
+				const data = response.json;
+				console.log("Update subdomain response data:", data);
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0] as SubdomainUpdateResponse;
+				}
+				
+				return null;
+			} catch (error) {
+				console.error("Failed to update subdomain:", error);
 				return null;
 			}
-			
-			const data = response.json;
-			console.log("Update subdomain response data:", data);
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0] as SubdomainUpdateResponse;
-			}
-			
-			return null;
-		} catch (error) {
-			console.error("Failed to update subdomain:", error);
-			return null;
-		}
+		});
 	}
 	
 	/**
@@ -596,41 +731,43 @@ export class Hugoverse {
 		licenseKey: string,
 		domain: string
 	): Promise<{ dns_valid: boolean; ready: boolean; message: string; resolved_ips?: string[] } | null> {
-		try {
-			const url = `${this.apiUrl}/api/license/domain/check`;
-			
-			const body = new FormData();
-			body.append("license_key", licenseKey);
-			body.append("domain", domain);
-			
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
-			
-			const response: RequestUrlResponse = await requestUrl({
-				url,
-				method: "POST",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-					"Content-Type": `multipart/form-data; boundary=${boundary}`
-				},
-				body: arrayBufferBody,
-			});
-			
-			if (response.status !== 200) {
-				console.error(`Check custom domain failed: ${response.text}`);
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const url = `${this.apiUrl}/api/license/domain/check`;
+				
+				const body = new FormData();
+				body.append("license_key", licenseKey);
+				body.append("domain", domain);
+				
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				
+				const response: RequestUrlResponse = await requestUrl({
+					url,
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${freshToken}`,
+						"Content-Type": `multipart/form-data; boundary=${boundary}`
+					},
+					body: arrayBufferBody,
+				});
+				
+				if (response.status !== 200) {
+					console.error(`Check custom domain failed: ${response.text}`);
+					return null;
+				}
+				
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0];
+				}
+				
 				return null;
+			} catch (error) {
+				console.error("Failed to check custom domain:", error);
+				throw error;
 			}
-			
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0];
-			}
-			
-			return null;
-		} catch (error) {
-			console.error("Failed to check custom domain:", error);
-			throw error;
-		}
+		});
 	}
 	
 	/**
@@ -645,41 +782,43 @@ export class Hugoverse {
 		licenseKey: string,
 		domain: string
 	): Promise<{ domain: string; status: string; message: string } | null> {
-		try {
-			const url = `${this.apiUrl}/api/license/domain/add`;
-			
-			const body = new FormData();
-			body.append("license_key", licenseKey);
-			body.append("domain", domain);
-			
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
-			
-			const response: RequestUrlResponse = await requestUrl({
-				url,
-				method: "POST",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-					"Content-Type": `multipart/form-data; boundary=${boundary}`
-				},
-				body: arrayBufferBody,
-			});
-			
-			if (response.status !== 200 && response.status !== 201) {
-				console.error(`Add custom domain failed: ${response.text}`);
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const url = `${this.apiUrl}/api/license/domain/add`;
+				
+				const body = new FormData();
+				body.append("license_key", licenseKey);
+				body.append("domain", domain);
+				
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				
+				const response: RequestUrlResponse = await requestUrl({
+					url,
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${freshToken}`,
+						"Content-Type": `multipart/form-data; boundary=${boundary}`
+					},
+					body: arrayBufferBody,
+				});
+				
+				if (response.status !== 200 && response.status !== 201) {
+					console.error(`Add custom domain failed: ${response.text}`);
+					return null;
+				}
+				
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0];
+				}
+				
 				return null;
+			} catch (error) {
+				console.error("Failed to add custom domain:", error);
+				throw error;
 			}
-			
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0];
-			}
-			
-			return null;
-		} catch (error) {
-			console.error("Failed to add custom domain:", error);
-			throw error;
-		}
+		});
 	}
 	
 	/**
@@ -700,41 +839,43 @@ export class Hugoverse {
 		message: string;
 		certificate?: any;
 	} | null> {
-		try {
-			const url = `${this.apiUrl}/api/license/domain/https-status`;
-			
-			const body = new FormData();
-			body.append("license_key", licenseKey);
-			body.append("domain", domain);
-			
-			const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
-			const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
-			
-			const response: RequestUrlResponse = await requestUrl({
-				url,
-				method: "POST",
-				headers: {
-					"Authorization": `Bearer ${token}`,
-					"Content-Type": `multipart/form-data; boundary=${boundary}`
-				},
-				body: arrayBufferBody,
-			});
-			
-			if (response.status !== 200) {
-				console.error(`Check HTTPS status failed: ${response.text}`);
+		return this.requestWithTokenRefresh(async (freshToken: string) => {
+			try {
+				const url = `${this.apiUrl}/api/license/domain/https-status`;
+				
+				const body = new FormData();
+				body.append("license_key", licenseKey);
+				body.append("domain", domain);
+				
+				const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2, 9);
+				const arrayBufferBody = await this.formDataToArrayBuffer(body, boundary);
+				
+				const response: RequestUrlResponse = await requestUrl({
+					url,
+					method: "POST",
+					headers: {
+						"Authorization": `Bearer ${freshToken}`,
+						"Content-Type": `multipart/form-data; boundary=${boundary}`
+					},
+					body: arrayBufferBody,
+				});
+				
+				if (response.status !== 200) {
+					console.error(`Check HTTPS status failed: ${response.text}`);
+					return null;
+				}
+				
+				const data = response.json;
+				if (data && data.data && data.data.length > 0) {
+					return data.data[0];
+				}
+				
 				return null;
+			} catch (error) {
+				console.error("Failed to check HTTPS status:", error);
+				throw error;
 			}
-			
-			const data = response.json;
-			if (data && data.data && data.data.length > 0) {
-				return data.data[0];
-			}
-			
-			return null;
-		} catch (error) {
-			console.error("Failed to check HTTPS status:", error);
-			throw error;
-		}
+		});
 	}
 
 }

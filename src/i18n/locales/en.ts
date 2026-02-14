@@ -45,6 +45,16 @@ export const en: TranslationNamespace = {
 		refreshing: "Refreshing...",
 		license_info_refreshed: "License info updated",
 		refresh_failed: "Failed to refresh license info",
+		
+		// Trial License
+		trial_license: "Request Trial License",
+		trial_email: "Email for Trial",
+		trial_email_placeholder: "your@email.com",
+		trial_request: "Request Trial",
+		trial_requesting: "Requesting...",
+		trial_request_success: "Trial license created! License key has been filled in above.",
+		trial_request_failed: "Failed to request trial license. Please try again.",
+		trial_invalid_email: "Please enter a valid email address",
 
 		// Sync Settings (License-based)
 		sync_enabled: "Sync is enabled",
