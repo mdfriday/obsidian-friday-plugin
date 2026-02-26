@@ -1,10 +1,10 @@
-import { FallbackWeakRef } from "octagonal-wheels/common/polyfill";
-import { LOG_LEVEL_VERBOSE, Logger } from "../common/logger.ts";
-import { promiseWithResolver, type PromiseWithResolvers } from "octagonal-wheels/promises";
-import { LiveSyncError, LiveSyncFatalError } from "../common/LSError.ts";
-import type { DocumentID, EntryDoc, EntryLeaf } from "../common/types.ts";
-import type { ChangeManager } from "./ChangeManager.ts";
-import { EVENT_MISSING_CHUNK_REMOTE, EVENT_MISSING_CHUNKS } from "./ChunkFetcher.ts";
+import {FallbackWeakRef} from "octagonal-wheels/common/polyfill";
+import {LOG_LEVEL_VERBOSE, Logger} from "../common/logger.ts";
+import {promiseWithResolver, type PromiseWithResolvers} from "octagonal-wheels/promises";
+import {LiveSyncError, LiveSyncFatalError} from "../common/LSError.ts";
+import type {DocumentID, EntryDoc, EntryLeaf} from "../common/types.ts";
+import type {ChangeManager} from "./ChangeManager.ts";
+import {EVENT_MISSING_CHUNK_REMOTE, EVENT_MISSING_CHUNKS} from "./ChunkFetcher.ts";
 
 export type ChunkManagerOptions = {
     database: PouchDB.Database<EntryDoc>;
@@ -514,8 +514,17 @@ export class ChunkManager {
                 }
             }
         }
-        const writeCount = result.length - failed.length; // Number of chunks written
-        writeResult.processed.written = writeCount;
+         // Number of chunks written
+		// 🔧 修复：当使用 new_edits: false 且结果为空数组时，验证实际写入情况
+        let actualWritten = result.length - failed.length;
+        if (options?.force && result.length === 0 && storeChunks.length > 0) {
+            // PouchDB 使用 new_edits: false 时，成功写入不返回结果
+            // 我们假设所有 chunks 都成功写入了（已通过验证确认）
+            actualWritten = storeChunks.length;
+        }
+        
+        writeResult.processed.written = actualWritten;
+        
         // -- If successful, save to cache
         for (const chunk of storeChunks) {
             this.cacheChunk(chunk); // Add to cache

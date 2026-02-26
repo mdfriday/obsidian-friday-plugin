@@ -388,7 +388,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                 // 下载：先更新计数，再处理文档
                 this.docArrived += e.change.docs.length;
                 this.updateInfo(); // 立即更新状态显示
-                
+
                 // 然后处理文档（写入文件系统）
                 await this.env.services.replication.parseSynchroniseResult(e.change.docs);
             } else {
@@ -1472,6 +1472,14 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         }
 
         const remoteChunkItems = remoteChunks.rows.map((e: any) => e.doc as EntryLeaf);
+        
+        // ✨ 更新下载计数器以反映获取的 chunks
+        const successfulChunks = remoteChunkItems.filter(c => c && c._id);
+        if (successfulChunks.length > 0) {
+            this.docArrived += successfulChunks.length;
+            this.updateInfo();
+        }
+        
         return remoteChunkItems;
     }
 

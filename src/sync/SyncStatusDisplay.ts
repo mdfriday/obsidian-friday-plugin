@@ -605,23 +605,17 @@ export class SyncStatusDisplay {
      * Update progress bar display
      */
     private updateProgressBar(state: FileProgressState): void {
-        console.log(`[ProgressBar] updateProgressBar called, operation: ${state.currentOperation}`);
-        
         if (!this.progressBarContainer || !this.progressBarFill || !this.progressBarLabel) {
-            console.log("[ProgressBar] Missing DOM elements, cannot update");
             return;
         }
         
         // 空闲状态：隐藏进度条
         if (state.currentOperation === 'idle') {
-            console.log("[ProgressBar] Operation is idle, hiding progress bar");
-            
             // Only animate fadeout if the progress bar was previously active
             if (this.progressBarContainer.hasClass("active")) {
                 this.progressBarContainer.addClass("fadeout");
                 setTimeout(() => {
                     this.progressBarContainer?.removeClass("active", "fadeout");
-                    console.log("[ProgressBar] Fadeout complete, removed active class");
                 }, 1000);
             } else {
                 this.progressBarContainer.removeClass("active", "fadeout");
@@ -636,9 +630,7 @@ export class SyncStatusDisplay {
         // Calculate overall progress
         const progress = this.fileProgressTracker.getOverallProgress();
         const displayText = this.fileProgressTracker.getDisplayText();
-        
-        console.log(`[ProgressBar] Updating: ${state.currentOperation}, progress: ${progress}%`);
-        
+
         // Update progress bar width
         this.progressBarFill.style.width = `${progress}%`;
         
@@ -648,11 +640,8 @@ export class SyncStatusDisplay {
         // Completed state
         if (progress >= 100) {
             this.progressBarFill.addClass("completed");
-            console.log("[ProgressBar] Progress completed, showing completion state");
         } else {
             this.progressBarFill.removeClass("completed");
         }
-        
-        console.log(`[ProgressBar] Updated display: "${displayText}"`);
     }
 }
