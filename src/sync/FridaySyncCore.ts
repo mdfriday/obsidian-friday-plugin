@@ -8,6 +8,9 @@
 import {Plugin} from "obsidian";
 import {reactiveSource, type ReactiveSource} from "octagonal-wheels/dataobject/reactive";
 
+// Import file progress types
+import type { FileProgressCallback } from "./types/FileProgressEvents";
+
 // Import core types
 import {
 	type DatabaseConnectingStatus,
@@ -44,6 +47,8 @@ import {$msg} from "./core/common/i18n";
 import {FridayServiceHub} from "./FridayServiceHub";
 import type {SyncConfig, SyncStatus, SyncStatusCallback} from "./SyncService";
 import {FridayStorageEventManager} from "./FridayStorageEventManager";
+import { initializeSameChangePairs } from "./utils/sameChangePairs";
+import type { SyncStatusDisplay } from "./SyncStatusDisplay";
 
 // Import HiddenFileSync module
 import {FridayHiddenFileSync} from "./features/HiddenFileSync";
@@ -178,6 +183,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     private statusCallback: SyncStatusCallback | null = null;
     private _status: SyncStatus = "NOT_CONNECTED";
     
+    // ✨ File progress callback (for core to communicate with UI layer)
+    onFileProgress?: FileProgressCallback;
+    
     // Reactive counters for status display (same as livesync)
     replicationStat: ReactiveSource<ReplicationStat> = reactiveSource({
         sent: 0,
@@ -205,6 +213,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     
     // Log callback for status display integration
     private _logCallback?: (message: string, level: number, key?: string) => void;
+    
+    // Status display for progress tracking and UI updates
+    private _statusDisplay: SyncStatusDisplay | null = null;q
     
     // Storage event manager for watching file changes
     private _storageEventManager: FridayStorageEventManager | null = null;
@@ -259,6 +270,15 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         this._kvDB = new SimpleKeyValueDB("friday-kv");
         this._simpleStore = new FridaySimpleStore("checkpoint");
         
+        // ✨ Set up file progress callback
+        // Forward file progress events from core to FileProgressTracker
+        this.onFileProgress = (event) => {
+            const tracker = this._statusDisplay?.getFileProgressTracker();
+            if (tracker) {
+                tracker.handleEvent(event);
+            }
+        };
+        
         // Set up global logging that also notifies status display
         // This matches livesync's pattern: all logs go to status display
         setGlobalLogFunction((message: any, level?: number, key?: string) => {
@@ -282,6 +302,15 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
     setLogCallback(callback: (message: string, level: number, key?: string) => void) {
         this._logCallback = callback;
     }
+    
+    /**
+     * Set status display for progress tracking
+     * This allows FridaySyncCore to update progress bars
+     * @param statusDisplay - SyncStatusDisplay instance
+     */
+    setStatusDisplay(statusDisplay: SyncStatusDisplay): void {
+        this._statusDisplay = statusDisplay;
+    }
 
     // ==================== LiveSyncLocalDBEnv Implementation ====================
     
@@ -303,6 +332,10 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
 
     get services(): FridayServiceHub {
         return this._services;
+    }
+
+    get app() {
+        return this.plugin.app;
     }
 
     // ==================== LiveSyncReplicatorEnv Implementation ====================
@@ -581,6 +614,11 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 this.setStatus("ERRORED", "Failed to initialize local database");
                 return false;
             }
+            
+            // ✨ Initialize sameChangePairs storage (persistent mtime comparison cache)
+            // This is critical for the mtime-based sync optimization
+            initializeSameChangePairs(vaultName);
+            Logger("sameChangePairs storage initialized", LOG_LEVEL_INFO);
             
             // Initialize replicator first (needed for salt retrieval)
             // Note: Encryption will be set up when startSync is called
@@ -1122,8 +1160,20 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 this.setStatus("STARTED", "Uploading your files...");
                 Logger($msg("fridaySync.rebuildRemote.rebuilding"), LOG_LEVEL_NOTICE);
                 
+                // Get total files count for progress tracking
+                const vault = this.plugin.app.vault;
+                const files = vault.getFiles();
+                const totalFiles = files.length;
+                
+                // ✨ 发出上传开始事件
+                this.onFileProgress?.({
+                    type: 'upload_start',
+                    totalFiles: totalFiles,
+                });
+                
                 // Step 1: Scan local vault and store all files to local database
                 Logger("Step 1: Scanning local vault and storing to database...", LOG_LEVEL_INFO);
+                
                 const scanResult = await this.scanAndStoreVaultToDB();
                 if (!scanResult) {
                     Logger($msg("fridaySync.rebuildRemote.scanFailed"), LOG_LEVEL_NOTICE);
@@ -1133,7 +1183,6 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 
                 // Step 2: Reset remote database
                 Logger("Step 2: Resetting remote database...", LOG_LEVEL_INFO);
-                // Don't show technical "resetting" message to user
                 Logger($msg("fridaySync.rebuildRemote.resettingRemote"), LOG_LEVEL_INFO);
                 try {
                     await this._replicator.tryResetRemoteDatabase(this._settings);
@@ -1170,11 +1219,19 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 
                 if (result) {
                     this.setStatus("COMPLETED", "Remote database rebuilt successfully");
+                    
+                    // ✨ 发出上传完成事件
+                    this.onFileProgress?.({
+                        type: 'upload_complete',
+                        totalFiles: totalFiles,
+                        successCount: totalFiles,
+                        errorCount: 0,
+                    });
+                    
                     Logger($msg("fridaySync.rebuildRemote.success"), LOG_LEVEL_NOTICE);
                     Logger("Other devices should now use 'Fetch from Server' to sync", LOG_LEVEL_INFO);
                     
                     // Start network monitoring after successful first-time upload
-                    // This enables auto-reconnect for future network changes
                     this.startNetworkMonitoring();
                 } else {
                     this.setStatus("ERRORED", "Rebuild remote failed");
@@ -1183,10 +1240,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 
                 return result;
             } catch (error) {
-                console.error("Rebuild remote failed:", error);
-                this.setStatus("ERRORED", "Rebuild remote failed");
-                Logger($msg("fridaySync.rebuildRemote.failedConnection"), LOG_LEVEL_NOTICE);
-                Logger(error, LOG_LEVEL_VERBOSE);
+                this.setStatus("ERRORED", `Rebuild remote error: ${error}`);
+                Logger(`Rebuild remote error: ${error}`, LOG_LEVEL_NOTICE);
+                console.error("[RebuildRemote] Error:", error);
                 return false;
             }
         });
@@ -1288,6 +1344,46 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 attachments: false,
             });
             
+            // ✨ 统计需要写入的文件总数
+            let totalFilesToWrite = 0;
+            for (const row of allDocs.rows) {
+                const doc = row.doc;
+                if (!doc) continue;
+                
+                // Skip non-file documents (same logic as below)
+                if (doc._id.startsWith("h:")) continue;
+                if (doc._id.startsWith("_")) continue;
+                if ((doc as any).type === "versioninfo") continue;
+                if ((doc as any).type === "milestoneinfo") continue;
+                if ((doc as any).type === "nodeinfo") continue;
+                if ((doc as any).type === "leaf") continue;
+                
+                const docPath = (doc as any).path as string | undefined;
+                const isInternalFile = isInternalMetadata(doc._id) || 
+                    (docPath && isInternalMetadata(docPath));
+                
+                // Count internal files
+                if (isInternalFile) {
+                    totalFilesToWrite++;
+                    continue;
+                }
+                
+                // Count normal files
+                const docType = (doc as any).type;
+                if (docType === "notes" || docType === "newnote" || docType === "plain") {
+                    const isDeleted = doc._deleted === true || (doc as any).deleted === true;
+                    if (!isDeleted && docPath) {
+                        totalFilesToWrite++;
+                    }
+                }
+            }
+            
+            // ✨ 发出文件写入开始事件
+            this.onFileProgress?.({
+                type: 'file_write_start',
+                totalFiles: totalFilesToWrite,
+            });
+            
             let processed = 0;
             let created = 0;
             let updated = 0;
@@ -1326,6 +1422,13 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                             const result = await this._hiddenFileSync.processReplicationResult(doc as any);
                             if (result) {
                                 internalFilesProcessed++;
+                                // ✨ 发出文件写入进度事件（内部文件）
+                                this.onFileProgress?.({
+                                    type: 'file_write_progress',
+                                    writtenFiles: internalFilesProcessed + created + updated,
+                                    totalFiles: totalFilesToWrite,
+                                    currentFilePath: docPath || doc._id,
+                                });
                             } else {
                                 internalFilesErrors++;
                             }
@@ -1421,6 +1524,14 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                         this._storageEventManager.touch(path, stat.mtime, stat.size);
                     }
                     
+                    // ✨ 发出文件写入进度事件
+                    this.onFileProgress?.({
+                        type: 'file_write_progress',
+                        writtenFiles: internalFilesProcessed + created + updated,
+                        totalFiles: totalFilesToWrite,
+                        currentFilePath: path,
+                    });
+                    
                     if (processed % 50 === 0) {
                         Logger(`Progress: ${processed} files processed (${created} created, ${updated} updated)`, LOG_LEVEL_INFO);
                     }
@@ -1438,6 +1549,15 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                     Logger(`Error writing file ${path}: ${error}`, LOG_LEVEL_VERBOSE);
                 }
             }
+            
+            // ✨ 发出文件写入完成事件
+            const successCount = created + updated + internalFilesProcessed;
+            this.onFileProgress?.({
+                type: 'file_write_complete',
+                totalFiles: totalFilesToWrite,
+                successCount: successCount,
+                errorCount: errors + internalFilesErrors,
+            });
             
             // Log summary with errors count
             const totalErrors = errors + internalFilesErrors + missingChunksErrors;
@@ -1467,7 +1587,6 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             }
             
             // Show success message with summary
-            const successCount = created + updated;
             if (successCount > 0 || totalErrors === 0) {
                 Logger(
                     $msg("fridaySync.rebuild.complete", {
@@ -1507,6 +1626,16 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
         try {
             // ===== Phase 1: Suspend (aligned with livesync suspendReflectingDatabase) =====
             Logger($msg("fridaySync.fetch.starting") || "Starting download from server...", LOG_LEVEL_NOTICE);
+            Logger("[Fetch] Phase 1: Starting download from server", LOG_LEVEL_INFO);
+
+            // ✨ 发出下载开始事件
+            // 使用估算值，实际数量会在下载过程中更新
+            const estimatedDocs = 1000;
+            this.onFileProgress?.({
+                type: 'download_start',
+                totalDocs: estimatedDocs,
+            });
+
             // Technical message - user doesn't need to know about "reflection"
             Logger(
                 $msg("fridaySync.saltChanged.suspendingReflection") ||
@@ -1516,109 +1645,98 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             
             this._settings.suspendParseReplicationResult = true;
             this._settings.suspendFileWatching = true;
-            // Note: Settings are persisted in memory, livesync calls saveSettings() here
-            // but Friday's settings auto-persist via the plugin's data.json mechanism
-            Logger("Suspended database and storage reflection", LOG_LEVEL_INFO);
-            
+            Logger("[Fetch] Suspended database and storage reflection", LOG_LEVEL_INFO);
+
             // ===== Phase 2: Reset & Reopen Database =====
-            // Following livesync's resetLocalDatabase() + openDatabase() pattern
             if (this._storageEventManager) {
                 this._storageEventManager.stopWatch();
             }
             
-            // Don't show technical "Resetting local database" to user
             Logger("Resetting local database...", LOG_LEVEL_INFO);
             if (this._localDatabase) {
                 await this._localDatabase.resetDatabase();
             }
             
             await this.delay(1000);
+
+            // ===== Phase 3: Reopen Database =====
+            Logger("[Fetch] Phase 3: Reopening database connection", LOG_LEVEL_INFO);
+            if (this._localDatabase) {
+                const dbInitialized = await this._localDatabase.initializeDatabase();
+                Logger(`[Fetch] Database reopened: ${dbInitialized}`, LOG_LEVEL_INFO);
+            } else {
+                Logger("[Fetch] WARNING: Cannot reopen database - not initialized", LOG_LEVEL_INFO);
+            }
             
-            // ===== Phase 3: Initial Scan (Optional, Database is Empty) =====
-            // Livesync calls initialiseDatabase() -> scanVault() here
-            // This syncs any existing storage files to the (now empty) database
-            // For a fresh vault doing first fetch, this is a no-op
-            // We skip this since Friday uses rebuildVaultFromDB instead
-            
-            // ===== Phase 4: Mark Device as Resolved (aligned with livesync markResolved) =====
-            // This is CRITICAL: clears remoteLockedAndDeviceNotAccepted flags
-            // and allows device to sync again
-            Logger("Marking device as resolved...", LOG_LEVEL_INFO);
+            // ===== Phase 4: Mark Device as Resolved =====
+            Logger("[Fetch] Phase 4: Marking device as resolved", LOG_LEVEL_INFO);
             if (this._replicator) {
-                // Clear blocking flags (aligned with livesync)
                 this._replicator.remoteLockedAndDeviceNotAccepted = false;
                 this._replicator.remoteLocked = false;
                 this._replicator.remoteCleaned = false;
                 
-                // Mark remote as accepting this device
                 await this._replicator.markRemoteResolved(this._settings);
-                
-                // Update stored salt to match new remote salt
-                // This prevents "Remote database has been reset" error after successful fetch
                 await this._replicator.updateStoredSalt(this._settings);
                 
                 Logger("Device is now accepted by remote database", LOG_LEVEL_INFO);
+            } else {
+                Logger("[Fetch] WARNING: Replicator not initialized", LOG_LEVEL_INFO);
             }
             
             await this.delay(500);
             
-            // ===== Phase 5: Fetch from Remote (First Pass) =====
-            // Following livesync: replicateAllFromRemote()
-            // readChunksOnline=true by default, so only meta is fetched
-            // Chunks will be fetched on-demand later
+            // ===== Phase 5: Fetch from Remote =====
             Logger($msg("fridaySync.fetch.downloading") || "Downloading files from server (this may take a while)...", LOG_LEVEL_NOTICE);
             
             const result1 = await this._replicator?.replicateAllFromServer(
                 this._settings, 
                 true
             );
-            
+
             if (!result1) {
                 throw new Error("First replication pass failed");
             }
-            
+
             await this.delay(1000);
             
             // ===== Phase 6: Fetch from Remote (Second Pass) =====
-            // Don't show separate message for second pass - user doesn't need to know
-            Logger("Fetching documents from remote (2nd pass)...", LOG_LEVEL_INFO);
-            
             const result2 = await this._replicator?.replicateAllFromServer(
                 this._settings,
                 true
             );
             
             if (!result2) {
-                Logger("Second replication pass failed, but continuing...", LOG_LEVEL_INFO);
+                Logger("[Fetch] Second replication pass failed, but continuing...", LOG_LEVEL_INFO);
             }
-            
+
             await this.delay(500);
             
-            // ===== Phase 7: Resume and Scan Vault (aligned with livesync resumeReflectingDatabase) =====
-            // User-friendly message about writing files
+            // ✨ 发出下载完成事件
+            this.onFileProgress?.({
+                type: 'download_complete',
+                totalDocs: estimatedDocs,
+            });
+            
+            // ===== Phase 7: Resume and Rebuild Vault =====
             Logger($msg("fridaySync.fetch.writingFiles") || "Writing files to your vault...", LOG_LEVEL_NOTICE);
             
             this._settings.suspendParseReplicationResult = false;
             this._settings.suspendFileWatching = false;
-            // Note: Settings are persisted in memory, livesync calls saveSettings() here
-            // but Friday's settings auto-persist via the plugin's data.json mechanism
             
-            // NOW call rebuildVaultFromDB which is similar to livesync's scanVault()
-            // Chunks will be fetched on-demand as each file is processed
+            // rebuildVaultFromDB 会触发 file_write 事件
             Logger("Scanning and rebuilding vault from database...", LOG_LEVEL_INFO);
             const rebuildResult = await this.rebuildVaultFromDB();
-            
+
             if (!rebuildResult) {
                 throw new Error("Rebuild vault failed");
             }
-            
+
             // ===== Phase 8: Complete =====
             Logger($msg("fridaySync.fetch.downloadComplete") || "Download complete!", LOG_LEVEL_NOTICE);
             
             // Start network monitoring after successful first-time download
-            // This enables auto-reconnect for future network changes
             this.startNetworkMonitoring();
-            
+
             // Restart sync if it was running
             if (this._settings.liveSync) {
                 await this.startSync(true);
@@ -1629,10 +1747,9 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             Logger($msg("fridaySync.fetch.downloadFailed") || "Download from server failed", LOG_LEVEL_NOTICE);
             Logger(error, LOG_LEVEL_VERBOSE);
             
-            // Make sure to restore suspend state even on error (aligned with livesync)
+            // Restore suspend state
             this._settings.suspendParseReplicationResult = originalSuspendParseState;
             this._settings.suspendFileWatching = originalSuspendFileWatchingState;
-            // Note: Settings are persisted in memory
             
             return false;
         }

@@ -433,7 +433,6 @@ export class FTPUploader {
 				// 3. FTP server locking issues with incomplete files
 				try {
 					await this.client.remove(remoteFilePath);
-					console.log(`[FTP Incremental]   - 🗑️  Removed existing file before upload: ${displayName}`);
 				} catch (removeErr) {
 					// File doesn't exist or deletion failed - this is acceptable
 					// We'll proceed with upload anyway
@@ -441,11 +440,7 @@ export class FTPUploader {
 
 				// Now upload the file
 				await this.client.uploadFrom(localFilePath, remoteFilePath);
-				
-				// Success! Log and return
-				if (attempt > 1) {
-					console.log(`[FTP Incremental]   - ✅ Upload succeeded on attempt ${attempt}: ${displayName}`);
-				}
+
 				return;
 
 			} catch (err) {
@@ -601,7 +596,6 @@ export class FTPUploader {
 
 			// Delete obsolete files first (best effort, don't block upload on deletion errors)
 			if (toDelete.length > 0) {
-				console.log(`[FTP Incremental] 🗑️  Attempting to delete ${toDelete.length} obsolete files...`);
 				for (const filePath of toDelete) {
 					try {
 						// Use absolute remote path for deletion

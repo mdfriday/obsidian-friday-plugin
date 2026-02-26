@@ -94,3 +94,136 @@ div.workspace-leaf-content[data-type=bases] .livesync-status {
 .syncstatusbar.clickable-statusbar:hover {
 	opacity: 0.7;
 }
+
+/* ========== Progress Bar Styles ========== */
+.livesync-status-progressbar {
+	display: none;
+	margin-top: 6px;
+	margin-bottom: 0px;
+	width: 100%;
+	max-width: 150px;  /* 缩短进度条，不超过上方 Sync 文字 */
+	margin-left: auto;
+	pointer-events: none;
+	user-select: none;
+	/* 覆盖父元素的样式，确保进度条完全不透明且无灰度滤镜 */
+	opacity: 1 !important;
+	-webkit-filter: none !important;
+	filter: none !important;
+}
+
+.livesync-status-progressbar.active {
+	display: block;
+}
+
+/* 确保进度条内所有元素都不受父元素样式影响 */
+.livesync-status-progressbar livesync-progressbar-track {
+	opacity: 1 !important;
+	-webkit-filter: none !important;
+	filter: none !important;
+}
+
+.livesync-progressbar-track {
+	width: 100%;
+	height: 4px;  /* 减小高度，更简洁 */
+	background-color: var(--background-modifier-border);  /* 使用 Obsidian 标准边框颜色 */
+	opacity: 0.3 !important;  /* 轨道保持半透明 */
+	border-radius: 2px;
+	overflow: hidden;
+	position: relative;
+}
+
+.livesync-progressbar-fill {
+	height: 100%;
+	background: var(--color-green);  /* 明确的绿色 */
+	border-radius: 2px;
+	transition: width 0.3s ease-out;
+	min-width: 0%;
+}
+
+/* 不确定状态动画 */
+.livesync-progressbar-fill.indeterminate {
+	width: 30% !important;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		var(--color-green) 50%,  /* 明确的绿色 */
+		transparent 100%
+	);
+	animation: progressbar-indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes progressbar-indeterminate {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(300%);
+	}
+}
+
+/* 完成状态 */
+.livesync-progressbar-fill.completed {
+	background: var(--color-green);  /* 更深的绿色表示完成 */
+}
+
+/* ========== 任务描述标签 ========== */
+.livesync-progressbar-label {
+	font-size: 11px;
+	color: var(--text-muted);
+	margin-top: 4px;
+	text-align: right;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	opacity: 0.8;
+}
+
+/* 淡出动画 - 延长到 1 秒，让用户有足够时间看到完成状态 */
+.livesync-status-progressbar.fadeout {
+	animation: progressbar-fadeout 1s ease-out forwards;
+}
+
+@keyframes progressbar-fadeout {
+	0% {
+		opacity: 1;
+		max-height: 20px;
+	}
+	/* 保持完成状态显示 60% 的时间 */
+	60% {
+		opacity: 1;
+		max-height: 20px;
+	}
+	100% {
+		opacity: 0;
+		max-height: 0;
+		margin-top: 0;
+		margin-bottom: 0;
+		/* 保持 margin-left: auto 以维持右对齐 */
+	}
+}
+
+/* 移动端优化 */
+.is-mobile .livesync-status-progressbar {
+	max-width: 120px;
+	margin-left: auto;  /* 保持右对齐 */
+}
+
+.is-mobile .livesync-progressbar-track {
+	height: 3px;
+}
+
+.is-mobile .livesync-progressbar-label {
+	font-size: 10px;
+}
+
+/* 小屏幕移动端优化 - 避免被浮动的顶部图标遮挡 */
+@media (max-width: 600px) {
+	.is-mobile .livesync-status {
+		top: calc(var(--header-height) + 60px);
+	}
+	
+	/* bases 视图也需要额外偏移 */
+	.is-mobile div.workspace-leaf-content[data-type=bases] .livesync-status {
+		top: calc(var(--bases-header-height) + var(--view-header-height) + 60px);
+	}
+}

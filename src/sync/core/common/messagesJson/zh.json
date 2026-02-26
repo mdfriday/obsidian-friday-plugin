@@ -484,5 +484,8 @@
     "liveSyncReplicator.replicationErrored": "同步错误",
     "liveSyncReplicator.syncFileSizeError": "由于文件大小同步失败。请检查日志了解详情。",
     "liveSyncReplicator.connectedSuccessfully": "成功连接到 ${dbName}",
-    "liveSyncReplicator.couldNotRetrieveMilestone": "无法检索远程里程碑"
+    "liveSyncReplicator.couldNotRetrieveMilestone": "无法检索远程里程碑",
+    "fridaySync.progress.uploadingFiles": "上传文件 (${current}/${total})",
+    "fridaySync.progress.downloadingFiles": "下载文件 (${current}/${total})",
+    "fridaySync.progress.writingFiles": "写入文件 (${current}/${total})"
 }

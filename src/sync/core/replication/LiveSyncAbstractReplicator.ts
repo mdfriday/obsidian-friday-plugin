@@ -53,6 +53,12 @@ export interface LiveSyncReplicatorEnv {
      * - If server reachable: real sync/PBKDF2 issue
      */
     isServerReachable?: () => boolean;
+    
+    /**
+     * File progress callback for event-driven progress tracking
+     * Emits events for upload, download, and file write operations
+     */
+    onFileProgress?: (event: any) => void;
 }
 
 export type RemoteDBStatus = {

@@ -628,5 +628,8 @@
     "liveSyncReplicator.replicationErrored": "Sync error occurred",
     "liveSyncReplicator.syncFileSizeError": "Sync failed due to file size. Please check the log for details.",
     "liveSyncReplicator.connectedSuccessfully": "Connected to ${dbName} successfully",
-    "liveSyncReplicator.couldNotRetrieveMilestone": "Could not retrieve remote milestone"
+    "liveSyncReplicator.couldNotRetrieveMilestone": "Could not retrieve remote milestone",
+    "fridaySync.progress.uploadingFiles": "Uploading files (${current}/${total})",
+    "fridaySync.progress.downloadingFiles": "Downloading files (${current}/${total})",
+    "fridaySync.progress.writingFiles": "Writing files (${current}/${total})"
 }

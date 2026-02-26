@@ -8,6 +8,7 @@ import { Plugin, Notice, Platform } from "obsidian";
 import { computed, reactive, reactiveSource, type ReactiveValue } from "octagonal-wheels/dataobject/reactive";
 import type { DatabaseConnectingStatus } from "./core/common/types";
 import type { FridaySyncCore } from "./FridaySyncCore";
+import { FileProgressTracker, type FileProgressState } from "./utils/FileProgressTracker";
 
 export const MARK_DONE = "\u{2009}\u{2009}";
 
@@ -47,6 +48,15 @@ export class SyncStatusDisplay {
     logMessage?: HTMLDivElement;
     logHistory?: HTMLDivElement;
     
+    // ✨ Progress Bar Elements
+    private progressBarContainer?: HTMLDivElement;
+    private progressBarTrack?: HTMLDivElement;
+    private progressBarFill?: HTMLDivElement;
+    private progressBarLabel?: HTMLDivElement;
+    
+    // ✨ File Progress Tracker (替代旧的 ProgressTracker)
+    private fileProgressTracker: FileProgressTracker;
+    
     // Reactive sources
     statusBarLabels!: ReactiveValue<{ message: string; status: string }>;
     statusLog = reactiveSource("");  // Current log message to display below status line
@@ -77,6 +87,19 @@ export class SyncStatusDisplay {
     
     constructor(plugin: Plugin) {
         this.plugin = plugin;
+        this.fileProgressTracker = new FileProgressTracker();
+        
+        // ✨ 监听文件进度状态变化
+        this.fileProgressTracker.onStateChange((state) => {
+            this.updateProgressBar(state);
+        });
+    }
+    
+    /**
+     * Get file progress tracker (for FridaySyncCore to use)
+     */
+    getFileProgressTracker(): FileProgressTracker {
+        return this.fileProgressTracker;
     }
     
     /**
@@ -105,9 +128,27 @@ export class SyncStatusDisplay {
         // Create status div in workspace container (exactly matching livesync's structure)
         this.statusDiv = this.plugin.app.workspace.containerEl.createDiv({ cls: "livesync-status" });
         this.statusLine = this.statusDiv.createDiv({ cls: "livesync-status-statusline" });
+        
         this.messageArea = this.statusDiv.createDiv({ cls: "livesync-status-messagearea" });
         this.logMessage = this.statusDiv.createDiv({ cls: "livesync-status-logmessage" });
         this.logHistory = this.statusDiv.createDiv({ cls: "livesync-status-loghistory" });
+        
+        // ✨ Create progress bar container (at the bottom, after all other elements)
+        this.progressBarContainer = this.statusDiv.createDiv({ 
+            cls: "livesync-status-progressbar" 
+        });
+        
+        this.progressBarTrack = this.progressBarContainer.createDiv({ 
+            cls: "livesync-progressbar-track" 
+        });
+        
+        this.progressBarFill = this.progressBarTrack.createDiv({ 
+            cls: "livesync-progressbar-fill" 
+        });
+        
+        this.progressBarLabel = this.progressBarContainer.createDiv({ 
+            cls: "livesync-progressbar-label" 
+        });
         
         // Create status bar (bottom bar)
         this.statusBar = this.plugin.addStatusBarItem();
@@ -553,7 +594,65 @@ export class SyncStatusDisplay {
         }
         this.notifies = {};
         
+        // Clear progress tracker
+        this.fileProgressTracker?.reset();
+        
         // Clear core reference
         this.core = null;
+    }
+    
+    /**
+     * Update progress bar display
+     */
+    private updateProgressBar(state: FileProgressState): void {
+        console.log(`[ProgressBar] updateProgressBar called, operation: ${state.currentOperation}`);
+        
+        if (!this.progressBarContainer || !this.progressBarFill || !this.progressBarLabel) {
+            console.log("[ProgressBar] Missing DOM elements, cannot update");
+            return;
+        }
+        
+        // 空闲状态：隐藏进度条
+        if (state.currentOperation === 'idle') {
+            console.log("[ProgressBar] Operation is idle, hiding progress bar");
+            
+            // Only animate fadeout if the progress bar was previously active
+            if (this.progressBarContainer.hasClass("active")) {
+                this.progressBarContainer.addClass("fadeout");
+                setTimeout(() => {
+                    this.progressBarContainer?.removeClass("active", "fadeout");
+                    console.log("[ProgressBar] Fadeout complete, removed active class");
+                }, 1000);
+            } else {
+                this.progressBarContainer.removeClass("active", "fadeout");
+            }
+            return;
+        }
+        
+        // Show progress bar
+        this.progressBarContainer.addClass("active");
+        this.progressBarContainer.removeClass("fadeout");
+        
+        // Calculate overall progress
+        const progress = this.fileProgressTracker.getOverallProgress();
+        const displayText = this.fileProgressTracker.getDisplayText();
+        
+        console.log(`[ProgressBar] Updating: ${state.currentOperation}, progress: ${progress}%`);
+        
+        // Update progress bar width
+        this.progressBarFill.style.width = `${progress}%`;
+        
+        // Update progress label
+        this.progressBarLabel.innerText = displayText;
+        
+        // Completed state
+        if (progress >= 100) {
+            this.progressBarFill.addClass("completed");
+            console.log("[ProgressBar] Progress completed, showing completion state");
+        } else {
+            this.progressBarFill.removeClass("completed");
+        }
+        
+        console.log(`[ProgressBar] Updated display: "${displayText}"`);
     }
 }

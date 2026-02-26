@@ -41,6 +41,20 @@ export const LEAF_WAIT_ONLY_REMOTE = 5000;
 export const LEAF_WAIT_TIMEOUT_SEQUENTIAL_REPLICATOR = 5000;
 export const REPLICATION_BUSY_TIMEOUT = 3000000;
 
+/**
+ * Calculate dynamic timeout based on chunk count for large files
+ * @param chunkCount Number of chunks to download
+ * @returns Timeout in milliseconds
+ */
+export function calculateChunkTimeout(chunkCount: number): number {
+    const BASE_TIMEOUT = 15000;      // 15 seconds base (increased from 10)
+    const PER_CHUNK_TIMEOUT = 200;   // 200ms per chunk (increased from 100)
+    const MAX_TIMEOUT = 300000;      // 5 minutes maximum
+    
+    const calculated = BASE_TIMEOUT + chunkCount * PER_CHUNK_TIMEOUT;
+    return Math.min(calculated, MAX_TIMEOUT);
+}
+
 // Magic Special value for arguments or results.
 
 export const CANCELLED = Symbol("cancelled");

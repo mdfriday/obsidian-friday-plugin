@@ -142,6 +142,9 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
     syncStatus: DatabaseConnectingStatus = "NOT_CONNECTED";
     docArrived = 0;
     docSent = 0;
+    
+    // ✨ 追踪实际文件数（不包括 chunks）
+    filesUploaded = 0;
 
     lastSyncPullSeq = 0;
     maxPullSeq = 0;
@@ -382,11 +385,35 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
     ) {
         try {
             if (e.direction == "pull") {
-                await this.env.services.replication.parseSynchroniseResult(e.change.docs);
+                // 下载：先更新计数，再处理文档
                 this.docArrived += e.change.docs.length;
+                this.updateInfo(); // 立即更新状态显示
+                
+                // 然后处理文档（写入文件系统）
+                await this.env.services.replication.parseSynchroniseResult(e.change.docs);
             } else {
+                // 上传：发送 upload_progress 事件
                 this.docSent += e.change.docs.length;
+                this.updateInfo(); // 立即更新状态显示
+                
+                // ✨ 发出上传进度事件
+                if (this.env.onFileProgress) {
+                    // 过滤出实际的文件（排除 chunks 和系统文档）
+                    const actualFiles = e.change.docs.filter(doc => 
+                        doc.type === 'notes' || doc.type === 'newnote' || doc.type === 'plain'
+                    );
+                    
+                    if (actualFiles.length > 0) {
+                        this.filesUploaded += actualFiles.length;
+                        this.env.onFileProgress({
+                            type: 'upload_progress',
+                            uploadedFiles: this.filesUploaded,
+                            totalFiles: 0, // Total will be set by FridaySyncCore
+                        });
+                    }
+                }
             }
+            
             if (showResult) {
                 const maxPullSeq = this.maxPullSeq;
                 const maxPushSeq = this.maxPushSeq;
@@ -408,7 +435,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
                 // Technical details like doc counts are not user-friendly
                 Logger(
                     `↑${this.docSent - docSentOnStart}${pushLast} ↓${this.docArrived - docArrivedOnStart}${pullLast}`,
-                    LOG_LEVEL_INFO,
+					LOG_LEVEL_VERBOSE,
                     "sync"
                 );
             }
@@ -890,6 +917,12 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
             this.updateInfo();
             const docArrivedOnStart = this.docArrived;
             const docSentOnStart = this.docSent;
+            
+            // ✨ 重置文件上传计数（用于 upload_progress 事件）
+            if (syncMode === "pushOnly") {
+                this.filesUploaded = 0;
+            }
+            
             if (!retrying) {
                 // If initial replication, save setting to rollback
                 this.originalSetting = setting;

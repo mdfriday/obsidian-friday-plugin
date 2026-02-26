@@ -4,7 +4,7 @@
  * Implements the minimum required services for CouchDB synchronization
  */
 
-import { Platform, TFile } from "obsidian";
+import { Platform, TFile, TFolder } from "obsidian";
 import { ServiceHub, type ServiceInstances } from "./core/services/ServiceHub";
 import {
     type APIService,
@@ -58,7 +58,10 @@ import { E2EEAlgorithms } from "./core/common/types";
 
 // Import hidden file utilities
 import { isInternalMetadata } from "./utils/hiddenFileUtils";
-import { compareMtime } from "./FridayStorageEventManager";
+
+// Import mtime comparison utilities
+import { compareFileFreshness } from "./FridayStorageEventManager";
+import { markChangesAreSame, unmarkChanges } from "./utils/sameChangePairs";
 
 // PouchDB imports - use the configured PouchDB with transform-pouch plugin
 import { PouchDB } from "./core/pouchdb/pouchdb-browser";
@@ -89,7 +92,7 @@ class FridayAPIService extends ServiceBase implements APIService {
     }
 
     addLog(message: any, level: LOG_LEVEL, key: string): void {
-        console.log(`[${key}] ${message}`);
+		Logger(`[${key}] ${message}`, level)
     }
 
     isMobile(): boolean {
@@ -285,8 +288,7 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         }
         
         this.core = core;
-        console.log("[Friday Sync] FridayReplicationService initialized with core:", !!this.core, "settings:", !!this.core.settings);
-        
+
         [this.processOptionalSynchroniseResult, this.handleProcessOptionalSynchroniseResult] = this._first<
             typeof this.processOptionalSynchroniseResult
         >("processOptionalSynchroniseResult");
@@ -370,10 +372,11 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             try {
                 if (isDeleted) {
                     // Handle deletion
-                    const vault = this.core.plugin.app.vault;
+                    const vault = this.core.app.vault;
                     const existingFile = vault.getAbstractFileByPath(path);
-                    if (existingFile) {
-                        await vault.delete(existingFile);
+                    if (existingFile && (existingFile instanceof TFile || existingFile instanceof TFolder)) {
+                        // Delete the file using LiveSync's logic
+                        await this.deleteVaultItem(existingFile);
                     }
                     return true;
                 }
@@ -406,7 +409,7 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 const isText = isTextDocument(fullEntry);
                 
                 // Write to vault
-                const vault = this.core.plugin.app.vault;
+                const vault = this.core.app.vault;
                 const existingFile = vault.getAbstractFileByPath(path);
                 
                 // ========== LiveSync Layer 3: Content Comparison ==========
@@ -414,19 +417,33 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 if (existingFile && existingFile instanceof TFile) {
                     let shouldWrite = false;
                     
-                    // 1. Check mtime freshness (2 second resolution)
+                    // Get storage path (strip prefix if any)
+                    const storageFilePath = path.startsWith("h:") || path.startsWith("i:") 
+                        ? path.substring(2) 
+                        : path;
+                    
+                    // ✨ Step 1: Use compareFileFreshness (checks sameChangePairs first)
                     const localMtime = existingFile.stat.mtime;
                     const remoteMtime = fullEntry.mtime || 0;
                     
-                    // Use compareMtime from FridayStorageEventManager
-                    // This matches livesync's compareMtime with 2-second resolution
-                    const mtimeComparison = compareMtime(localMtime, remoteMtime);
+                    const freshnessResult = compareFileFreshness(
+                        { path: storageFilePath, mtime: localMtime },
+                        { path: storageFilePath, mtime: remoteMtime }
+                    );
                     
-                    if (mtimeComparison !== "EVEN") {
-                        // Mtime is significantly different
-                        shouldWrite = true;
-                    } else {
-                        // 2. Mtime is similar, check content
+                    switch (freshnessResult) {
+                        case "EVEN":
+                            Logger(`File mtimes are equivalent (marked or same), skip write: ${path}`, LOG_LEVEL_VERBOSE);
+                            return true;
+                        case "BASE_IS_NEW":
+                        case "TARGET_IS_NEW":
+                            // Mtime suggests difference, need to verify content
+                            shouldWrite = true;
+                            break;
+                    }
+                    
+                    // Step 2: Compare content if mtime suggests change
+                    if (shouldWrite) {
                         try {
                             let localContent: string | ArrayBuffer;
                             if (isText) {
@@ -435,19 +452,17 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                                 localContent = await vault.readBinary(existingFile);
                             }
                             
-                            // 3. Compare content using livesync's isDocContentSame
+                            // Compare content using livesync's isDocContentSame
                             const isSame = await isDocContentSame(content, localContent);
                             
                             if (isSame) {
-                                // Content is identical, no need to write
-                                // Mark mtimes as same to avoid future checks
-                                if (storageEventManager) {
-                                    storageEventManager.markChangesAreSame(path, localMtime, remoteMtime);
-                                }
-                                Logger(`Content same, skip write: ${path}`, LOG_LEVEL_VERBOSE);
+                                // ✨ Content is identical despite different mtime - mark them!
+                                markChangesAreSame(storageFilePath, localMtime, remoteMtime);
+                                Logger(`Content same, marked and skip write: ${path}`, LOG_LEVEL_VERBOSE);
                                 return true;
                             } else {
-                                shouldWrite = true;
+                                // Content is different - clear old marks
+                                unmarkChanges(storageFilePath);
                             }
                         } catch (error) {
                             // If content comparison fails, assume we need to write
@@ -503,11 +518,9 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 const shortRev = doc._rev?.substring(0, 5) || "new";
                 Logger(`Processing ${path} (${shortId} :${shortRev}) : Done`, LOG_LEVEL_INFO);
                 
-                // Update counter for UI
-                this.core.replicationStat.value = {
-                    ...this.core.replicationStat.value,
-                    arrived: this.core.replicationStat.value.arrived + 1,
-                };
+                // Note: Do NOT update counter here - LiveSyncReplicator already counts docs
+                // If we update here, it will overwrite the doc count with file count
+                // The replicator.docArrived already includes all docs (metadata + chunks)
                 
                 return true;
             } finally {
@@ -534,6 +547,47 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         }
     }
 
+    /**
+     * Delete a vault item (file or folder) recursively
+     * Copied from LiveSync's ModuleFileAccessObsidian.__deleteVaultItem
+     * 
+     * This implementation:
+     * 1. Deletes the file/folder (using trash or permanent delete based on settings)
+     * 2. After deletion, checks if parent folder is empty (dir.children.length === 0)
+     * 3. If empty and doNotDeleteFolder is false, recursively deletes the parent folder
+     */
+    private async deleteVaultItem(file: TFile | TFolder): Promise<void> {
+        const settings = this.core.settings;
+        const vault = this.core.app.vault;
+        
+        // Store parent folder reference before deletion
+        const dir = file.parent;
+        
+        // Delete the file/folder
+        if (settings.trashInsteadDelete) {
+            await vault.trash(file, false);
+        } else {
+            await vault.delete(file);
+        }
+        
+        Logger(`xxx <- STORAGE (deleted) ${file.path}`, LOG_LEVEL_VERBOSE);
+        
+        // Check if parent folder is now empty
+        if (dir) {
+            Logger(`files: ${dir.children.length}`, LOG_LEVEL_VERBOSE);
+            if (dir.children.length === 0) {
+                if (!settings.doNotDeleteFolder) {
+                    Logger(
+                        `All files under the parent directory (${dir.path}) have been deleted, so delete this one.`,
+                        LOG_LEVEL_VERBOSE
+                    );
+                    // Recursively delete the empty parent folder
+                    await this.deleteVaultItem(dir);
+                }
+            }
+        }
+    }
+
     readonly processSynchroniseResult!: (doc: MetaEntry) => Promise<boolean>;
     readonly handleProcessSynchroniseResult!: (handler: (doc: MetaEntry) => Promise<boolean>) => void;
     readonly processOptionalSynchroniseResult!: (doc: LoadedEntry) => Promise<boolean>;
@@ -546,6 +600,12 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
     readonly handleCheckConnectionFailure!: (handler: () => Promise<boolean | "CHECKAGAIN" | undefined>) => void;
 
     parseSynchroniseResult(docs: Array<PouchDB.Core.ExistingDocument<EntryDoc>>): void {
+        // Check if replication result processing is suspended
+        // This is used during rebuild operations to prevent premature file writes
+        if (this.core.settings.suspendParseReplicationResult) {
+            return; // Skip processing entirely, will be handled after rebuild completes
+        }
+        
         // Queue documents for processing
 
         let queuedCount = 0;
@@ -565,6 +625,21 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             }
         }
 
+        // ✨ 发出文件写入开始事件
+        if (queuedCount > 0 && this.core.onFileProgress) {
+            // 检查是否是第一批文件（队列之前为空）
+            const isFirstBatch = this.processingQueue.length === queuedCount && !this.isProcessing;
+            
+            if (isFirstBatch) {
+                // 第一批：启动新的写入任务
+                this.core.onFileProgress({
+                    type: 'file_write_start',
+                    totalFiles: queuedCount,
+                });
+            }
+			// 后续批次：这些文件会被追加到队列，总数会在 processQueue 中更新
+        }
+
         // Start processing queue if not already processing
         if (!this.isProcessing) {
             this.processQueue();
@@ -579,7 +654,8 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             let processed = 0;
             let errors = 0;
             const errorDetails: Array<{docId: string, docPath?: string, error: any}> = [];
-            
+            const totalFiles = this.processingQueue.length;
+
             while (this.processingQueue.length > 0) {
                 const doc = this.processingQueue.shift();
                 if (!doc) continue;
@@ -589,6 +665,16 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                     const result = await this.processSynchroniseResult(doc as unknown as MetaEntry);
                     if (result) {
                         processed++;
+                        
+                        // ✨ 发出文件写入进度事件
+                        if (this.core.onFileProgress) {
+                            this.core.onFileProgress({
+                                type: 'file_write_progress',
+                                writtenFiles: processed,
+                                totalFiles: totalFiles,
+                                currentFilePath: (doc as any).path,
+                            });
+                        }
                     } else {
                         errors++;
                         errorDetails.push({
@@ -614,10 +700,19 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 }
             }
             
+            // ✨ 发出文件写入完成事件
+            if (this.core.onFileProgress) {
+                this.core.onFileProgress({
+                    type: 'file_write_complete',
+                    totalFiles: totalFiles,
+                    successCount: processed,
+                    errorCount: errors,
+                });
+            }
+            
             // Log summary if there were errors
             if (errors > 0) {
-                console.log(`[Friday Sync] Queue processing complete: ${processed} succeeded, ${errors} failed`);
-                console.log(`[Friday Sync] Error details:`, errorDetails);
+                console.error(`[Friday Sync] Error details:`, errorDetails);
             }
         } finally {
             this.isProcessing = false;

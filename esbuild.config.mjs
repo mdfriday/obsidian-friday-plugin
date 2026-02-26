@@ -13,7 +13,7 @@ if you want to view the source, please visit the github repository of this plugi
 `
 
 const prod = process.argv[2] === 'production'
-const pluginDir = '/Users/sunwei/Desktop/mdf-661/.obsidian/plugins/mdfriday';
+const pluginDir = '/Users/weisun/Desktop/mdf-661/.obsidian/plugins/mdfriday';
 
 // 重命名 CSS 文件的函数
 const renameCssFile = (cssPath, targetPath) => {

@@ -36,6 +36,15 @@ import {
     getDocDataAsArray,
     readAsBlob,
 } from "./core/common/utils";
+import {
+    isMarkedAsSameChanges,
+    markChangesAreSame,
+    unmarkChanges,
+    BASE_IS_NEW,
+    TARGET_IS_NEW,
+    EVEN,
+} from "./utils/sameChangePairs";
+import type { MetaEntry } from "./core/common/types";
 
 export type FileEventType = "CREATE" | "CHANGED" | "DELETE" | "RENAME";
 
@@ -62,6 +71,54 @@ export function compareMtime(baseMTime: number, targetMTime: number): "BASE_IS_N
     if (truncatedBaseMTime === truncatedTargetMTime) return "EVEN";
     if (truncatedBaseMTime > truncatedTargetMTime) return "BASE_IS_NEW";
     return "TARGET_IS_NEW";
+}
+
+/**
+ * Compare file freshness with sameChangePairs optimization
+ * (Matching livesync's compareFileFreshness from src/common/utils.ts)
+ * 
+ * This function first checks if the mtimes are marked as "same changes" (identical content),
+ * and only falls back to mtime comparison if not marked.
+ * 
+ * @param baseFile - Base file info (local file or storage)
+ * @param targetFile - Target file info (database entry or remote)
+ * @returns "BASE_IS_NEW" | "TARGET_IS_NEW" | "EVEN"
+ * 
+ * @example
+ * ```typescript
+ * const result = compareFileFreshness(
+ *     { path: "note.md", mtime: localFile.stat.mtime },
+ *     { path: "note.md", mtime: dbEntry.mtime }
+ * );
+ * if (result === "EVEN") {
+ *     // Files are considered identical, skip processing
+ * }
+ * ```
+ */
+export function compareFileFreshness(
+    baseFile: { path: string; mtime: number } | undefined,
+    targetFile: { path: string; mtime: number } | undefined
+): "BASE_IS_NEW" | "TARGET_IS_NEW" | "EVEN" {
+    // Handle undefined cases
+    if (baseFile === undefined && targetFile === undefined) return "EVEN";
+    if (baseFile === undefined) return "TARGET_IS_NEW";
+    if (targetFile === undefined) return "BASE_IS_NEW";
+
+    const baseMtime = baseFile.mtime;
+    const targetMtime = targetFile.mtime;
+
+    // ✨ Key optimization: Check if these mtimes are marked as same changes
+    // This allows us to skip content comparison for known-identical files
+    if (baseMtime && targetMtime && isMarkedAsSameChanges(baseFile.path, [baseMtime, targetMtime]) === EVEN) {
+        Logger(
+            `File mtimes marked as same: ${baseFile.path} [${baseMtime}, ${targetMtime}]`,
+            LOG_LEVEL_VERBOSE
+        );
+        return "EVEN";
+    }
+
+    // Fall back to standard mtime comparison
+    return compareMtime(baseMtime, targetMtime);
 }
 
 /**
@@ -99,10 +156,6 @@ export class FridayStorageEventManager {
     // ==================== Livesync's mtime cache mechanism ====================
     // Tracks last processed mtime for each file to avoid reprocessing
     private lastProcessedMtime = new Map<string, number>();
-    
-    // ==================== Livesync's sameChangePairs mechanism ====================
-    // Tracks mtimes that should be considered equivalent (content is same)
-    private sameChangePairs = new Map<string, number[]>();
     
     // Queue for file events to process
     private eventQueue: FileEvent[] = [];
@@ -152,35 +205,6 @@ export class FridayStorageEventManager {
      */
     clearTouched() {
         this.touchedFiles = [];
-    }
-    
-    // ==================== Livesync's sameChangePairs mechanism ====================
-    
-    /**
-     * Mark two mtimes as representing the same content (livesync pattern)
-     * Used when content comparison shows files are identical despite different timestamps
-     */
-    markChangesAreSame(path: string, mtime1: number, mtime2: number) {
-        if (mtime1 === mtime2) return;
-        const pairs = this.sameChangePairs.get(path) || [];
-        const newPairs = [...new Set([...pairs, mtime1, mtime2])];
-        this.sameChangePairs.set(path, newPairs);
-        Logger(`Marked same: ${path} (${mtime1} == ${mtime2})`, LOG_LEVEL_DEBUG);
-    }
-    
-    /**
-     * Check if mtimes are marked as same content
-     */
-    isMarkedAsSame(path: string, mtime1: number, mtime2: number): boolean {
-        const pairs = this.sameChangePairs.get(path) || [];
-        return pairs.includes(mtime1) && pairs.includes(mtime2);
-    }
-    
-    /**
-     * Clear same change marks for a file
-     */
-    unmarkChanges(path: string) {
-        this.sameChangePairs.delete(path);
     }
     
     // ==================== File Processing Status ====================
@@ -302,11 +326,7 @@ export class FridayStorageEventManager {
         if (!this._isWatching) {
             return false;
         }
-        if (this._isSuspended) {
-            // This is the key protection: ignore all events when suspended
-            return false;
-        }
-        return true;
+        return !this._isSuspended;
     }
     
     // ==================== Event Handlers ====================
@@ -374,8 +394,8 @@ export class FridayStorageEventManager {
             clearTimeout(existingTimer);
             this.debounceTimers.delete(file.path);
         }
-        // Clear same change marks for deleted file
-        this.unmarkChanges(file.path);
+        // Note: LiveSync does NOT call unmarkChanges here
+        // The sameChangePairs will be naturally cleaned up when file is recreated
         this.enqueueEvent({
             type: "DELETE",
             path: file.path as FilePath,
@@ -390,8 +410,7 @@ export class FridayStorageEventManager {
         }
         
         if (file instanceof TFolder) return;
-        // Clear same change marks for old path
-        this.unmarkChanges(oldPath);
+        // Note: LiveSync does NOT call unmarkChanges here
         // Rename is handled as DELETE old + CREATE new
         this.enqueueEvent({
             type: "DELETE",
@@ -512,13 +531,14 @@ export class FridayStorageEventManager {
     }
 
     /**
-     * Process a file event directly, bypassing queue and debounce
-     * 
-     * Used by rebuildRemote() to scan and store all vault files at once.
-     * This is a public method that allows direct file processing.
-     * 
-     * @param force - If true, skip content comparison and force write
-     */
+	 * Process a file event directly, bypassing queue and debounce
+	 *
+	 * Used by rebuildRemote() to scan and store all vault files at once.
+	 * This is a public method that allows direct file processing.
+	 *
+	 * @param event
+	 * @param force - If true, skip content comparison and force write
+	 */
     async processFileEventDirect(event: FileEvent, force: boolean = false): Promise<boolean> {
         // Skip if file is being processed (to prevent circular sync)
         if (this.isFileProcessing(event.path)) {
@@ -588,74 +608,58 @@ export class FridayStorageEventManager {
             // ==================== Livesync's content comparison logic ====================
             // Only perform comparison if not forced
             if (!force) {
-                try {
-                    // Try to get existing entry from database
-                    const existingEntry = await localDB.getDBEntry(path as FilePathWithPrefix, undefined, false, true, false);
-                    
-                    if (existingEntry && !existingEntry.deleted && !existingEntry._deleted) {
-                        // Entry exists, check if we need to update
-                        let shouldUpdate = false;
-                        
-                        // 1. Check if already marked as same content
-                        if (this.isMarkedAsSame(path, file.stat.mtime, existingEntry.mtime)) {
-                            Logger(`File already marked as same content, skip: ${path}`, LOG_LEVEL_VERBOSE);
-                            return true;
-                        }
-                        
-                        // 2. Compare mtime with standard 2-second resolution (aligned with livesync)
-                        // LiveSync uses 2-second resolution for all files
-                        const resolution = MTIME_RESOLUTION;
-                        
-                        const fileMtimeTrunc = Math.floor(file.stat.mtime / resolution) * resolution;
-                        const dbMtimeTrunc = Math.floor(existingEntry.mtime / resolution) * resolution;
-                        
-                        if (fileMtimeTrunc !== dbMtimeTrunc) {
-                            shouldUpdate = true;
-                        }
-                        
-                        // 3. If mtime is similar, compare content (livesync pattern)
-                        if (!shouldUpdate) {
-                            // mtime is similar, need to compare content
-                            const existingData = getDocDataAsArray(existingEntry.data);
-                            const isSame = await isDocContentSame(existingData, contentBlob);
-                            
-                            if (isSame) {
-                                // Content is same, mark mtimes as equivalent
-                                this.markChangesAreSame(path, file.stat.mtime, existingEntry.mtime);
-                                Logger(`File content unchanged, skip: ${path}`, LOG_LEVEL_VERBOSE);
-                                // Update mtime cache even if content is same
-                                const cacheKey = `${event.type}-${path}`;
-                                this.lastProcessedMtime.set(cacheKey, file.stat.mtime);
-                                return true;
-                            } else {
-                                shouldUpdate = true;
-                            }
-                        }
-                        
-                        // 4. Even if mtime suggests update, verify content actually changed
-                        if (shouldUpdate) {
-                            const existingData = getDocDataAsArray(existingEntry.data);
-                            const isSame = await isDocContentSame(existingData, contentBlob);
-                            
-                            if (isSame) {
-                                // Content is same despite different mtime
-                                this.markChangesAreSame(path, file.stat.mtime, existingEntry.mtime);
-                                Logger(`File content unchanged (mtime different), skip: ${path}`, LOG_LEVEL_VERBOSE);
-                                const cacheKey = `${event.type}-${path}`;
-                                this.lastProcessedMtime.set(cacheKey, file.stat.mtime);
-                                return true;
-                            }
-                            
-                            // 5. Additional protection: If DB version is newer and file is actively editing, be cautious
-                            if (existingEntry.mtime > file.stat.mtime && isActivelyEditing) {
-                                Logger(`⚠️ WARNING: DB is newer but file is actively editing: ${path}`, LOG_LEVEL_NOTICE);
-                                Logger(`  This might indicate a remote update while editing. Local edit will take priority.`, LOG_LEVEL_INFO);
-                                // Still allow the update to proceed - local edit takes priority
-                            }
-                        }
-                        
-                        Logger(`File changed, updating: ${path}`, LOG_LEVEL_VERBOSE);
-                    }
+				try {
+					// Try to get existing entry from database
+					const existingEntry = await localDB.getDBEntry(path as FilePathWithPrefix, undefined, false, true, false);
+
+					if (existingEntry && !existingEntry.deleted && !existingEntry._deleted) {
+						// Entry exists, check if we need to update
+						let shouldUpdate = false;
+
+						// ✨ Step 1: Use compareFileFreshness (checks sameChangePairs first)
+						const freshnessResult = compareFileFreshness(
+							{path, mtime: file.stat.mtime},
+							{path, mtime: existingEntry.mtime}
+						);
+
+					switch (freshnessResult) {
+						case "EVEN":
+							Logger(`File mtimes are equivalent (marked or same), skip: ${path}`, LOG_LEVEL_VERBOSE);
+							// Update mtime cache
+							const cacheKey = `${event.type}-${path}`;
+							this.lastProcessedMtime.set(cacheKey, file.stat.mtime);
+							return true;
+						case "BASE_IS_NEW":
+						case "TARGET_IS_NEW":
+							shouldUpdate = true;
+							break;
+					}
+
+						// 2. Compare mtime with standard 2-second resolution (aligned with livesync)
+						// Note: compareFileFreshness already did this, but if we reach here,
+						// it means freshnessResult was not "EVEN", so we need to check content
+
+					// 3. If mtime suggests change, compare content (livesync pattern)
+					if (shouldUpdate) {
+						const existingData = getDocDataAsArray(existingEntry.data);
+						const isSame = await isDocContentSame(existingData, contentBlob);
+
+						if (isSame) {
+							// ✨ Content is same despite different mtime - mark them!
+							markChangesAreSame(path, file.stat.mtime, existingEntry.mtime);
+							Logger(`File content unchanged (mtime different), marked as same: ${path}`, LOG_LEVEL_VERBOSE);
+							// Update mtime cache
+							const cacheKey = `${event.type}-${path}`;
+							this.lastProcessedMtime.set(cacheKey, file.stat.mtime);
+							return true;
+						} else {
+							// Content is different - clear old marks
+							unmarkChanges(path);
+						}
+					}
+				}
+
+				Logger(`File changed, updating: ${path}`, LOG_LEVEL_VERBOSE);
                 } catch (e) {
                     // Entry doesn't exist or error getting it - proceed with creation
                     Logger(`Entry not found or error, creating: ${path}`, LOG_LEVEL_VERBOSE);
@@ -689,16 +693,14 @@ export class FridayStorageEventManager {
                 const cacheKey = `${event.type}-${path}`;
                 this.lastProcessedMtime.set(cacheKey, file.stat.mtime);
                 
-                // Clear any same-change marks since we've now written new content
-                this.unmarkChanges(path);
+                // Note: LiveSync does NOT call unmarkChanges after successful write
+                // The sameChangePairs marks should be preserved for future comparisons
                 
                 Logger(`STORAGE -> DB (${datatype}) ${path}`);
                 
-                // Update counter for UI
-                this.core.replicationStat.value = {
-                    ...this.core.replicationStat.value,
-                    sent: this.core.replicationStat.value.sent + 1,
-                };
+                // Note: Do NOT update counter here - LiveSyncReplicator will count on push
+                // The replicator.docSent will include all docs (metadata + chunks) when pushed
+                
                 return true;
             } else {
                 Logger(`Failed to store: ${path}`, LOG_LEVEL_INFO);
@@ -729,7 +731,9 @@ export class FridayStorageEventManager {
                 // Clear caches for deleted file
                 this.lastProcessedMtime.delete(`CREATE-${path}`);
                 this.lastProcessedMtime.delete(`CHANGED-${path}`);
-                this.unmarkChanges(path);
+                
+                // Note: LiveSync does NOT call unmarkChanges in deleteFileFromDB
+                // The sameChangePairs will be naturally cleaned up if file is recreated
                 
                 Logger(`STORAGE -> DB (delete): ${path}`, LOG_LEVEL_VERBOSE);
                 return true;

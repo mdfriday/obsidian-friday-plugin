@@ -65,8 +65,6 @@ export class Hugoverse {
 						  (error?.status && error.status === 401);
 
 			if (is401) {
-				console.log("Received 401 error, attempting to refresh token...");
-				
 				// Try to refresh token by logging in again
 				await this.user.login();
 				
@@ -76,7 +74,6 @@ export class Hugoverse {
 				}
 
 				// Retry the request with new token
-				console.log("Token refreshed, retrying request...");
 				return await requestFn(this.user.token);
 			}
 
@@ -706,7 +703,6 @@ export class Hugoverse {
 				}
 				
 				const data = response.json;
-				console.log("Update subdomain response data:", data);
 				if (data && data.data && data.data.length > 0) {
 					return data.data[0] as SubdomainUpdateResponse;
 				}

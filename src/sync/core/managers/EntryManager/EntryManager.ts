@@ -18,6 +18,7 @@ import {
     LEAF_WAIT_TIMEOUT,
     LEAF_WAIT_TIMEOUT_SEQUENTIAL_REPLICATOR,
     LEAF_WAIT_ONLY_REMOTE,
+    calculateChunkTimeout,
     type SavingEntry,
     type PlainEntry,
     type NewEntry,
@@ -259,15 +260,18 @@ export class EntryManager {
                 const isChunksCorrectedIncrementally = this.settings.remoteType !== RemoteTypes.REMOTE_MINIO;
                 const isNetworkEnabled =
                     this.isOnDemandChunkEnabled && this.settings.remoteType !== RemoteTypes.REMOTE_MINIO;
+                
+                const childrenKeys = [...meta.children] as DocumentID[];
+                
+                // 🔧 Dynamic timeout based on chunk count for large files
                 const timeout = waitForReady
                     ? isChunksCorrectedIncrementally
-                        ? LEAF_WAIT_TIMEOUT
+                        ? calculateChunkTimeout(childrenKeys.length)  // Dynamic for CouchDB
                         : LEAF_WAIT_TIMEOUT_SEQUENTIAL_REPLICATOR
                     : isNetworkEnabled
                       ? LEAF_WAIT_ONLY_REMOTE
                       : 0;
-
-                const childrenKeys = [...meta.children] as DocumentID[];
+                
                 const chunks = await this.chunkManager.read(
                     childrenKeys,
                     {

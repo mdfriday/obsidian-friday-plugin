@@ -877,6 +877,9 @@ export default class FridayPlugin extends Plugin {
 			"\\.obsidian\\/cache",
 			"\\/node_modules\\/",
 			"\\/\\.git\\/",
+			"plugins\\/mdfriday\\/main\\.js",
+			"plugins\\/mdfriday\\/styles\\.css",
+			"plugins\\/mdfriday\\/manifest\\.json",
 			"plugins\\/mdfriday\\/preview",
 			"plugins\\/mdfriday\\/themes",
 		];
@@ -1154,6 +1157,9 @@ export default class FridayPlugin extends Plugin {
 				if (initialized && this.syncService.syncCore && this.syncStatusDisplay) {
 					this.syncStatusDisplay.setCore(this.syncService.syncCore);
 					this.syncStatusDisplay.initialize();
+					
+					// ✨ Connect status display to core for progress tracking
+					this.syncService.syncCore.setStatusDisplay(this.syncStatusDisplay);
 					
 					// Connect log callback to status display
 					// All logs are displayed in logMessage area, only NOTICE shows popup
@@ -2751,6 +2757,9 @@ class FridaySettingTab extends PluginSettingTab {
 			"\\.obsidian\\/cache",
 			"\\/node_modules\\/",
 			"\\/\\.git\\/",
+			"plugins\\/mdfriday\\/main\\.js",
+			"plugins\\/mdfriday\\/styles\\.css",
+			"plugins\\/mdfriday\\/manifest\\.json",
 			"plugins\\/mdfriday\\/preview",
 			"plugins\\/mdfriday\\/themes",
 		];
