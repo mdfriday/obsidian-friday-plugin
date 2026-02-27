@@ -21,8 +21,12 @@ export interface FileProgressState {
     totalFilesToWrite: number;
     writtenFiles: number;
     
+    // 实时同步活动
+    syncActivityProcessed: number;
+    syncActivityCompleted: boolean;  // 新增：标记同步是否已完成
+    
     // 当前操作
-    currentOperation: 'upload' | 'download' | 'write' | 'idle';
+    currentOperation: 'upload' | 'download' | 'write' | 'sync_activity' | 'sync_completed' | 'idle';
 }
 
 export class FileProgressTracker {
@@ -33,6 +37,8 @@ export class FileProgressTracker {
         downloadedFiles: 0,
         totalFilesToWrite: 0,
         writtenFiles: 0,
+        syncActivityProcessed: 0,
+        syncActivityCompleted: false,
         currentOperation: 'idle',
     };
     
@@ -90,6 +96,25 @@ export class FileProgressTracker {
                 this.state.writtenFiles = event.successCount;
                 setTimeout(() => this.reset(), 2000);
                 break;
+            
+            // === 实时同步活动事件 ===
+            case 'sync_activity_start':
+                this.state.currentOperation = 'sync_activity';
+                this.state.syncActivityProcessed = 0;
+                this.state.syncActivityCompleted = false;
+                break;
+                
+            case 'sync_activity_progress':
+                this.state.syncActivityProcessed = event.processedFiles;
+                break;
+                
+            case 'sync_activity_complete':
+                this.state.currentOperation = 'sync_completed';
+                this.state.syncActivityProcessed = event.totalProcessed;
+                this.state.syncActivityCompleted = true;
+                // 显示完成状态3秒后隐藏
+                setTimeout(() => this.reset(), 3000);
+                break;
         }
         
         this.notifyChange();
@@ -106,6 +131,8 @@ export class FileProgressTracker {
             downloadedFiles: 0,
             totalFilesToWrite: 0,
             writtenFiles: 0,
+            syncActivityProcessed: 0,
+            syncActivityCompleted: false,
             currentOperation: 'idle',
         };
         this.notifyChange();
@@ -120,6 +147,7 @@ export class FileProgressTracker {
     
     /**
      * 计算总体进度（0-100）
+     * @returns -1 表示不确定进度（显示滚动动画），0-100 表示确定进度
      */
     getOverallProgress(): number {
         const { currentOperation } = this.state;
@@ -139,6 +167,16 @@ export class FileProgressTracker {
             return totalFilesToWrite > 0 ? (writtenFiles / totalFilesToWrite) * 100 : 0;
         }
         
+        // 实时同步进行中：返回 -1 表示不确定进度（触发滚动动画）
+        if (currentOperation === 'sync_activity') {
+            return -1;
+        }
+        
+        // 实时同步完成：返回 100（显示绿色完成状态）
+        if (currentOperation === 'sync_completed') {
+            return 100;
+        }
+        
         return 0;
     }
     
@@ -152,21 +190,31 @@ export class FileProgressTracker {
             return $msg('fridaySync.progress.uploadingFiles', {
                 current: this.state.uploadedFiles.toString(),
                 total: this.state.totalFilesToUpload.toString()
-            });
+            }) || `上传文件：${this.state.uploadedFiles}/${this.state.totalFilesToUpload}`;
         }
         
         if (currentOperation === 'download') {
             return $msg('fridaySync.progress.downloadingFiles', {
                 current: this.state.downloadedFiles.toString(),
                 total: this.state.totalFilesToDownload.toString()
-            });
+            }) || `下载文件：${this.state.downloadedFiles}/${this.state.totalFilesToDownload}`;
         }
         
         if (currentOperation === 'write') {
             return $msg('fridaySync.progress.writingFiles', {
                 current: this.state.writtenFiles.toString(),
                 total: this.state.totalFilesToWrite.toString()
-            });
+            }) || `写入文件：${this.state.writtenFiles}/${this.state.totalFilesToWrite}`;
+        }
+        
+        // 实时同步进行中：不显示具体数字
+        if (currentOperation === 'sync_activity') {
+            return $msg('fridaySync.progress.syncing') || '正在同步...';
+        }
+        
+        // 实时同步完成：显示完成提示
+        if (currentOperation === 'sync_completed') {
+            return $msg('fridaySync.progress.syncCompleted') || '同步完成 ✓';
         }
         
         return '';

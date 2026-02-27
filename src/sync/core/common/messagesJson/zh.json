@@ -487,5 +487,7 @@
     "liveSyncReplicator.couldNotRetrieveMilestone": "无法检索远程里程碑",
     "fridaySync.progress.uploadingFiles": "上传文件 (${current}/${total})",
     "fridaySync.progress.downloadingFiles": "下载文件 (${current}/${total})",
-    "fridaySync.progress.writingFiles": "写入文件 (${current}/${total})"
+    "fridaySync.progress.writingFiles": "写入文件 (${current}/${total})",
+    "fridaySync.progress.syncing": "正在同步...",
+    "fridaySync.progress.syncCompleted": "同步完成 ✓"
 }

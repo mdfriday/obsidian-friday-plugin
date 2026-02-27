@@ -65,6 +65,23 @@ export interface FileWriteCompleteEvent {
     errorCount: number;
 }
 
+// ========== 实时同步活动事件（不确定总数的场景）==========
+
+export interface SyncActivityStartEvent {
+    type: 'sync_activity_start';
+    // 不需要 totalFiles，因为实时同步时不确定总文件数
+}
+
+export interface SyncActivityProgressEvent {
+    type: 'sync_activity_progress';
+    processedFiles: number;  // 已处理的文件数（只增不减）
+}
+
+export interface SyncActivityCompleteEvent {
+    type: 'sync_activity_complete';
+    totalProcessed: number;
+}
+
 // ========== 联合类型 ==========
 
 export type FileProgressEvent = 
@@ -76,7 +93,10 @@ export type FileProgressEvent =
     | DownloadCompleteEvent
     | FileWriteStartEvent
     | FileWriteProgressEvent
-    | FileWriteCompleteEvent;
+    | FileWriteCompleteEvent
+    | SyncActivityStartEvent
+    | SyncActivityProgressEvent
+    | SyncActivityCompleteEvent;
 
 /**
  * 文件进度回调函数类型

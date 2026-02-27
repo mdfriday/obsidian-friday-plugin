@@ -278,6 +278,11 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
     private core: FridaySyncCore;
     private processingQueue: Array<PouchDB.Core.ExistingDocument<EntryDoc>> = [];
     private isProcessing = false;
+    
+    // 实时同步活动统计
+    private syncActivityStarted = false;
+    private totalProcessed = 0;
+    private completeTimer?: ReturnType<typeof setTimeout>;
 
     constructor(backend: ServiceBackend, core: FridaySyncCore) {
         super(backend);
@@ -607,7 +612,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         }
         
         // Queue documents for processing
-
         let queuedCount = 0;
         for (const doc of docs) {
             // Skip chunks and system documents
@@ -625,19 +629,23 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
             }
         }
 
-        // ✨ 发出文件写入开始事件
+        // ✨ 发送实时同步活动事件（使用 sync_activity_* 而不是 file_write_*）
         if (queuedCount > 0 && this.core.onFileProgress) {
-            // 检查是否是第一批文件（队列之前为空）
-            const isFirstBatch = this.processingQueue.length === queuedCount && !this.isProcessing;
+            // 取消之前的完成定时器（因为有新任务到达）
+            if (this.completeTimer) {
+                clearTimeout(this.completeTimer);
+                this.completeTimer = undefined;
+            }
             
-            if (isFirstBatch) {
-                // 第一批：启动新的写入任务
+            if (!this.syncActivityStarted) {
+                // 第一次接收到文档：启动同步活动
+                this.syncActivityStarted = true;
+                this.totalProcessed = 0;
                 this.core.onFileProgress({
-                    type: 'file_write_start',
-                    totalFiles: queuedCount,
+                    type: 'sync_activity_start',
                 });
             }
-			// 后续批次：这些文件会被追加到队列，总数会在 processQueue 中更新
+            // 后续批次：不发送任何事件，继续累积处理
         }
 
         // Start processing queue if not already processing
@@ -651,11 +659,6 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
         this.isProcessing = true;
 
         try {
-            let processed = 0;
-            let errors = 0;
-            const errorDetails: Array<{docId: string, docPath?: string, error: any}> = [];
-            const totalFiles = this.processingQueue.length;
-
             while (this.processingQueue.length > 0) {
                 const doc = this.processingQueue.shift();
                 if (!doc) continue;
@@ -664,32 +667,17 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                     // Cast to MetaEntry for processing
                     const result = await this.processSynchroniseResult(doc as unknown as MetaEntry);
                     if (result) {
-                        processed++;
+                        this.totalProcessed++;
                         
-                        // ✨ 发出文件写入进度事件
+                        // ✨ 发送实时同步进度事件（不显示具体数字）
                         if (this.core.onFileProgress) {
                             this.core.onFileProgress({
-                                type: 'file_write_progress',
-                                writtenFiles: processed,
-                                totalFiles: totalFiles,
-                                currentFilePath: (doc as any).path,
+                                type: 'sync_activity_progress',
+                                processedFiles: this.totalProcessed,
                             });
                         }
-                    } else {
-                        errors++;
-                        errorDetails.push({
-                            docId: doc._id,
-                            docPath: (doc as any).path,
-                            error: 'processSynchroniseResult returned false',
-                        });
                     }
                 } catch (error) {
-                    errors++;
-                    errorDetails.push({
-                        docId: doc._id,
-                        docPath: (doc as any).path,
-                        error: error,
-                    });
                     console.error(`[Friday Sync] Error processing doc ${doc._id}:`, {
                         error: error,
                         docPath: (doc as any).path,
@@ -700,23 +688,38 @@ class FridayReplicationService extends ServiceBase implements ReplicationService
                 }
             }
             
-            // ✨ 发出文件写入完成事件
-            if (this.core.onFileProgress) {
-                this.core.onFileProgress({
-                    type: 'file_write_complete',
-                    totalFiles: totalFiles,
-                    successCount: processed,
-                    errorCount: errors,
-                });
-            }
-            
-            // Log summary if there were errors
-            if (errors > 0) {
-                console.error(`[Friday Sync] Error details:`, errorDetails);
-            }
+            // ✨ 队列暂时清空：使用 debounce 延迟发送完成事件
+            // 如果 2 秒内没有新任务，才认为真正完成
+            this.scheduleComplete();
         } finally {
             this.isProcessing = false;
         }
+    }
+    
+    /**
+     * 延迟发送同步完成事件
+     * 使用 debounce 机制：只有当队列空闲 2 秒后，才认为同步真正完成
+     */
+    private scheduleComplete(): void {
+        // 清除之前的定时器
+        if (this.completeTimer) {
+            clearTimeout(this.completeTimer);
+        }
+        
+        // 设置新的定时器：2秒后发送完成事件
+        this.completeTimer = setTimeout(() => {
+            // 再次检查队列是否为空
+            if (this.processingQueue.length === 0 && this.syncActivityStarted && this.core.onFileProgress) {
+                this.core.onFileProgress({
+                    type: 'sync_activity_complete',
+                    totalProcessed: this.totalProcessed,
+                });
+                // 重置状态
+                this.syncActivityStarted = false;
+                this.totalProcessed = 0;
+                this.completeTimer = undefined;
+            }
+        }, 2000); // 2秒延迟
     }
 
     async isReplicationReady(showMessage: boolean): Promise<boolean> {

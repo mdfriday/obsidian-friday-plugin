@@ -609,6 +609,9 @@ export class SyncStatusDisplay {
             return;
         }
         
+        const progress = this.fileProgressTracker.getOverallProgress();
+        const displayText = this.fileProgressTracker.getDisplayText();
+        
         // 空闲状态：隐藏进度条
         if (state.currentOperation === 'idle') {
             // Only animate fadeout if the progress bar was previously active
@@ -627,15 +630,18 @@ export class SyncStatusDisplay {
         this.progressBarContainer.addClass("active");
         this.progressBarContainer.removeClass("fadeout");
         
-        // Calculate overall progress
-        const progress = this.fileProgressTracker.getOverallProgress();
-        const displayText = this.fileProgressTracker.getDisplayText();
-
-        // Update progress bar width
-        this.progressBarFill.style.width = `${progress}%`;
-        
-        // Update progress label
-        this.progressBarLabel.innerText = displayText;
+        // ✨ 区分确定进度和不确定进度
+        if (progress === -1) {
+            // 不确定进度：显示滚动动画（实时同步场景）
+            this.progressBarFill.addClass("indeterminate");
+            this.progressBarFill.style.width = '';  // CSS 动画控制宽度
+            this.progressBarLabel.innerText = displayText;
+        } else {
+            // 确定进度：显示百分比（首次上传/下载场景）
+            this.progressBarFill.removeClass("indeterminate");
+            this.progressBarFill.style.width = `${progress}%`;
+            this.progressBarLabel.innerText = displayText;
+        }
         
         // Completed state
         if (progress >= 100) {

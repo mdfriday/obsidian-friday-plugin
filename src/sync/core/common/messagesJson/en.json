@@ -631,5 +631,7 @@
     "liveSyncReplicator.couldNotRetrieveMilestone": "Could not retrieve remote milestone",
     "fridaySync.progress.uploadingFiles": "Uploading files (${current}/${total})",
     "fridaySync.progress.downloadingFiles": "Downloading files (${current}/${total})",
-    "fridaySync.progress.writingFiles": "Writing files (${current}/${total})"
+    "fridaySync.progress.writingFiles": "Writing files (${current}/${total})",
+    "fridaySync.progress.syncing": "Syncing...",
+    "fridaySync.progress.syncCompleted": "Sync completed ✓"
 }
