@@ -188,3 +188,61 @@
     font-weight: 600;
     color: var(--text-error);
 }
+
+/* Premium Pricing Button with Rainbow Gradient Border */
+.friday-premium-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 32px;
+    margin-left: 8px;
+    z-index: 0;
+}
+
+.friday-premium-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    padding: 2px;
+    background: linear-gradient(
+        120deg,
+        #ff6a6a,
+        #ffb86c,
+        #f1fa8c,
+        #50fa7b,
+        #8be9fd,
+        #bd93f9
+    );
+    mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+    -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    z-index: -1;
+}
+
+.friday-premium-btn:hover {
+    background: var(--background-modifier-hover);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+    transform: translateY(-1px);
+}
+
+.friday-premium-btn:active {
+    transform: translateY(0);
+    box-shadow: none;
+}

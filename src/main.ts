@@ -2210,6 +2210,18 @@ class FridaySettingTab extends PluginSettingTab {
 				}
 			});
 
+			// Add "Pricing Details" button next to the Plan Badge (only for Free plan)
+			if (license.plan.toLowerCase() === 'free') {
+				const pricingBtn = licenseKeySetting.controlEl.createEl('button', {
+					cls: 'friday-premium-btn',
+					text: this.plugin.i18n.t('settings.pricing_details') || '套餐详情'
+				});
+				
+				pricingBtn.addEventListener('click', () => {
+					window.open('https://mdfriday.com/pricing.html', '_blank');
+				});
+			}
+
 			// Row 2: Storage Usage
 			const usage = this.plugin.settings.licenseUsage;
 			const usedStorage = usage?.totalDiskUsage || 0;
@@ -2294,6 +2306,16 @@ class FridaySettingTab extends PluginSettingTab {
 							}
 						});
 				});
+
+			// Add "Pricing Details" button next to the Activate button
+			const pricingBtn = licenseSetting.controlEl.createEl('button', {
+				cls: 'friday-premium-btn',
+				text: this.plugin.i18n.t('settings.pricing_details') || '套餐详情'
+			});
+			
+			pricingBtn.addEventListener('click', () => {
+				window.open('https://mdfriday.com/pricing.html', '_blank');
+			});
 
 			// Add status element
 			statusEl = licenseSetting.descEl.createSpan({cls: 'friday-license-status-text'});
@@ -2652,8 +2674,8 @@ class FridaySettingTab extends PluginSettingTab {
 		// Helper function to save all patterns
 		const savePatterns = async () => {
 			const patterns: string[] = [];
-			const inputs = patternsListContainer.querySelectorAll('input[type="text"]');
-			inputs.forEach((input: HTMLInputElement) => {
+			const inputs = patternsListContainer.querySelectorAll<HTMLInputElement>('input[type="text"]');
+			inputs.forEach((input) => {
 				const value = input.value.trim();
 				if (value) {
 					patterns.push(value);

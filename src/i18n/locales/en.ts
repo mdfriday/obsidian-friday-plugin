@@ -55,6 +55,9 @@ export const en: TranslationNamespace = {
 		trial_request_success: "Trial license created! License key has been filled in above.",
 		trial_request_failed: "Failed to request trial license. Please try again.",
 		trial_invalid_email: "Please enter a valid email address",
+		
+		// Pricing button
+		pricing_details: "Pricing Details",
 
 		// Sync Settings (License-based)
 		sync_enabled: "Sync is enabled",

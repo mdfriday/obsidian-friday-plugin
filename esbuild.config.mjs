@@ -115,12 +115,16 @@ const externals = [
 	'os',
 	'process',
 	'url',
+	'worker_threads',
+	'child_process',
 	'node:fs',
 	'node:fs/promises',
 	'node:path',
 	'node:stream',
 	'node:process',
 	'node:url',
+	'node:worker_threads',
+	'node:child_process',
 ];
 
 const buildOptions = {

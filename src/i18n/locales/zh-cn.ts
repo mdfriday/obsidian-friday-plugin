@@ -55,6 +55,9 @@ export const zhCn: TranslationNamespace = {
 		trial_request_success: "试用许可证创建成功！许可证密钥已填入上方。",
 		trial_request_failed: "申请试用许可证失败，请重试。",
 		trial_invalid_email: "请输入有效的邮箱地址",
+		
+		// Pricing button
+		pricing_details: "套餐详情",
 
 		// Sync Settings (License-based)
 		sync_enabled: "同步已启用",
