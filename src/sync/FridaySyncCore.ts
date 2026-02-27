@@ -1902,13 +1902,16 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
      * Fetch all missing chunks from remote database
      * This ensures chunks are present before rebuildVaultFromDB
      * 
-     * Equivalent to livesync's fetchAllUsedChunks()
+     * Similar to livesync's fetchAllUsedChunks() but simplified for our use case
      * 
      * Why this is needed:
      * - ChunkFetcher is passive (responds to MISSING_CHUNKS events)
      * - It only triggers when getDBEntryFromMeta is called
      * - rebuildVaultFromDB would fail if chunks aren't present yet
      * - This method ACTIVELY fetches all referenced chunks upfront
+     * 
+     * Note: This uses the same batch size as ChunkFetcher (100 chunks per request)
+     * to maintain consistency with the rest of the system.
      */
     private async fetchAllMissingChunksFromRemote(): Promise<void> {
         if (!this._replicator || !this._localDatabase) {
@@ -1937,6 +1940,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
             }
 
             if (referencedChunkIds.size === 0) {
+                Logger("No chunk references found", LOG_LEVEL_VERBOSE);
                 return;
             }
             
@@ -1951,6 +1955,7 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 .map((row: any) => row.key);
             
             if (missingChunkIds.length === 0) {
+                Logger("All chunks are already present locally", LOG_LEVEL_VERBOSE);
                 return;
             }
             
@@ -1958,51 +1963,73 @@ export class FridaySyncCore implements LiveSyncLocalDBEnv, LiveSyncCouchDBReplic
                 $msg("fridaySync.fetch.fetchingMissingChunks", { 
                     count: missingChunkIds.length.toString() 
                 }) ||
-                `Found ${missingChunkIds.length} missing chunks, fetching from remote...`,
-                LOG_LEVEL_VERBOSE
+                `Fetching ${missingChunkIds.length} missing chunks from remote...`,
+                LOG_LEVEL_INFO
             );
             
-            // Step 3: Fetch missing chunks from remote using the replicator
-            const batchSize = 100;
-            let fetched = 0;
+            // Step 3: Fetch missing chunks from remote in batches
+            // Use the same batch size as ChunkFetcher for consistency
+            const BATCH_SIZE = 100;
+            const totalBatches = Math.ceil(missingChunkIds.length / BATCH_SIZE);
+            let fetchedTotal = 0;
             
-            for (let i = 0; i < missingChunkIds.length; i += batchSize) {
-                const batch = missingChunkIds.slice(i, i + batchSize);
-                const batchNum = Math.floor(i / batchSize) + 1;
-                const totalBatches = Math.ceil(missingChunkIds.length / batchSize);
+            for (let i = 0; i < missingChunkIds.length; i += BATCH_SIZE) {
+                const batch = missingChunkIds.slice(i, i + BATCH_SIZE);
+                const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+                
+                Logger(
+                    `Fetching batch ${batchNum}/${totalBatches} (${batch.length} chunks)...`,
+                    LOG_LEVEL_VERBOSE
+                );
                 
                 // Use the replicator's fetchRemoteChunks method
+                // Note: fetchRemoteChunks is now simplified and doesn't batch internally
                 const chunks = await this._replicator.fetchRemoteChunks(batch, false);
                 
                 if (chunks === false) {
-                    console.error(`[fetchAllMissingChunks] ❌ Failed to fetch batch ${batchNum}/${totalBatches}`);
+                    Logger(
+                        `Failed to fetch batch ${batchNum}/${totalBatches}`,
+                        LOG_LEVEL_VERBOSE
+                    );
                     continue;
                 }
                 
                 // Write chunks to local database
                 try {
                     await localDB.bulkDocs(chunks, { new_edits: false });
-                    fetched += chunks.length;
+                    fetchedTotal += chunks.length;
+                    
                     Logger(
-                        `Fetched chunks: ${fetched} / ${missingChunkIds.length}`,
-                        LOG_LEVEL_VERBOSE,
-                        "fetch-chunks"
+                        `Progress: ${fetchedTotal}/${missingChunkIds.length} chunks fetched`,
+                        LOG_LEVEL_VERBOSE
                     );
                 } catch (ex) {
-                    console.error(`[fetchAllMissingChunks] ❌ Error writing chunks to database:`, ex);
+                    Logger(
+                        `Error writing batch ${batchNum} to database: ${ex}`,
+                        LOG_LEVEL_VERBOSE
+                    );
                 }
             }
             
             Logger(
                 $msg("fridaySync.fetch.chunkFetchComplete", { 
-                    count: fetched.toString() 
+                    count: fetchedTotal.toString() 
                 }) ||
-                `Chunk fetching complete: ${fetched} chunks fetched`,
-                LOG_LEVEL_VERBOSE
+                `Chunk fetching complete: ${fetchedTotal}/${missingChunkIds.length} chunks fetched`,
+                LOG_LEVEL_INFO
             );
+            
+            if (fetchedTotal < missingChunkIds.length) {
+                Logger(
+                    `Warning: Only ${fetchedTotal}/${missingChunkIds.length} chunks were fetched`,
+                    LOG_LEVEL_NOTICE
+                );
+            }
         } catch (ex) {
-            console.error("[fetchAllMissingChunks] ❌ Error in fetchAllMissingChunksFromRemote:", ex);
-            Logger("Error in fetchAllMissingChunksFromRemote", LOG_LEVEL_INFO);
+            Logger(
+                `Error in fetchAllMissingChunksFromRemote: ${ex}`,
+                LOG_LEVEL_NOTICE
+            );
             Logger(ex, LOG_LEVEL_VERBOSE);
         }
     }

@@ -952,10 +952,27 @@ class FridayRemoteService extends ServiceBase implements RemoteService {
                         headers.append("Authorization", `Basic ${credentials}`);
                     }
                     
+                    // 🔧 Add timeout for HTTP requests
+                    // ChunkFetcher batches requests (100 chunks per batch)
+                    // Each batch should complete within this timeout
+                    const DEFAULT_HTTP_TIMEOUT = 30000; // 30 seconds per batch
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_HTTP_TIMEOUT);
+                    
                     try {
-                        const response = await fetch(url, { ...opts, headers });
+                        const response = await fetch(url, { 
+                            ...opts, 
+                            headers,
+                            signal: controller.signal 
+                        });
+                        clearTimeout(timeoutId);
                         return response;
                     } catch (ex: any) {
+                        clearTimeout(timeoutId);
+                        if (ex.name === 'AbortError') {
+                            console.error("[Friday Sync] Request timeout after", DEFAULT_HTTP_TIMEOUT, "ms:", url);
+                            throw new Error(`Request timeout after ${DEFAULT_HTTP_TIMEOUT}ms`);
+                        }
                         console.error("[Friday Sync] Fetch error:", ex);
                         throw ex;
                     }

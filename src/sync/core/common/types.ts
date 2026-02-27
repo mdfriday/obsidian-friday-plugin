@@ -43,15 +43,21 @@ export const REPLICATION_BUSY_TIMEOUT = 3000000;
 
 /**
  * Calculate dynamic timeout based on chunk count for large files
+ * This timeout is for waiting on individual chunks via ChunkFetcher's batched requests
+ * ChunkFetcher batches chunks (100 per request), so timeout accounts for multiple HTTP requests
  * @param chunkCount Number of chunks to download
  * @returns Timeout in milliseconds
  */
 export function calculateChunkTimeout(chunkCount: number): number {
-    const BASE_TIMEOUT = 15000;      // 15 seconds base (increased from 10)
-    const PER_CHUNK_TIMEOUT = 200;   // 200ms per chunk (increased from 100)
+    const BASE_TIMEOUT = 10000;      // 10 seconds base
+    const BATCH_SIZE = 100;          // ChunkFetcher batch size
+    const TIMEOUT_PER_BATCH = 35000; // 35 seconds per batch (HTTP 30s + 5s buffer)
     const MAX_TIMEOUT = 300000;      // 5 minutes maximum
     
-    const calculated = BASE_TIMEOUT + chunkCount * PER_CHUNK_TIMEOUT;
+    // Calculate based on number of batches
+    const numBatches = Math.ceil(chunkCount / BATCH_SIZE);
+    const calculated = BASE_TIMEOUT + numBatches * TIMEOUT_PER_BATCH;
+    
     return Math.min(calculated, MAX_TIMEOUT);
 }
 
