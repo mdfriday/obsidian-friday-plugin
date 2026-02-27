@@ -302,6 +302,14 @@ export class FridayStorageEventManager {
     }
     
     /**
+     * Start watching vault
+     */
+    startWatch() {
+        this._isWatching = true;
+        Logger("Storage event manager started", LOG_LEVEL_VERBOSE);
+    }
+    
+    /**
      * Suspend file watching (LiveSync's suspendFileWatching pattern)
      * Used when processing remote updates to prevent feedback loops
      */

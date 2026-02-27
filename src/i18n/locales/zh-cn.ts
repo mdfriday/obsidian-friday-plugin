@@ -69,6 +69,7 @@ export const zhCn: TranslationNamespace = {
 		sync_data_available: "云端已有数据可供下载。",
 		sync_uploading: "上传中...",
 		sync_downloading: "下载中...",
+		sync_resetting: "重置中...",
 		sync_upload_success: "本地数据已成功上传到云端！",
 		sync_download_success: "云端数据已成功下载！",
 		sync_operation_failed: "同步操作失败，请重试。",

@@ -69,6 +69,7 @@ export const en: TranslationNamespace = {
 		sync_data_available: "Data is available in the cloud.",
 		sync_uploading: "Uploading...",
 		sync_downloading: "Downloading...",
+		sync_resetting: "Resetting...",
 		sync_upload_success: "Local data uploaded to cloud successfully!",
 		sync_download_success: "Cloud data downloaded successfully!",
 		sync_operation_failed: "Sync operation failed. Please try again.",

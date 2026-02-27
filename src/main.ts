@@ -2861,7 +2861,7 @@ class FridaySettingTab extends PluginSettingTab {
 				resetButton.addEventListener('click', async () => {
 					if (resetInput === 'RESET' && !resetButton.disabled) {
 						resetButton.disabled = true;
-						resetButton.textContent = this.plugin.i18n.t('settings.sync_uploading');
+						resetButton.textContent = this.plugin.i18n.t('settings.sync_resetting');
 						try {
 							await this.performReset();
 						} catch (error) {

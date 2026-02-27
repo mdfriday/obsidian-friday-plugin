@@ -1269,7 +1269,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         // Recreate salt
         clearHandlers();
         await this.ensurePBKDF2Salt(setting, true, false);
-        Logger($msg("liveSyncReplicator.remoteDbCreatedOrConnected"), LOG_LEVEL_NOTICE);
+        Logger($msg("liveSyncReplicator.remoteDbCreatedOrConnected"), LOG_LEVEL_VERBOSE);
     }
     async markRemoteLocked(setting: RemoteDBSettings, locked: boolean, lockByClean: boolean) {
         const uri = setting.couchDB_URI + (setting.couchDB_DBNAME == "" ? "" : "/" + setting.couchDB_DBNAME);
@@ -1304,9 +1304,9 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         remoteMilestone.locked = locked;
         remoteMilestone.cleaned = remoteMilestone.cleaned || lockByClean;
         if (locked) {
-            Logger($msg("liveSyncReplicator.lockRemoteDb"), LOG_LEVEL_NOTICE);
+            Logger($msg("liveSyncReplicator.lockRemoteDb"), LOG_LEVEL_VERBOSE);
         } else {
-            Logger($msg("liveSyncReplicator.unlockRemoteDb"), LOG_LEVEL_NOTICE);
+            Logger($msg("liveSyncReplicator.unlockRemoteDb"), LOG_LEVEL_VERBOSE);
         }
         await dbRet.db.put(remoteMilestone);
     }
@@ -1339,7 +1339,7 @@ export class LiveSyncCouchDBReplicator extends LiveSyncAbstractReplicator {
         };
         remoteMilestone.node_chunk_info = { ...defInitPoint.node_chunk_info, ...remoteMilestone.node_chunk_info };
         remoteMilestone.accepted_nodes = Array.from(new Set([...remoteMilestone.accepted_nodes, this.nodeid]));
-        Logger($msg("liveSyncReplicator.markDeviceResolved"), LOG_LEVEL_NOTICE);
+        Logger($msg("liveSyncReplicator.markDeviceResolved"), LOG_LEVEL_VERBOSE);
         const result = await dbRet.db.put(remoteMilestone);
         if (result.ok) {
             // Clear blocking flags (aligned with livesync)
