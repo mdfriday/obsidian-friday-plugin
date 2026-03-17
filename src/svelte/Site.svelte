@@ -176,6 +176,218 @@
 		(requiresCustomDomainPermission && !hasCustomDomainPermission) ||
 		(requiresEnterprisePermission && !hasEnterprisePermission);
 
+	// ==================== Foundry Integration Functions ====================
+	
+	/**
+	 * Load project configuration from Foundry
+	 */
+	async function loadFoundryProjectConfig() {
+		if (!plugin.currentProjectName) {
+			console.log('[Site] No current project name, skipping config load');
+			return;
+		}
+		
+		try {
+			const config = await plugin.getFoundryProjectConfigMap(plugin.currentProjectName);
+			
+			// Apply configuration to UI
+			if (config['title']) {
+				siteName = config['title'];
+			}
+			if (config['baseURL']) {
+				sitePath = config['baseURL'];
+			}
+			if (config['module']?.imports?.[0]?.path) {
+				const themeUrl = config['module'].imports[0].path;
+				selectedThemeDownloadUrl = themeUrl;
+				userHasSelectedTheme = true;
+				
+				// Find theme by download URL to get complete theme info (ID and name)
+				try {
+					const allThemes = await themeApiService.getAllThemes(plugin);
+					const matchedTheme = allThemes.find(theme => theme.download_url === themeUrl);
+					
+					if (matchedTheme) {
+						selectedThemeId = matchedTheme.id;
+						selectedThemeName = matchedTheme.title || matchedTheme.name;
+						console.log('[Site] Loaded theme:', selectedThemeName, 'ID:', selectedThemeId);
+					} else {
+						console.warn('[Site] Theme not found by URL:', themeUrl);
+						// Keep the URL but theme selector might not highlight correctly
+					}
+				} catch (error) {
+					console.error('[Site] Error finding theme by URL:', error);
+				}
+			}
+			if (config['services']?.googleAnalytics?.id) {
+				googleAnalyticsId = config['services'].googleAnalytics.id;
+			}
+			if (config['params']?.disqusShortname) {
+				disqusShortname = config['params'].disqusShortname;
+			}
+			if (config['params']?.password) {
+				sitePassword = config['params'].password;
+			}
+			
+			// Load publish configuration
+			if (config['publish']) {
+				// Load publish method
+				if (config['publish'].method) {
+					selectedPublishOption = config['publish'].method;
+				}
+				
+				// Load Netlify config
+				if (config['publish'].netlify) {
+					netlifyAccessToken = config['publish'].netlify.accessToken || '';
+					netlifyProjectId = config['publish'].netlify.siteId || '';
+				}
+				
+				// Load FTP config
+				if (config['publish'].ftp) {
+					ftpServer = config['publish'].ftp.host || '';
+					ftpUsername = config['publish'].ftp.username || '';
+					ftpPassword = config['publish'].ftp.password || '';
+					ftpRemoteDir = config['publish'].ftp.remotePath || '';
+					ftpIgnoreCert = config['publish'].ftp.ignoreCert !== undefined 
+						? config['publish'].ftp.ignoreCert 
+						: true;
+					ftpPreferredSecure = config['publish'].ftp.preferredSecure;
+				}
+			} else {
+				// No project-level publish config, load from global settings
+				await loadPublishConfigFromSettings();
+			}
+			
+			console.log('[Site] Loaded project config:', config);
+		} catch (error) {
+			console.error('[Site] Error loading project config:', error);
+		}
+	}
+	
+	/**
+	 * Load publish configuration from global settings (fallback)
+	 */
+	async function loadPublishConfigFromSettings() {
+		// Try to load from Foundry Global Config first
+		if (plugin.foundryGlobalConfigService && plugin.absWorkspacePath) {
+			try {
+				const globalConfigResult = await plugin.foundryGlobalConfigService.list(plugin.absWorkspacePath);
+				const globalConfig = globalConfigResult.data?.config;
+				
+				if (globalConfig?.publish) {
+					// Load from Foundry Global Config
+					if (globalConfig.publish.netlify) {
+						netlifyAccessToken = globalConfig.publish.netlify.accessToken || '';
+						netlifyProjectId = globalConfig.publish.netlify.siteId || '';
+					}
+					if (globalConfig.publish.ftp) {
+						ftpServer = globalConfig.publish.ftp.host || '';
+						ftpUsername = globalConfig.publish.ftp.username || '';
+						ftpPassword = globalConfig.publish.ftp.password || '';
+						ftpRemoteDir = globalConfig.publish.ftp.remotePath || '';
+						ftpIgnoreCert = globalConfig.publish.ftp.ignoreCert !== undefined 
+							? globalConfig.publish.ftp.ignoreCert 
+							: true;
+					}
+					if (globalConfig.publish.method) {
+						selectedPublishOption = globalConfig.publish.method;
+					}
+					return;
+				}
+			} catch (error) {
+				console.warn('[Site] Failed to load from Foundry Global Config, using plugin settings');
+			}
+		}
+		
+		// Fallback to plugin settings
+		selectedPublishOption = (plugin.settings.publishMethod === 'mdfriday' 
+			? 'netlify' 
+			: plugin.settings.publishMethod) || 'netlify';
+		netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
+		netlifyProjectId = plugin.settings.netlifyProjectId || '';
+		ftpServer = plugin.settings.ftpServer || '';
+		ftpUsername = plugin.settings.ftpUsername || '';
+		ftpPassword = plugin.settings.ftpPassword || '';
+		ftpRemoteDir = plugin.settings.ftpRemoteDir || '';
+		ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined 
+			? plugin.settings.ftpIgnoreCert 
+			: true;
+		ftpPreferredSecure = undefined;
+	}
+	
+	/**
+	 * Save single config value to Foundry
+	 */
+	async function saveFoundryConfig(key: string, value: any) {
+		if (!plugin.currentProjectName) {
+			return;
+		}
+		
+		try {
+			// For complex nested structures, we need to save the entire object
+			// instead of using dot notation which can create objects instead of arrays
+			if (key === 'module.imports.0.path') {
+				// Save module.imports as an array
+				await plugin.saveFoundryProjectConfig(
+					plugin.currentProjectName,
+					'module',
+					{
+						imports: [{ path: value }]
+					}
+				);
+			} else if (key === 'services.googleAnalytics.id') {
+				// Save services as a nested object
+				await plugin.saveFoundryProjectConfig(
+					plugin.currentProjectName,
+					'services',
+					{
+						googleAnalytics: { id: value }
+					}
+				);
+			} else if (key === 'params.disqusShortname' || key === 'params.password') {
+				// For params, we need to merge with existing params
+				const existingConfig = await plugin.getFoundryProjectConfigMap(plugin.currentProjectName);
+				const params = existingConfig['params'] || {};
+				
+				if (key === 'params.disqusShortname') {
+					params.disqusShortname = value;
+				} else if (key === 'params.password') {
+					params.password = value;
+				}
+				
+				await plugin.saveFoundryProjectConfig(
+					plugin.currentProjectName,
+					'params',
+					params
+				);
+			} else {
+				// For simple keys, save directly
+				await plugin.saveFoundryProjectConfig(plugin.currentProjectName, key, value);
+			}
+			console.log(`[Site] Saved config: ${key} = ${value}`);
+		} catch (error) {
+			console.error('[Site] Error saving config:', error);
+		}
+	}
+	
+	/**
+	 * Save multiple config values to Foundry
+	 */
+	async function saveFoundryConfigBatch(configMap: Record<string, any>) {
+		if (!plugin.currentProjectName) {
+			return;
+		}
+		
+		try {
+			await plugin.syncFoundryProjectConfig(plugin.currentProjectName, configMap);
+			console.log('[Site] Saved batch config:', configMap);
+		} catch (error) {
+			console.error('[Site] Error saving batch config:', error);
+		}
+	}
+
+	// ==================== End Foundry Integration Functions ====================
+
 	// HTTP server related
 	let httpServer: IncrementalBuildCoordinator;
 	let serverRunning = false;
@@ -191,10 +403,14 @@
 			basePath = adapter.getBasePath()
 		}
 		
+		// Load Foundry project configuration
+		await loadFoundryProjectConfig();
+		
 		// Register methods so they can be called from main.ts
 		plugin.applyProjectConfigurationToPanel = applyProjectConfiguration;
 		plugin.exportHistoryBuild = exportHistoryBuild;
 		plugin.clearPreviewHistory = clearPreviewHistory;
+		plugin.reloadFoundryProjectConfig = loadFoundryProjectConfig; // Register reload function
 		
 		// Register quick share methods for internet icon
 		plugin.setSitePath = setSitePathExternal;
@@ -439,8 +655,11 @@
 			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Book");
 			selectedThemeId = themeId || selectedThemeId;
 			
-			// 标记用户已手动选择主题，防止后续自动重置
-			userHasSelectedTheme = true;
+		// 标记用户已手动选择主题，防止后续自动重置
+		userHasSelectedTheme = true;
+		
+		// Save theme to Foundry config
+		await saveFoundryConfig('module.imports.0.path', themeUrl);
 			
 			// Get theme info to check for sample availability
 			if (themeId) {
@@ -972,224 +1191,217 @@
 			return;
 		}
 
+		if (!plugin.currentProjectName) {
+			new Notice('No project selected. Please right-click a folder first.', 3000);
+			return;
+		}
+
 		isBuilding = true;
 		buildProgress = 0;
 		hasPreview = false;
 
 		try {
-			if (serverRunning) {
-				await httpServer.stopWatching();
-				serverRunning = false;
-			}
-
-			// Clear previous monitoring paths to avoid accumulation across builds
-			absSelectedFolderPath = [];
-			absProjContentPath = [];
-
-			// Generate random preview ID
-			previewId = generateRandomId();
-
-			// Create preview directory
-			const previewDir = path.join(plugin.pluginDir, 'preview', previewId);
-			await createPreviewDirectory(previewDir);
-			buildProgress = 5;
-
+			// Save current configuration before preview
+			await saveCurrentConfiguration();
+			
+			// Get theme info to check if we need custom renderer
 			const themeInfo = await themeApiService.getThemeById(selectedThemeId, plugin);
-			// Check if theme has "Book" tag (case-insensitive)
 			hasOBTag = themeInfo?.tags?.some(tag =>
 				tag.toLowerCase() === 'obsidian'
 			) || false;
-
-			// Create config file
-			// Update sitePath for MDFriday Share only if user selected mdf-share
-			if (selectedPublishOption === 'mdf-share' && plugin.settings.license && userDir) {
-				if (sitePath.startsWith(`/s/${userDir}`) || !sitePath.startsWith('/s')) {
-					sitePath = `/s/${userDir}/${previewId}`;
-				}
-			}
-			await createConfigFile(previewDir);
-			buildProgress = 10;
-
-			// Create symbolic links for all language contents
-			await linkMultiLanguageContents(previewDir);
-			buildProgress = 15;
-
-			// Copy site assets if configured
-			if (currentAssets && currentAssets.folder) {
-				await copySiteAssetsToPreview(previewDir);
-				buildProgress = 18;
-			}
-
-			// Build site (reserved for future implementation)
-			absPreviewDir = path.join(basePath, previewDir);
-			const absThemesDir = path.join(basePath, themesDir)
-
-			// Create site path structure and get server root directory
-			const serverRootDir = await createSitePathStructure(previewDir);
-
-			// Configure image output directory for app:// URLs
-			const obImagesDir = path.join(absPreviewDir, 'public', 'ob-images');
 			
-			// Create renderer based on theme tags
-			const styleRenderer = await createRendererBasedOnTheme();
-
-			// Create httpClient instance for the build config
-			const httpClient = {
-				async download(url: string, targetPath: string, options?: {
-					onProgress?: (progress: { percentage: number; loaded: number; total?: number }) => void;
-					headers?: Record<string, string>;
-					timeout?: number;
-				}): Promise<void> {
-					try {
-						// Call progress callback at start
-						if (options?.onProgress) {
-							options.onProgress({ percentage: 0, loaded: 0 });
-						}
-
-						const response = await requestUrl({
-							url: url,
-							method: 'GET',
-							headers: options?.headers
-						});
-
-						if (response.status !== 200) {
-							throw new Error(`Download failed with status: ${response.status}`);
-						}
-
-						// Call progress callback at 50%
-						if (options?.onProgress) {
-							const arrayBuffer = response.arrayBuffer;
-							const total = arrayBuffer.byteLength;
-							options.onProgress({ percentage: 50, loaded: total / 2, total });
-						}
-
-						// Ensure target directory exists
-						const targetDir = path.dirname(targetPath);
-						if (!(await checkFolderExists(targetDir))) {
-							if (path.isAbsolute(targetDir)) {
-								await fs.promises.mkdir(targetDir, { recursive: true });
-							} else {
-								await app.vault.adapter.mkdir(targetDir);
-							}
-						}
-
-						// Write file using appropriate method
-						const fileContent = new Uint8Array(response.arrayBuffer);
-						if (path.isAbsolute(targetPath)) {
-							await fs.promises.writeFile(targetPath, fileContent);
-						} else {
-							await app.vault.adapter.writeBinary(targetPath, fileContent.buffer);
-						}
-
-						// Call progress callback at completion
-						if (options?.onProgress) {
-							const total = fileContent.length;
-							options.onProgress({ percentage: 100, loaded: total, total });
-						}
-
-					} catch (error) {
-						console.error('HTTP download failed:', error);
-						throw error;
+			// Create custom Markdown renderer based on theme
+			const customRenderer = await createRendererBasedOnTheme();
+			
+			// Use Foundry Serve Service for preview with progress callback and custom renderer
+			const url = await plugin.startFoundryPreviewServer(
+				plugin.currentProjectName,
+				serverPort,
+				hasOBTag ? customRenderer : undefined, // Pass custom renderer
+				(progress) => {
+					// Update build progress based on phase and percentage
+					// Foundry progress phases: 'initializing' | 'building' | 'watching' | 'publishing' | 'ready'
+					
+					if (progress.phase === 'initializing') {
+						buildProgress = Math.min(10, progress.percentage * 0.1);
+					} else if (progress.phase === 'building') {
+						// Building phase takes 10% to 90% of progress bar
+						buildProgress = 10 + (progress.percentage * 0.8);
+					} else if (progress.phase === 'watching' || progress.phase === 'ready') {
+						buildProgress = 90 + (progress.percentage * 0.1);
 					}
-				},
-
-				async get(url: string, options?: {
-					headers?: Record<string, string>;
-					timeout?: number;
-				}): Promise<{
-					data: ArrayBuffer;
-					headers: Record<string, string>;
-					status: number;
-				}> {
-					try {
-						const response = await requestUrl({
-							url: url,
-							method: 'GET',
-							headers: options?.headers
+					
+					// Log progress message
+					console.log(`[Preview] ${progress.phase}: ${progress.message}`);
+				}
+			);
+			
+			if (url) {
+				previewUrl = url;
+				hasPreview = true;
+				buildProgress = 100;
+				serverRunning = true;
+				
+				new Notice(t('messages.preview_generated_successfully'), 3000);
+				
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'preview',
+							url: previewUrl,
+							previewId: plugin.currentProjectName // Use project name as preview ID
 						});
-
-						return {
-							data: response.arrayBuffer,
-							headers: response.headers || {},
-							status: response.status
-						};
-
-					} catch (error) {
-						console.error('HTTP get failed:', error);
-						throw error;
 					}
 				}
-			};
-
-			httpServer = await startIncrementalBuild({
-				projDir: absPreviewDir,
-				modulesDir: absThemesDir,
-				contentDirs: absSelectedFolderPath,
-				projContentDirs: absProjContentPath,
-				publicDir: path.join(basePath, serverRootDir),
-				enableWatching: true, // 启用完整的文件监控和增量构建
-				batchDelay: 500,
-				progressCallback: (progress) => {
-					buildProgress = 15 + (progress.percentage / 100 * 85); // Start from 15%, up to 100%
-				},
-				markdown: styleRenderer,
-				httpClient: httpClient,
-
-				// Live Reload 配置
-				liveReload: {
-					enabled: true,
-					port: serverPort,
-					host: serverHost,
-					livereloadPort: 35729
-				}
-			})
-
-			serverRunning = true;
-			buildProgress = 100;
-
-			// Set preview URL
-			if (sitePath === '/') {
-				if (isForSingleFile) {
-					previewUrl = `${httpServer.getServerUrl()}/`;
-				} else {
-					previewUrl = httpServer.getServerUrl();
-				}
+				
+				// Send counter for preview (don't wait for result)
+				plugin.hugoverse.sendCounter('preview').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
 			} else {
-				previewUrl = `${httpServer.getServerUrl()}${sitePath}/`;
+				throw new Error('Failed to start preview server');
 			}
-			hasPreview = true;
-
-			// Open browser preview
-			window.open(previewUrl, '_blank');
-
-			new Notice(t('messages.preview_generated_successfully'), 3000);
-
-			// Save project configuration and add build history
-			await saveCurrentProjectConfiguration();
-			if (currentContents.length > 0 && siteName) {
-				const projectId = getProjectId();
-				if (projectId) {
-					await plugin.projectService.addBuildHistory({
-						projectId: projectId,
-						timestamp: Date.now(),
-						success: true,
-						type: 'preview',
-						url: previewUrl,
-						previewId: previewId // Save preview ID for export functionality
-					});
-				}
-			}
-
-			// Send counter for preview (don't wait for result)
-			plugin.hugoverse.sendCounter('preview').catch(error => {
-				console.warn('Counter request failed (non-critical):', error);
-			});
 
 		} catch (error) {
 			console.error('Preview generation failed:', error);
 			new Notice(t('messages.preview_failed', { error: error.message }), 5000);
 		} finally {
 			isBuilding = false;
+		}
+	}
+	
+	/**
+	 * Save current configuration to Foundry
+	 */
+	async function saveCurrentConfiguration() {
+		if (!plugin.currentProjectName) {
+			return;
+		}
+		
+		const configMap: Record<string, any> = {};
+		
+		if (siteName) {
+			configMap['title'] = siteName;
+		}
+		if (sitePath) {
+			configMap['baseURL'] = sitePath;
+		}
+		if (selectedThemeDownloadUrl) {
+			// Save module.imports as an array structure
+			configMap['module'] = {
+				imports: [
+					{ path: selectedThemeDownloadUrl }
+				]
+			};
+		}
+		if (googleAnalyticsId) {
+			configMap['services'] = {
+				googleAnalytics: {
+					id: googleAnalyticsId
+				}
+			};
+		}
+		if (disqusShortname) {
+			configMap['params'] = {
+				...(configMap['params'] || {}),
+				disqusShortname: disqusShortname
+			};
+		}
+		if (sitePassword) {
+			configMap['params'] = {
+				...(configMap['params'] || {}),
+				password: sitePassword
+			};
+		}
+		
+		// Save publish configuration
+		configMap['publish'] = {
+			method: selectedPublishOption
+		};
+		
+		// Save Netlify configuration if any field is set
+		if (netlifyAccessToken || netlifyProjectId) {
+			configMap['publish'].netlify = {
+				accessToken: netlifyAccessToken,
+				siteId: netlifyProjectId
+			};
+		}
+		
+		// Save FTP configuration if any field is set
+		if (ftpServer || ftpUsername || ftpPassword || ftpRemoteDir) {
+			configMap['publish'].ftp = {
+				host: ftpServer,
+				username: ftpUsername,
+				password: ftpPassword,
+				remotePath: ftpRemoteDir,
+				ignoreCert: ftpIgnoreCert
+			};
+			
+			// Save preferred secure connection type if known
+			if (ftpPreferredSecure !== undefined) {
+				configMap['publish'].ftp.preferredSecure = ftpPreferredSecure;
+			}
+		}
+		
+		await saveFoundryConfigBatch(configMap);
+	}
+	
+	/**
+	 * Save publish configuration to Foundry project config
+	 */
+	async function savePublishConfig() {
+		if (!plugin.currentProjectName) {
+			return;
+		}
+		
+		try {
+			const publishConfig = {
+				method: selectedPublishOption,
+				netlify: {
+					accessToken: netlifyAccessToken,
+					siteId: netlifyProjectId
+				},
+				ftp: {
+					host: ftpServer,
+					username: ftpUsername,
+					password: ftpPassword,
+					remotePath: ftpRemoteDir,
+					ignoreCert: ftpIgnoreCert,
+					...(ftpPreferredSecure !== undefined && { preferredSecure: ftpPreferredSecure })
+				}
+			};
+			
+			await plugin.saveFoundryProjectConfig(
+				plugin.currentProjectName,
+				'publish',
+				publishConfig
+			);
+			
+			console.log('[Site] Saved publish config to Foundry');
+		} catch (error) {
+			console.error('[Site] Error saving publish config:', error);
+		}
+	}
+	
+	/**
+	 * Stop preview server
+	 */
+	async function stopPreview() {
+		try {
+			await plugin.stopFoundryPreviewServer();
+			hasPreview = false;
+			previewUrl = '';
+			serverRunning = false;
+			new Notice('Preview server stopped', 2000);
+		} catch (error) {
+			console.error('Error stopping preview:', error);
+			new Notice(`Error stopping preview: ${error.message}`, 3000);
 		}
 	}
 
@@ -2358,8 +2570,9 @@
 		<input
 			type="text"
 			class="form-input"
-			bind:value={siteName}
-			placeholder={t('ui.site_name_placeholder')}
+		bind:value={siteName}
+		on:blur={() => saveFoundryConfig('title', siteName)}
+		placeholder={t('ui.site_name_placeholder')}
 		/>
 	</div>
 
@@ -2421,9 +2634,10 @@
 						<input
 							type="password"
 							class="form-input"
-							bind:value={sitePassword}
-							placeholder={t('ui.site_password_placeholder')}
-							title={t('ui.site_password_hint')}
+						bind:value={sitePassword}
+						on:blur={() => saveFoundryConfig('params.password', sitePassword)}
+						placeholder={t('ui.site_password_placeholder')}
+						title={t('ui.site_password_hint')}
 						/>
 						<div class="field-hint">
 							{t('ui.site_password_hint')}
@@ -2435,9 +2649,10 @@
 						<input
 							type="text"
 							class="form-input"
-							bind:value={googleAnalyticsId}
-							placeholder={t('ui.google_analytics_placeholder')}
-							title={t('ui.google_analytics_hint')}
+						bind:value={googleAnalyticsId}
+						on:blur={() => saveFoundryConfig('services.googleAnalytics.id', googleAnalyticsId)}
+						placeholder={t('ui.google_analytics_placeholder')}
+						title={t('ui.google_analytics_hint')}
 						/>
 						<div class="field-hint">
 							{t('ui.google_analytics_hint')}
@@ -2449,9 +2664,10 @@
 						<input
 							type="text"
 							class="form-input"
-							bind:value={disqusShortname}
-							placeholder={t('ui.disqus_placeholder')}
-							title={t('ui.disqus_hint')}
+						bind:value={disqusShortname}
+						on:blur={() => saveFoundryConfig('params.disqusShortname', disqusShortname)}
+						placeholder={t('ui.disqus_placeholder')}
+						title={t('ui.disqus_hint')}
 						/>
 						<div class="field-hint">
 							{t('ui.disqus_hint')}
@@ -2532,7 +2748,7 @@
 		<div class="publish-section">
 			<div class="publish-select-wrapper">
 				<label class="section-label" for="publish-method">{t('ui.publish_method')}</label>
-				<select id="publish-method" class="form-select" bind:value={selectedPublishOption}>
+				<select id="publish-method" class="form-select" bind:value={selectedPublishOption} on:change={() => savePublishConfig()}>
 					{#each publishOptions as option}
 						<option value={option.value}>{option.label}</option>
 					{/each}
@@ -2548,6 +2764,7 @@
 							type="password"
 							class="form-input"
 							bind:value={netlifyAccessToken}
+							on:blur={() => savePublishConfig()}
 							placeholder={t('settings.netlify_access_token_placeholder')}
 						/>
 						<div class="field-hint">
@@ -2560,6 +2777,7 @@
 							type="text"
 							class="form-input"
 							bind:value={netlifyProjectId}
+							on:blur={() => savePublishConfig()}
 							placeholder={t('settings.netlify_project_id_placeholder')}
 						/>
 						<div class="field-hint">
@@ -2578,6 +2796,7 @@
 							type="text"
 							class="form-input"
 							bind:value={ftpServer}
+							on:blur={() => savePublishConfig()}
 							placeholder={t('settings.ftp_server_placeholder')}
 						/>
 					</div>
@@ -2587,6 +2806,7 @@
 							type="text"
 							class="form-input"
 							bind:value={ftpUsername}
+							on:blur={() => savePublishConfig()}
 							placeholder={t('settings.ftp_username_placeholder')}
 						/>
 					</div>
@@ -2596,6 +2816,7 @@
 							type="password"
 							class="form-input"
 							bind:value={ftpPassword}
+							on:blur={() => savePublishConfig()}
 							placeholder={t('settings.ftp_password_placeholder')}
 						/>
 					</div>
@@ -2605,6 +2826,7 @@
 							type="text"
 							class="form-input"
 							bind:value={ftpRemoteDir}
+							on:blur={() => savePublishConfig()}
 							placeholder={t('settings.ftp_remote_dir_placeholder')}
 						/>
 						<div class="field-hint">
@@ -2616,6 +2838,7 @@
 							<input
 								type="checkbox"
 								bind:checked={ftpIgnoreCert}
+								on:change={() => savePublishConfig()}
 							/>
 							<span>{t('settings.ftp_ignore_cert')}</span>
 						</label>

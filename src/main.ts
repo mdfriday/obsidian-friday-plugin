@@ -1,4 +1,4 @@
-import {App, Modal, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice, MarkdownView, setIcon, Platform} from 'obsidian';
+import {App, Modal, Plugin, PluginSettingTab, Setting, TFolder, TFile, Notice, MarkdownView, setIcon, Platform, FileSystemAdapter} from 'obsidian';
 import {User} from "./user";
 import './styles/license-settings.css';
 import {I18nService} from "./i18n";
@@ -17,6 +17,22 @@ import {
     isLicenseExpired,
     generateEncryptionPassphrase
 } from "./license";
+import {
+	createObsidianWorkspaceService,
+	type ObsidianWorkspaceService,
+	createObsidianProjectService,
+	type ObsidianProjectService,
+	createObsidianBuildService,
+	type ObsidianBuildService,
+	createObsidianGlobalConfigService,
+	type ObsidianGlobalConfigService,
+	createObsidianProjectConfigService,
+	type ObsidianProjectConfigService,
+	createObsidianServeService,
+	type ObsidianServeService,
+	type ObsidianProjectInfo,
+} from '@mdfriday/foundry';
+import { createObsidianHttpClient } from './http';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
@@ -127,6 +143,7 @@ export default class FridayPlugin extends Plugin {
 	statusBar: HTMLElement
 
 	pluginDir: string
+	absWorkspacePath: string
 	apiUrl: string
 	
 	// Core services (always available)
@@ -141,11 +158,21 @@ export default class FridayPlugin extends Plugin {
 	ftp?: FTPUploader | null
 	site?: Site
 	projectService?: ProjectService
+	workspaceService?: ObsidianWorkspaceService | null
+	// Foundry services
+	foundryProjectService?: ObsidianProjectService | null
+	foundryBuildService?: ObsidianBuildService | null
+	foundryGlobalConfigService?: ObsidianGlobalConfigService | null
+	foundryProjectConfigService?: ObsidianProjectConfigService | null
+	foundryServeService?: ObsidianServeService | null
+	// Current project name for tracking
+	currentProjectName?: string | null
 	
 	// PC-only callbacks (optional)
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
 	exportHistoryBuild: ((previewId: string) => Promise<void>) | null = null
 	clearPreviewHistory: ((projectId: string) => Promise<void>) | null = null
+	reloadFoundryProjectConfig: (() => Promise<void>) | null = null // Reload Foundry project config into panel
 	// Quick share methods for internet icon (PC-only)
 	setSitePath: ((path: string) => void) | null = null
 	startPreviewAndWait: (() => Promise<boolean>) | null = null
@@ -169,7 +196,16 @@ export default class FridayPlugin extends Plugin {
 		
 		// Platform-specific initialization
 		if (Platform.isDesktop) {
-			await this.initDesktopFeatures();
+			// Initialize absolute workspace path (PC-only)
+			const adapter = this.app.vault.adapter;
+			if (adapter instanceof FileSystemAdapter) {
+				const basePath = adapter.getBasePath();
+				this.absWorkspacePath = `${basePath}/${this.pluginDir}/workspace`;
+			}
+			
+			setTimeout(() => {
+				void this.initDesktopFeatures();
+			}, 0);
 		} else {
 			await this.initMobileFeatures();
 		}
@@ -254,6 +290,9 @@ export default class FridayPlugin extends Plugin {
 		
 		// Initialize FTP uploader
 		this.initializeFTP();
+
+		// Initialize workspace service (PC-only)
+		await this.initializeWorkspace();
 		
 		// Register view with protection against duplicate registration
 		try {
@@ -344,6 +383,60 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
+	 * Initialize workspace and Foundry services (PC-only)
+	 */
+	private async initializeWorkspace(): Promise<void> {
+		try {
+			// Create workspace service
+			this.workspaceService = createObsidianWorkspaceService();
+			
+			// Get relative workspace path for Obsidian adapter
+			const relativeWorkspacePath = `${this.pluginDir}/workspace`;
+			
+			// Ensure workspace directory exists using Obsidian's adapter
+			if (!await this.app.vault.adapter.exists(relativeWorkspacePath)) {
+				await this.app.vault.adapter.mkdir(relativeWorkspacePath);
+				console.log('[Friday] Created workspace directory:', relativeWorkspacePath);
+			}
+			
+			// Check if workspace is already initialized (using absolute path)
+			const existsResult = await this.workspaceService.workspaceExists(this.absWorkspacePath);
+			
+			if (existsResult.success && !existsResult.data) {
+				// Workspace doesn't exist, initialize it
+				const initResult = await this.workspaceService.initWorkspace(this.absWorkspacePath);
+				
+				if (initResult.success) {
+					console.log('[Friday] Workspace initialized successfully at:', this.absWorkspacePath);
+				} else {
+					console.error('[Friday] Failed to initialize workspace:', initResult.error);
+				}
+			} else if (existsResult.success) {
+				console.log('[Friday] Workspace already exists at:', this.absWorkspacePath);
+			} else {
+				console.error('[Friday] Failed to check workspace existence:', existsResult.error);
+			}
+			
+		// Initialize Foundry services
+		this.foundryProjectService = createObsidianProjectService();
+		this.foundryBuildService = createObsidianBuildService();
+		this.foundryGlobalConfigService = createObsidianGlobalConfigService();
+		this.foundryProjectConfigService = createObsidianProjectConfigService();
+		
+		// Create HTTP client for Serve service (with publish support)
+		const httpClient = createObsidianHttpClient();
+		this.foundryServeService = createObsidianServeService(httpClient);
+		
+		console.log('[Friday] Foundry services initialized successfully');
+		
+		// Load settings from Foundry Global Config (merge with local settings)
+		await this.loadSettingsFromFoundryGlobalConfig();
+		} catch (error) {
+			console.error('[Friday] Error initializing workspace:', error);
+		}
+	}
+
+	/**
 	 * Initialize mobile-only features
 	 */
 	private async initMobileFeatures(): Promise<void> {
@@ -413,8 +506,14 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
-		if (!Platform.isDesktop || !this.site || !this.projectService) {
+		if (!Platform.isDesktop || !this.site) {
 			new Notice(this.i18n.t('messages.publishing_desktop_only'));
+			return;
+		}
+		
+		// Check if Foundry services are initialized
+		if (!this.foundryProjectService || !this.foundryProjectConfigService) {
+			new Notice('Foundry services not initialized');
 			return;
 		}
 		
@@ -426,37 +525,25 @@ export default class FridayPlugin extends Plugin {
 			rightSplit.expand();
 		}
 
-		// Check if project configuration exists for this folder/file
-		// If yes, apply the entire project configuration (like clicking "Apply to Panel")
-		const projectId = await this.tryGetProjectId(folder, file);
-		if (projectId) {
-			const existingProject = this.projectService.getProject(projectId);
-			if (existingProject) {
-				// Apply the entire project configuration
-				await this.applyExistingProjectToPanel(existingProject);
-				return;
-			}
+		// Get project name from folder/file
+		const projectName = this.getProjectNameFromSelection(folder, file);
+		if (!projectName) {
+			new Notice('Unable to determine project name');
+			return;
 		}
 
-		// No existing project found, continue with normal logic
-		// Handle multilingual content selection
-		if (this.site.hasContent()) {
-			// Add to existing multilingual content
-			const success = this.site.addLanguageContent(folder, file);
-			if (!success) {
-				return; // Error message already shown by addLanguageContent
-			}
+		// Check if project already exists
+		const existingProject = await this.getFoundryProject(projectName);
+		
+		if (existingProject) {
+			// Project exists, load its configuration and apply to panel
+			await this.applyFoundryProjectToPanel(existingProject, folder, file);
 		} else {
-			// Smart detection for structured folders when no content exists
-			if (folder && await this.detectStructuredFolder(folder)) {
-				// Structured folder detected, process it automatically
-				await this.processStructuredFolder(folder);
-			} else {
-				// Initialize first content normally
-				this.site.initializeContent(folder, file);
-			}
+			// Project doesn't exist, create it
+			await this.createFoundryProject(projectName, folder, file);
 		}
 
+		// Open or reveal the publish panel
 		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
 		if (leaves.length > 0) {
 			await this.app.workspace.revealLeaf(leaves[0]);
@@ -470,6 +557,360 @@ export default class FridayPlugin extends Plugin {
 				});
 			}
 		}
+	}
+
+	/**
+	 * Get project name from folder or file selection
+	 */
+	private getProjectNameFromSelection(folder: TFolder | null, file: TFile | null): string | null {
+		if (folder) {
+			// Use folder name as project name
+			return folder.name;
+		} else if (file) {
+			// Use file name (without extension) as project name
+			return file.basename;
+		}
+		return null;
+	}
+
+	/**
+	 * Get Foundry project by name
+	 */
+	private async getFoundryProject(projectName: string): Promise<ObsidianProjectInfo | null> {
+		if (!this.foundryProjectService) {
+			return null;
+		}
+
+		try {
+			const result = await this.foundryProjectService.getProjectInfo(this.absWorkspacePath, projectName);
+			if (result.success && result.data) {
+				return result.data;
+			}
+		} catch (error) {
+			console.error('[Friday] Error getting project:', error);
+		}
+		return null;
+	}
+
+	/**
+	 * Create new Foundry project
+	 */
+	private async createFoundryProject(projectName: string, folder: TFolder | null, file: TFile | null) {
+		if (!this.foundryProjectService) {
+			return;
+		}
+
+		try {
+			const adapter = this.app.vault.adapter;
+			if (!(adapter instanceof FileSystemAdapter)) {
+				new Notice('FileSystemAdapter not available');
+				return;
+			}
+
+			const basePath = adapter.getBasePath();
+			
+			// Prepare create options
+			const createOptions: any = {
+				name: projectName,
+				workspacePath: this.absWorkspacePath,
+				language: 'en',
+			};
+
+			if (folder) {
+				// Create from folder
+				const sourceFolderPath = `${basePath}/${folder.path}`;
+				createOptions.sourceFolder = sourceFolderPath;
+			} else if (file) {
+				// Create from single file
+				const sourceFilePath = `${basePath}/${file.path}`;
+				createOptions.sourceFile = sourceFilePath;
+			}
+
+		// Create project
+		const result = await this.foundryProjectService.createProject(createOptions);
+		
+		if (result.success) {
+			new Notice(`Project "${projectName}" created successfully`);
+			console.log('[Friday] Project created:', result.data);
+			
+			// Set current project name
+			this.currentProjectName = projectName;
+			
+			// Initialize site with the new project
+			this.site.initializeContent(folder, file);
+		} else {
+			new Notice(`Failed to create project: ${result.error}`);
+			console.error('[Friday] Project creation failed:', result.error);
+		}
+		} catch (error) {
+			console.error('[Friday] Error creating project:', error);
+			new Notice(`Error creating project: ${error}`);
+		}
+	}
+
+	/**
+	 * Apply existing Foundry project configuration to panel
+	 */
+	private async applyFoundryProjectToPanel(project: ObsidianProjectInfo, folder: TFolder | null, file: TFile | null) {
+		if (!this.foundryProjectConfigService) {
+			return;
+		}
+
+		try {
+			console.log('[Friday] Applying project to panel:', project.name);
+			
+			// Set current project name FIRST before loading config
+			this.currentProjectName = project.name;
+			
+			// Initialize content with folder/file
+			this.site.initializeContent(folder, file);
+			
+			// Reload Foundry project configuration into the panel
+			// This will update all UI fields with the project's saved configuration
+			if (this.reloadFoundryProjectConfig) {
+				await this.reloadFoundryProjectConfig();
+				console.log('[Friday] Project configuration applied to panel');
+			}
+			
+			new Notice(`Loaded project: ${project.name}`);
+		} catch (error) {
+			console.error('[Friday] Error applying project to panel:', error);
+			// Fallback to normal initialization
+			this.site.initializeContent(folder, file);
+		}
+	}
+
+	/**
+	 * Save project configuration from panel settings
+	 * Call this method when user modifies settings in the panel
+	 */
+	async saveFoundryProjectConfig(projectName: string, configKey: string, configValue: any) {
+		if (!this.foundryProjectConfigService) {
+			console.error('[Friday] Project config service not initialized');
+			return;
+		}
+
+		try {
+			const result = await this.foundryProjectConfigService.set(
+				this.absWorkspacePath,
+				projectName,
+				configKey,
+				configValue
+			);
+
+			if (result.success) {
+				console.log(`[Friday] Saved config: ${configKey} = ${configValue}`);
+			} else {
+				console.error('[Friday] Failed to save config:', result.error);
+			}
+		} catch (error) {
+			console.error('[Friday] Error saving project config:', error);
+		}
+	}
+
+	/**
+	 * Build project using Foundry build service
+	 */
+	async buildFoundryProject(projectName: string) {
+		if (!this.foundryBuildService) {
+			new Notice('Build service not initialized');
+			return;
+		}
+
+		try {
+			new Notice(`Building project: ${projectName}...`);
+			
+			const result = await this.foundryBuildService.buildProject({
+				workspacePath: this.absWorkspacePath,
+				projectNameOrPath: projectName,
+				clean: true,
+				parallel: true,
+			});
+
+			if (result.success) {
+				new Notice(`Build completed in ${result.data?.duration}ms`);
+				console.log('[Friday] Build output:', result.data?.outputDir);
+				return result.data?.outputDir;
+			} else {
+				new Notice(`Build failed: ${result.error}`);
+				console.error('[Friday] Build error:', result.error);
+			}
+		} catch (error) {
+			console.error('[Friday] Error building project:', error);
+			new Notice(`Build error: ${error}`);
+		}
+		return null;
+	}
+
+	/**
+	 * Start preview server using Foundry serve service
+	 */
+	async startFoundryPreviewServer(
+		projectName?: string, 
+		port: number = 8080,
+		markdownRenderer?: any,
+		onProgress?: (progress: { phase: string; percentage: number; message: string }) => void
+	) {
+		if (!this.foundryServeService) {
+			new Notice('Serve service not initialized');
+			return null;
+		}
+
+		// Use provided project name or current project name
+		const targetProjectName = projectName || this.currentProjectName;
+		if (!targetProjectName) {
+			new Notice('No project selected');
+			return null;
+		}
+
+		try {
+			// Check if server is already running
+			if (this.foundryServeService.isRunning()) {
+				const confirmRestart = confirm('Preview server is already running. Restart it?');
+				if (!confirmRestart) {
+					return null;
+				}
+				await this.foundryServeService.stopServer();
+			}
+
+			new Notice(`Starting preview server for: ${targetProjectName}...`);
+			
+			const serverOptions: any = {
+				workspacePath: this.absWorkspacePath,
+				projectName: targetProjectName,
+				port: port,
+				host: 'localhost',
+				livereload: true,
+				livereloadPort: 35729,
+			};
+			
+			// Add custom markdown renderer if provided
+			if (markdownRenderer) {
+				serverOptions.markdown = markdownRenderer;
+				console.log('[Friday] Using custom Markdown renderer');
+			}
+			
+			const result = await this.foundryServeService.startServer(
+				serverOptions,
+				(progress) => {
+					console.log(`[Friday] Preview: ${progress.phase} - ${progress.percentage}%`);
+					console.log(`[Friday] ${progress.message}`);
+					
+					// Call user-provided progress callback
+					if (onProgress) {
+						onProgress(progress);
+					}
+				}
+			);
+
+			if (result.success && result.data) {
+				new Notice(`Preview server started at: ${result.data.url}`);
+				console.log('[Friday] Preview server:', {
+					url: result.data.url,
+					port: result.data.port,
+				});
+				
+				// Open preview URL in default browser
+				window.open(result.data.url, '_blank');
+				
+				return result.data.url;
+			} else {
+				new Notice(`Failed to start preview server: ${result.error}`);
+				console.error('[Friday] Serve error:', result.error);
+			}
+		} catch (error) {
+			console.error('[Friday] Error starting preview server:', error);
+			new Notice(`Preview server error: ${error}`);
+		}
+		return null;
+	}
+
+	/**
+	 * Stop preview server
+	 */
+	async stopFoundryPreviewServer() {
+		if (!this.foundryServeService) {
+			return;
+		}
+
+		try {
+			if (!this.foundryServeService.isRunning()) {
+				new Notice('Preview server is not running');
+				return;
+			}
+
+			const stopped = await this.foundryServeService.stopServer();
+			if (stopped) {
+				new Notice('Preview server stopped');
+				console.log('[Friday] Preview server stopped');
+			}
+		} catch (error) {
+			console.error('[Friday] Error stopping preview server:', error);
+			new Notice(`Error stopping server: ${error}`);
+		}
+	}
+
+	/**
+	 * Check if preview server is running
+	 */
+	isFoundryPreviewServerRunning(): boolean {
+		return this.foundryServeService?.isRunning() || false;
+	}
+
+	/**
+	 * Sync multiple config values at once
+	 * Useful when user saves all settings in the panel
+	 */
+	async syncFoundryProjectConfig(projectName: string, configMap: Record<string, any>) {
+		if (!this.foundryProjectConfigService) {
+			console.error('[Friday] Project config service not initialized');
+			return;
+		}
+
+		try {
+			const promises = Object.entries(configMap).map(([key, value]) =>
+				this.foundryProjectConfigService!.set(
+					this.absWorkspacePath,
+					projectName,
+					key,
+					value
+				)
+			);
+
+			const results = await Promise.all(promises);
+			const failed = results.filter(r => !r.success);
+
+			if (failed.length === 0) {
+				console.log('[Friday] All configs saved successfully');
+			} else {
+				console.error('[Friday] Some configs failed to save:', failed);
+			}
+		} catch (error) {
+			console.error('[Friday] Error syncing project config:', error);
+		}
+	}
+
+	/**
+	 * Get Foundry project config as a map
+	 */
+	async getFoundryProjectConfigMap(projectName: string): Promise<Record<string, any>> {
+		if (!this.foundryProjectConfigService) {
+			return {};
+		}
+
+		try {
+			const result = await this.foundryProjectConfigService.list(
+				this.absWorkspacePath,
+				projectName
+			);
+
+			if (result.success && result.data) {
+				return result.data.config || {};
+			}
+		} catch (error) {
+			console.error('[Friday] Error getting project config:', error);
+		}
+		return {};
 	}
 
 	/**
@@ -1089,7 +1530,13 @@ export default class FridayPlugin extends Plugin {
 			}
 		}
 		
+		// Save to Obsidian's local storage
 		await this.saveData(this.settings);
+		
+		// Save to Foundry Global Config (desktop only)
+		if (Platform.isDesktop && this.foundryGlobalConfigService && this.absWorkspacePath) {
+			await this.saveSettingsToFoundryGlobalConfig();
+		}
 		
 		// Clear theme cache if download server changed (desktop only)
 		if (downloadServerChanged && Platform.isDesktop && this.themeApiService) {
@@ -1100,6 +1547,125 @@ export default class FridayPlugin extends Plugin {
 		// Reinitialize FTP uploader when settings change (desktop only)
 		if (Platform.isDesktop) {
 			this.initializeFTP();
+		}
+	}
+	
+	/**
+	 * Save settings to Foundry Global Config
+	 * This allows Foundry services to access publish configurations
+	 */
+	private async saveSettingsToFoundryGlobalConfig() {
+		if (!this.foundryGlobalConfigService || !this.absWorkspacePath) {
+			return;
+		}
+		
+		try {
+			const config = this.foundryGlobalConfigService;
+			const workspace = this.absWorkspacePath;
+			
+			// Save FTP settings
+			if (this.settings.ftpServer) {
+				await config.set(workspace, 'publish.ftp.host', this.settings.ftpServer);
+			}
+			if (this.settings.ftpUsername) {
+				await config.set(workspace, 'publish.ftp.username', this.settings.ftpUsername);
+			}
+			if (this.settings.ftpPassword) {
+				await config.set(workspace, 'publish.ftp.password', this.settings.ftpPassword);
+			}
+			if (this.settings.ftpRemoteDir) {
+				await config.set(workspace, 'publish.ftp.remotePath', this.settings.ftpRemoteDir);
+			}
+			await config.set(workspace, 'publish.ftp.ignoreCert', this.settings.ftpIgnoreCert);
+			
+			// Save Netlify settings
+			if (this.settings.netlifyAccessToken) {
+				await config.set(workspace, 'publish.netlify.accessToken', this.settings.netlifyAccessToken);
+			}
+			if (this.settings.netlifyProjectId) {
+				await config.set(workspace, 'publish.netlify.siteId', this.settings.netlifyProjectId);
+			}
+			
+			// Save domain settings
+			if (this.settings.customDomain) {
+				await config.set(workspace, 'site.customDomain', this.settings.customDomain);
+			}
+			if (this.settings.customSubdomain) {
+				await config.set(workspace, 'site.customSubdomain', this.settings.customSubdomain);
+			}
+			
+			// Save general settings
+			await config.set(workspace, 'site.downloadServer', this.settings.downloadServer);
+			await config.set(workspace, 'publish.method', this.settings.publishMethod);
+			
+			console.log('[Friday] Settings saved to Foundry Global Config');
+		} catch (error) {
+			console.error('[Friday] Error saving settings to Foundry Global Config:', error);
+			// Don't throw error - this is not critical, settings are already saved to Obsidian storage
+		}
+	}
+	
+	/**
+	 * Load settings from Foundry Global Config
+	 * Merge with existing settings (Obsidian local storage takes precedence if not empty)
+	 */
+	private async loadSettingsFromFoundryGlobalConfig() {
+		if (!this.foundryGlobalConfigService || !this.absWorkspacePath) {
+			return;
+		}
+		
+		try {
+			const config = this.foundryGlobalConfigService;
+			const workspace = this.absWorkspacePath;
+			
+			// Get all global config
+			const listResult = await config.list(workspace);
+			
+			if (!listResult.success || !listResult.data?.config) {
+				console.log('[Friday] No Foundry Global Config found, using local settings');
+				return;
+			}
+			
+			const foundryConfig = listResult.data.config;
+			console.log('[Friday] Loading settings from Foundry Global Config');
+			
+			// Load FTP settings (only if local setting is empty)
+			if (!this.settings.ftpServer && foundryConfig['publish']?.ftp?.host) {
+				this.settings.ftpServer = foundryConfig['publish'].ftp.host;
+			}
+			if (!this.settings.ftpUsername && foundryConfig['publish']?.ftp?.username) {
+				this.settings.ftpUsername = foundryConfig['publish'].ftp.username;
+			}
+			if (!this.settings.ftpPassword && foundryConfig['publish']?.ftp?.password) {
+				this.settings.ftpPassword = foundryConfig['publish'].ftp.password;
+			}
+			if (!this.settings.ftpRemoteDir && foundryConfig['publish']?.ftp?.remotePath) {
+				this.settings.ftpRemoteDir = foundryConfig['publish'].ftp.remotePath;
+			}
+			if (foundryConfig['publish']?.ftp?.ignoreCert !== undefined) {
+				this.settings.ftpIgnoreCert = foundryConfig['publish'].ftp.ignoreCert;
+			}
+			
+			// Load Netlify settings (only if local setting is empty)
+			if (!this.settings.netlifyAccessToken && foundryConfig['publish']?.netlify?.accessToken) {
+				this.settings.netlifyAccessToken = foundryConfig['publish'].netlify.accessToken;
+			}
+			if (!this.settings.netlifyProjectId && foundryConfig['publish']?.netlify?.siteId) {
+				this.settings.netlifyProjectId = foundryConfig['publish'].netlify.siteId;
+			}
+			
+			// Load domain settings (only if local setting is empty)
+			if (!this.settings.customDomain && foundryConfig['site']?.customDomain) {
+				this.settings.customDomain = foundryConfig['site'].customDomain;
+			}
+			if (!this.settings.customSubdomain && foundryConfig['site']?.customSubdomain) {
+				this.settings.customSubdomain = foundryConfig['site'].customSubdomain;
+			}
+			
+			console.log('[Friday] Settings loaded from Foundry Global Config');
+		} catch (error) {
+			console.error('[Friday] Error loading settings from Foundry Global Config:', error);
+			// Don't throw error - we can still use local settings
 		}
 	}
 
