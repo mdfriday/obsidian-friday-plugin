@@ -30,6 +30,8 @@ import {
 	type ObsidianProjectConfigService,
 	createObsidianServeService,
 	type ObsidianServeService,
+	createObsidianPublishService,
+	type ObsidianPublishService,
 	type ObsidianProjectInfo,
 } from '@mdfriday/foundry';
 import { createObsidianHttpClient } from './http';
@@ -165,6 +167,7 @@ export default class FridayPlugin extends Plugin {
 	foundryGlobalConfigService?: ObsidianGlobalConfigService | null
 	foundryProjectConfigService?: ObsidianProjectConfigService | null
 	foundryServeService?: ObsidianServeService | null
+	foundryPublishService?: ObsidianPublishService | null
 	// Current project name for tracking
 	currentProjectName?: string | null
 	
@@ -426,9 +429,10 @@ export default class FridayPlugin extends Plugin {
 		// Create HTTP client for Serve service (with publish support)
 		const httpClient = createObsidianHttpClient();
 		this.foundryServeService = createObsidianServeService(httpClient);
-		
+		this.foundryPublishService = createObsidianPublishService(httpClient);
+
 		console.log('[Friday] Foundry services initialized successfully');
-		
+
 		// Load settings from Foundry Global Config (merge with local settings)
 		await this.loadSettingsFromFoundryGlobalConfig();
 		} catch (error) {

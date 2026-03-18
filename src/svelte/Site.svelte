@@ -1243,23 +1243,7 @@
 				serverRunning = true;
 				
 				new Notice(t('messages.preview_generated_successfully'), 3000);
-				
-				// Save project configuration and add build history
-				await saveCurrentProjectConfiguration();
-				if (currentContents.length > 0 && siteName) {
-					const projectId = getProjectId();
-					if (projectId) {
-						await plugin.projectService.addBuildHistory({
-							projectId: projectId,
-							timestamp: Date.now(),
-							success: true,
-							type: 'preview',
-							url: previewUrl,
-							previewId: plugin.currentProjectName // Use project name as preview ID
-						});
-					}
-				}
-				
+
 				// Send counter for preview (don't wait for result)
 				plugin.hugoverse.sendCounter('preview').catch(error => {
 					console.warn('Counter request failed (non-critical):', error);
@@ -1408,11 +1392,6 @@
 	async function startPublish() {
 		if (!hasPreview) {
 			new Notice(t('messages.please_generate_preview_first'), 3000);
-			return;
-		}
-
-		if (!previewId || !absPreviewDir) {
-			new Notice(t('messages.preview_data_missing'), 3000);
 			return;
 		}
 
@@ -1661,42 +1640,59 @@
 	}
 
 	async function publishToNetlify(publicDir: string) {
+		// Check if Foundry Publish Service is available
+		if (!plugin.foundryPublishService) {
+			throw new Error('Publish service not initialized');
+		}
+		
+		// Validate configuration
+		if (!netlifyAccessToken || !netlifyProjectId) {
+			throw new Error(t('messages.netlify_settings_missing'));
+		}
+		
+		if (!plugin.currentProjectName) {
+			throw new Error('No project selected');
+		}
+		
 		try {
-			// Temporarily override plugin settings with panel configuration
-			const originalToken = plugin.settings.netlifyAccessToken;
-			const originalProjectId = plugin.settings.netlifyProjectId;
+			// Save configuration before publishing
+			await saveCurrentConfiguration();
 			
-			plugin.settings.netlifyAccessToken = netlifyAccessToken;
-			plugin.settings.netlifyProjectId = netlifyProjectId;
+			// Use Foundry Publish Service
+			// Note: Foundry will use the built output from the project
+			const result = await plugin.foundryPublishService.publish(
+				{
+					workspacePath: plugin.absWorkspacePath,
+					projectName: plugin.currentProjectName,
+					method: 'netlify',
+					config: {
+						siteId: netlifyProjectId,
+						accessToken: netlifyAccessToken,
+					},
+				},
+				(progress) => {
+					if (progress.phase === 'scanning') {
+						publishProgress = 10 + Math.round(progress.percentage * 0.3);
+					} else if (progress.phase === 'uploading') {
+						publishProgress = 30 + Math.round(progress.percentage * 0.4);
+					} else if (progress.phase === 'deploying') {
+						publishProgress = 70 + Math.round(progress.percentage * 0.2);
+					} else if (progress.phase === 'complete') {
+						publishProgress = 90 + Math.round(progress.percentage * 0.1);
+					}
+					
+					console.log(`[Publish] ${progress.phase}: ${progress.message}`);
+				}
+			);
 			
-			try {
-				publishUrl = await plugin.netlify.deployToNetlify(publicDir, (progress) => {
-					publishProgress = Math.round(progress);
-				});
-			} finally {
-				// Restore original settings
-				plugin.settings.netlifyAccessToken = originalToken;
-				plugin.settings.netlifyProjectId = originalProjectId;
+			if (!result.success) {
+				throw new Error(result.error || 'Publish failed');
 			}
 			
+			// Get publish URL from result
+			publishUrl = result.data?.url || '';
 			publishSuccess = true;
 			new Notice(t('messages.netlify_deploy_success'), 3000);
-
-			// Save project configuration and add build history
-			await saveCurrentProjectConfiguration();
-			if (currentContents.length > 0 && siteName) {
-				const projectId = getProjectId();
-				if (projectId) {
-					await plugin.projectService.addBuildHistory({
-						projectId: projectId,
-						timestamp: Date.now(),
-						success: true,
-						type: 'publish',
-						publishMethod: 'netlify',
-						url: publishUrl
-					});
-				}
-			}
 
 			// Send counter for netlify publish (don't wait for result)
 			plugin.hugoverse.sendCounter('netlify').catch(error => {
