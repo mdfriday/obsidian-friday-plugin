@@ -2,7 +2,7 @@
 	import {App, Notice, TFolder, TFile, FileSystemAdapter, requestUrl} from "obsidian";
 	import FridayPlugin from "../main";
 	import ProgressBar from "./ProgressBar.svelte";
-	import {onMount, onDestroy} from "svelte";
+	import {onMount, onDestroy, tick} from "svelte";
 	import * as path from "path";
 	import * as fs from "fs";
 	import {startIncrementalBuild, IncrementalBuildConfig, IncrementalBuildCoordinator} from "@mdfriday/foundry";
@@ -258,6 +258,15 @@
 				await loadPublishConfigFromSettings();
 			}
 			
+			// Load language configuration and apply to UI
+			if (config['languages'] && config['defaultContentLanguage']) {
+				console.log('[Site] Loaded language configuration:', config['languages']);
+				console.log('[Site] Default content language:', config['defaultContentLanguage']);
+				
+				// Apply language configuration to current contents
+				await applyLanguageConfiguration(config['languages'], config['defaultContentLanguage']);
+			}
+			
 			console.log('[Site] Loaded project config:', config);
 		} catch (error) {
 			console.error('[Site] Error loading project config:', error);
@@ -313,6 +322,66 @@
 			? plugin.settings.ftpIgnoreCert 
 			: true;
 		ftpPreferredSecure = undefined;
+	}
+	
+	/**
+	 * Apply language configuration from Foundry config to UI
+	 */
+	async function applyLanguageConfiguration(languages: Record<string, any>, defaultLang: string) {
+		try {
+			// Wait for current contents to be available
+			await tick();
+			
+			if (currentContents.length === 0) {
+				console.log('[Site] No contents to apply language configuration');
+				return;
+			}
+			
+			// Build a mapping from contentDir to languageCode
+			const contentDirToLang: Record<string, string> = {};
+			for (const [langCode, langConfig] of Object.entries(languages)) {
+				contentDirToLang[langConfig.contentDir] = langCode;
+			}
+			
+			// The first content should use the default language
+			// content -> defaultContentLanguage
+			// content.zh -> zh
+			// content.en -> en
+			
+			// Apply language to each content based on their index
+			currentContents.forEach((content, index) => {
+				let expectedLangCode: string;
+				
+				if (index === 0) {
+					// First content uses default language
+					expectedLangCode = defaultLang;
+				} else {
+					// Try to find language from contentDir mapping
+					// This is tricky because we don't have contentDir in currentContents yet
+					// So we need to iterate through languages to find non-default one
+					const otherLangs = Object.keys(languages).filter(lang => lang !== defaultLang);
+					if (otherLangs.length > index - 1) {
+						expectedLangCode = otherLangs[index - 1];
+					} else {
+						// Fallback: keep current language
+						expectedLangCode = content.languageCode;
+					}
+				}
+				
+				// Update language code if different
+				if (content.languageCode !== expectedLangCode) {
+					console.log(`[Site] Updating content ${index} language: ${content.languageCode} -> ${expectedLangCode}`);
+					site.updateLanguageCode(content.id, expectedLangCode);
+				}
+			});
+			
+			// Wait for updates to complete
+			await tick();
+			
+			console.log('[Site] Language configuration applied to UI');
+		} catch (error) {
+			console.error('[Site] Error applying language configuration:', error);
+		}
 	}
 	
 	/**
@@ -565,10 +634,63 @@
 
 
 	// 多语言相关函数
-	function updateLanguageCode(contentId: string, newLanguageCode: string) {
+	async function updateLanguageCode(contentId: string, newLanguageCode: string) {
 		site.updateLanguageCode(contentId, newLanguageCode);
+		
+		// Wait for Svelte to update reactive variables
+		await tick();
+		
+		// Save updated language configuration to Foundry
+		await saveLanguageConfiguration();
 	}
 	
+	/**
+	 * Save language configuration to Foundry project config
+	 */
+	async function saveLanguageConfiguration() {
+		if (!plugin.currentProjectName) {
+			return;
+		}
+		
+		try {
+			// Build languages configuration from current contents
+			const languages: Record<string, any> = {};
+			
+			currentContents.forEach((content, index) => {
+				const contentDir = index === 0 ? "content" : `content.${content.languageCode}`;
+				languages[content.languageCode] = {
+					contentDir: contentDir,
+					weight: content.weight || (index + 1)
+				};
+			});
+			
+			// Get the default language (first content's language)
+			const defaultLang = currentContents.length > 0 
+				? currentContents[0].languageCode 
+				: 'en';
+			
+			// Save both languages and defaultContentLanguage
+			await plugin.saveFoundryProjectConfig(
+				plugin.currentProjectName,
+				'languages',
+				languages
+			);
+			
+			await plugin.saveFoundryProjectConfig(
+				plugin.currentProjectName,
+				'defaultContentLanguage',
+				defaultLang
+			);
+			
+			console.log('[Site] Saved language configuration:', {
+				languages,
+				defaultContentLanguage: defaultLang
+			});
+		} catch (error) {
+			console.error('[Site] Error saving language configuration:', error);
+		}
+	}
+
 	function removeLanguageContent(contentId: string) {
 		site.removeLanguageContent(contentId);
 	}
@@ -1302,6 +1424,24 @@
 				...(configMap['params'] || {}),
 				password: sitePassword
 			};
+		}
+		
+		// Save language configuration
+		if (currentContents.length > 0) {
+			const languages: Record<string, any> = {};
+			
+			currentContents.forEach((content, index) => {
+				const contentDir = index === 0 ? "content" : `content.${content.languageCode}`;
+				languages[content.languageCode] = {
+					contentDir: contentDir,
+					weight: content.weight || (index + 1)
+				};
+			});
+			
+			configMap['languages'] = languages;
+			
+			// Set default content language (first content's language)
+			configMap['defaultContentLanguage'] = currentContents[0].languageCode;
 		}
 		
 		// Save publish configuration
