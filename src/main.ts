@@ -35,8 +35,10 @@ import {
 	type ObsidianProjectInfo,
 	type FTPConfig,
 	type NetlifyConfig,
+	createObsidianAuthService,
+	type ObsidianAuthService,
 } from '@mdfriday/foundry';
-import { createObsidianHttpClient } from './http';
+import { createObsidianHttpClient, createObsidianIdentityHttpClient } from './http';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
@@ -170,6 +172,7 @@ export default class FridayPlugin extends Plugin {
 	foundryProjectConfigService?: ObsidianProjectConfigService | null
 	foundryServeService?: ObsidianServeService | null
 	foundryPublishService?: ObsidianPublishService | null
+	foundryAuthService?: ObsidianAuthService | null
 	// Current project name for tracking
 	currentProjectName?: string | null
 	
@@ -432,6 +435,10 @@ export default class FridayPlugin extends Plugin {
 		const httpClient = createObsidianHttpClient();
 		this.foundryServeService = createObsidianServeService(httpClient);
 		this.foundryPublishService = createObsidianPublishService(httpClient);
+		
+		// Create Identity HTTP client for Auth service
+		const identityHttpClient = createObsidianIdentityHttpClient();
+		this.foundryAuthService = await createObsidianAuthService(this.absWorkspacePath, identityHttpClient);
 
 		console.log('[Friday] Foundry services initialized successfully');
 
@@ -1604,6 +1611,21 @@ export default class FridayPlugin extends Plugin {
 			await config.set(workspace, 'site.downloadServer', this.settings.downloadServer);
 			await config.set(workspace, 'publish.method', this.settings.publishMethod);
 			
+			// Save auth configuration to Foundry AuthService
+			if (this.foundryAuthService && this.settings.enterpriseServerUrl) {
+				const authConfig = {
+					apiUrl: this.settings.enterpriseServerUrl,
+					// websiteUrl can be derived from apiUrl or set separately if needed
+				};
+				
+				const updateResult = await this.foundryAuthService.updateConfig(authConfig);
+				if (updateResult.success) {
+					console.log('[Friday] Auth config saved to Foundry:', authConfig);
+				} else {
+					console.warn('[Friday] Failed to save auth config to Foundry:', updateResult.error);
+				}
+			}
+			
 			console.log('[Friday] Settings saved to Foundry Global Config');
 		} catch (error) {
 			console.error('[Friday] Error saving settings to Foundry Global Config:', error);
@@ -1666,6 +1688,18 @@ export default class FridayPlugin extends Plugin {
 			}
 			if (!this.settings.customSubdomain && foundryConfig['site']?.customSubdomain) {
 				this.settings.customSubdomain = foundryConfig['site'].customSubdomain;
+			}
+			
+			// Load auth configuration from Foundry AuthService
+			if (this.foundryAuthService) {
+				const authConfigResult = await this.foundryAuthService.getConfig();
+				if (authConfigResult.success && authConfigResult.data) {
+					// Only load if local setting is empty
+					if (!this.settings.enterpriseServerUrl && authConfigResult.data.apiUrl) {
+						this.settings.enterpriseServerUrl = authConfigResult.data.apiUrl;
+						console.log('[Friday] Loaded auth config from Foundry:', authConfigResult.data);
+					}
+				}
 			}
 			
 			console.log('[Friday] Settings loaded from Foundry Global Config');

@@ -6,19 +6,19 @@
  */
 
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian';
-import type { HttpClient, HttpResponse } from '@mdfriday/foundry';
+import type { PublishHttpClient, PublishHttpResponse, IdentityHttpClient, IdentityHttpResponse } from '@mdfriday/foundry';
 
 /**
  * Obsidian HTTP Client
  * 
  * 适配 Obsidian 的 requestUrl API 到 Foundry 的 HttpClient 接口
  */
-export class ObsidianHttpClient implements HttpClient {
+export class ObsidianHttpClient implements PublishHttpClient {
 
   /**
    * POST JSON data
    */
-  async postJSON(url: string, data: any, headers?: Record<string, string>): Promise<HttpResponse> {
+  async postJSON(url: string, data: any, headers?: Record<string, string>): Promise<PublishHttpResponse> {
     const response = await requestUrl({
       url,
       method: 'POST',
@@ -41,7 +41,7 @@ export class ObsidianHttpClient implements HttpClient {
     url: string,
     formData: Record<string, any>,
     headers?: Record<string, string>
-  ): Promise<HttpResponse> {
+  ): Promise<PublishHttpResponse> {
     // 生成随机 boundary
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2, 9);
     
@@ -68,7 +68,7 @@ export class ObsidianHttpClient implements HttpClient {
     url: string,
     data: Buffer | Uint8Array,
     headers?: Record<string, string>
-  ): Promise<HttpResponse> {
+  ): Promise<PublishHttpResponse> {
     // Convert Buffer to ArrayBuffer if needed
     let arrayBuffer: ArrayBuffer;
     if (data instanceof Buffer) {
@@ -93,7 +93,7 @@ export class ObsidianHttpClient implements HttpClient {
   /**
    * GET request
    */
-  async get(url: string, headers?: Record<string, string>): Promise<HttpResponse> {
+  async get(url: string, headers?: Record<string, string>): Promise<PublishHttpResponse> {
     const request: RequestUrlParam = {
       url,
       method: 'GET',
@@ -111,7 +111,7 @@ export class ObsidianHttpClient implements HttpClient {
   /**
    * 适配 Obsidian 的响应格式到 Foundry 的 HttpResponse
    */
-  private adaptResponse(response: RequestUrlResponse): HttpResponse {
+  private adaptResponse(response: RequestUrlResponse): PublishHttpResponse {
     return {
       status: response.status,
       ok: response.status >= 200 && response.status < 300,
@@ -215,6 +215,82 @@ export class ObsidianHttpClient implements HttpClient {
  * const httpClient = createObsidianHttpClient();
  * ```
  */
-export function createObsidianHttpClient(): HttpClient {
+export function createObsidianHttpClient(): PublishHttpClient {
   return new ObsidianHttpClient();
+}
+
+/**
+ * Obsidian Identity HTTP Client
+ * 
+ * 为 Auth Service 和 License Service 提供的 HTTP 客户端
+ * 实现 IdentityHttpClient 接口
+ */
+export class ObsidianIdentityHttpClient implements IdentityHttpClient {
+  /**
+   * POST JSON data
+   */
+  async postJSON(url: string, data: any, headers?: Record<string, string>): Promise<IdentityHttpResponse> {
+    const response = await requestUrl({
+      url,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(data),
+    });
+
+    return this.adaptResponse(response);
+  }
+
+  /**
+   * GET request
+   */
+  async get(url: string, headers?: Record<string, string>): Promise<IdentityHttpResponse> {
+    const request: RequestUrlParam = {
+      url,
+      method: 'GET',
+    };
+    
+    if (headers) {
+      request.headers = headers;
+    }
+
+    const response = await requestUrl(request);
+
+    return this.adaptResponse(response);
+  }
+
+  /**
+   * 适配 Obsidian 的响应格式到 IdentityHttpResponse
+   */
+  private adaptResponse(response: RequestUrlResponse): IdentityHttpResponse {
+    return {
+      status: response.status,
+      ok: response.status >= 200 && response.status < 300,
+      data: response.json,
+      async text() {
+        return response.text;
+      },
+      async json() {
+        return response.json;
+      },
+    };
+  }
+}
+
+/**
+ * 创建 ObsidianIdentityHttpClient 实例
+ * 
+ * @returns ObsidianIdentityHttpClient 实例
+ * 
+ * @example
+ * ```typescript
+ * import { createObsidianIdentityHttpClient } from './http';
+ * 
+ * const identityClient = createObsidianIdentityHttpClient();
+ * ```
+ */
+export function createObsidianIdentityHttpClient(): IdentityHttpClient {
+  return new ObsidianIdentityHttpClient();
 }
