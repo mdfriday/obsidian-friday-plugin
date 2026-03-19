@@ -242,17 +242,23 @@
 					netlifyProjectId = config['publish'].netlify.siteId || '';
 				}
 				
-				// Load FTP config
-				if (config['publish'].ftp) {
-					ftpServer = config['publish'].ftp.host || '';
-					ftpUsername = config['publish'].ftp.username || '';
-					ftpPassword = config['publish'].ftp.password || '';
-					ftpRemoteDir = config['publish'].ftp.remotePath || '';
-					ftpIgnoreCert = config['publish'].ftp.ignoreCert !== undefined 
-						? config['publish'].ftp.ignoreCert 
-						: true;
-					ftpPreferredSecure = config['publish'].ftp.preferredSecure;
+			// Load FTP config
+			if (config['publish'].ftp) {
+				ftpServer = config['publish'].ftp.host || '';
+				ftpUsername = config['publish'].ftp.username || '';
+				ftpPassword = config['publish'].ftp.password || '';
+				ftpRemoteDir = config['publish'].ftp.remotePath || '';
+				
+				// Load secure preference (new API)
+				if (config['publish'].ftp.secure !== undefined) {
+					ftpPreferredSecure = config['publish'].ftp.secure;
 				}
+				
+				// Backward compatibility: also check old ignoreCert field
+				if (config['publish'].ftp.ignoreCert !== undefined) {
+					ftpIgnoreCert = config['publish'].ftp.ignoreCert;
+				}
+			}
 			} else {
 				// No project-level publish config, load from global settings
 				await loadPublishConfigFromSettings();
@@ -289,15 +295,22 @@
 						netlifyAccessToken = globalConfig.publish.netlify.accessToken || '';
 						netlifyProjectId = globalConfig.publish.netlify.siteId || '';
 					}
-					if (globalConfig.publish.ftp) {
-						ftpServer = globalConfig.publish.ftp.host || '';
-						ftpUsername = globalConfig.publish.ftp.username || '';
-						ftpPassword = globalConfig.publish.ftp.password || '';
-						ftpRemoteDir = globalConfig.publish.ftp.remotePath || '';
-						ftpIgnoreCert = globalConfig.publish.ftp.ignoreCert !== undefined 
-							? globalConfig.publish.ftp.ignoreCert 
-							: true;
+				if (globalConfig.publish.ftp) {
+					ftpServer = globalConfig.publish.ftp.host || '';
+					ftpUsername = globalConfig.publish.ftp.username || '';
+					ftpPassword = globalConfig.publish.ftp.password || '';
+					ftpRemoteDir = globalConfig.publish.ftp.remotePath || '';
+					
+					// Load secure preference (new API)
+					if (globalConfig.publish.ftp.secure !== undefined) {
+						ftpPreferredSecure = globalConfig.publish.ftp.secure;
 					}
+					
+					// Backward compatibility: also check old ignoreCert field
+					if (globalConfig.publish.ftp.ignoreCert !== undefined) {
+						ftpIgnoreCert = globalConfig.publish.ftp.ignoreCert;
+					}
+				}
 					if (globalConfig.publish.method) {
 						selectedPublishOption = globalConfig.publish.method;
 					}
@@ -1464,12 +1477,11 @@
 				username: ftpUsername,
 				password: ftpPassword,
 				remotePath: ftpRemoteDir,
-				ignoreCert: ftpIgnoreCert
 			};
 			
-			// Save preferred secure connection type if known
+			// Save secure preference if known
 			if (ftpPreferredSecure !== undefined) {
-				configMap['publish'].ftp.preferredSecure = ftpPreferredSecure;
+				configMap['publish'].ftp.secure = ftpPreferredSecure;
 			}
 		}
 		
@@ -1485,21 +1497,32 @@
 		}
 		
 		try {
-			const publishConfig = {
-				method: selectedPublishOption,
-				netlify: {
+			const publishConfig: any = {
+				method: selectedPublishOption
+			};
+			
+			// Only save Netlify config if any field is set
+			if (netlifyAccessToken || netlifyProjectId) {
+				publishConfig.netlify = {
 					accessToken: netlifyAccessToken,
 					siteId: netlifyProjectId
-				},
-				ftp: {
+				};
+			}
+			
+			// Only save FTP config if any field is set
+			if (ftpServer || ftpUsername || ftpPassword || ftpRemoteDir) {
+				publishConfig.ftp = {
 					host: ftpServer,
 					username: ftpUsername,
 					password: ftpPassword,
 					remotePath: ftpRemoteDir,
-					ignoreCert: ftpIgnoreCert,
-					...(ftpPreferredSecure !== undefined && { preferredSecure: ftpPreferredSecure })
+				};
+
+				// Add secure preference if known
+				if (ftpPreferredSecure !== undefined) {
+					publishConfig.ftp.secure = ftpPreferredSecure;
 				}
-			};
+			}
 			
 			await plugin.saveFoundryProjectConfig(
 				plugin.currentProjectName,
@@ -1507,7 +1530,7 @@
 				publishConfig
 			);
 			
-			console.log('[Site] Saved publish config to Foundry');
+			console.log('[Site] Saved publish config to Foundry:', publishConfig);
 		} catch (error) {
 			console.error('[Site] Error saving publish config:', error);
 		}
@@ -1806,22 +1829,30 @@
 					projectName: plugin.currentProjectName,
 					method: 'netlify',
 					config: {
+						type: 'netlify',
 						siteId: netlifyProjectId,
 						accessToken: netlifyAccessToken,
 					},
 				},
 				(progress) => {
+					// Map Foundry progress to UI
+					// New phases: 'scanning' | 'uploading' | 'deploying' | 'complete'
 					if (progress.phase === 'scanning') {
-						publishProgress = 10 + Math.round(progress.percentage * 0.3);
+						publishProgress = Math.round(progress.percentage * 0.2);
 					} else if (progress.phase === 'uploading') {
-						publishProgress = 30 + Math.round(progress.percentage * 0.4);
+						publishProgress = 20 + Math.round(progress.percentage * 0.5);
 					} else if (progress.phase === 'deploying') {
 						publishProgress = 70 + Math.round(progress.percentage * 0.2);
 					} else if (progress.phase === 'complete') {
 						publishProgress = 90 + Math.round(progress.percentage * 0.1);
 					}
 					
-					console.log(`[Publish] ${progress.phase}: ${progress.message}`);
+					console.log(`[Publish Netlify] ${progress.phase}: ${progress.message}`);
+					
+					// Log detailed progress if available
+					if (progress.filesCompleted !== undefined && progress.filesTotal !== undefined) {
+						console.log(`[Publish Netlify] Files: ${progress.filesCompleted}/${progress.filesTotal}`);
+					}
 				}
 			);
 			
@@ -1845,175 +1876,98 @@
 	}
 
 	async function publishToFTP(publicDir: string) {
+		// Check if Foundry Publish Service is available
+		if (!plugin.foundryPublishService) {
+			throw new Error('Publish service not initialized');
+		}
+		
+		// Validate configuration
+		if (!ftpServer || !ftpUsername || !ftpPassword) {
+			throw new Error(t('messages.ftp_settings_missing'));
+		}
+		
+		if (!plugin.currentProjectName) {
+			throw new Error('No project selected');
+		}
+		
 		try {
-			// Temporarily override plugin settings with panel configuration
-			const originalServer = plugin.settings.ftpServer;
-			const originalUsername = plugin.settings.ftpUsername;
-			const originalPassword = plugin.settings.ftpPassword;
-			const originalRemoteDir = plugin.settings.ftpRemoteDir;
-			const originalIgnoreCert = plugin.settings.ftpIgnoreCert;
+			// Save configuration before publishing
+			await saveCurrentConfiguration();
 			
-			plugin.settings.ftpServer = ftpServer;
-			plugin.settings.ftpUsername = ftpUsername;
-			plugin.settings.ftpPassword = ftpPassword;
-			plugin.settings.ftpRemoteDir = ftpRemoteDir;
-			plugin.settings.ftpIgnoreCert = ftpIgnoreCert;
+			// Prepare FTP configuration
+			const ftpConfig = {
+				type: 'ftp',
+				host: ftpServer,
+				username: ftpUsername,
+				password: ftpPassword,
+				remotePath: ftpRemoteDir || '/',
+				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true, // Default to secure
+				// ignoreCert is not supported in the new API interface
+			};
 			
-			// Reinitialize FTP uploader with panel settings and preferred connection type
-			plugin.initializeFTP(ftpPreferredSecure);
+			// Use Foundry Publish Service
+			// Note: Foundry will use the built output from the project
+			// and automatically handle incremental uploads
+			const result = await plugin.foundryPublishService.publish(
+				{
+					workspacePath: plugin.absWorkspacePath,
+					projectName: plugin.currentProjectName,
+					method: 'ftp',
+					force: false, // Allow incremental upload
+					config: ftpConfig,
+				},
+				(progress) => {
+					// Map Foundry progress to UI
+					// New phases: 'scanning' | 'uploading' | 'deploying' | 'complete'
+					if (progress.phase === 'scanning') {
+						publishProgress = Math.round(progress.percentage * 0.2);
+					} else if (progress.phase === 'uploading') {
+						publishProgress = 20 + Math.round(progress.percentage * 0.7);
+					} else if (progress.phase === 'complete') {
+						publishProgress = 90 + Math.round(progress.percentage * 0.1);
+					}
+					
+					console.log(`[Publish FTP] ${progress.phase}: ${progress.message}`);
+					
+					// Log file-level progress if available
+					if (progress.currentFile) {
+						console.log(`[Publish FTP] Current file: ${progress.currentFile}`);
+					}
+					if (progress.filesCompleted !== undefined && progress.filesTotal !== undefined) {
+						console.log(`[Publish FTP] Files: ${progress.filesCompleted}/${progress.filesTotal}`);
+					}
+				}
+			);
 			
-			if (!plugin.ftp) {
-				throw new Error('FTP uploader not initialized - please check FTP settings');
+			if (!result.success) {
+				throw new Error(result.error || 'FTP publish failed');
 			}
+			
+			publishSuccess = true;
+			publishUrl = ''; // FTP doesn't return a URL
+			
+			// Log publish details if available
+			if (result.data) {
+				console.log(`[Publish FTP] Published successfully`);
+				if (result.data.filesUploaded !== undefined) {
+					console.log(`[Publish FTP] Files uploaded: ${result.data.filesUploaded}`);
+				}
+				if (result.data.bytesTransferred !== undefined) {
+					console.log(`[Publish FTP] Bytes transferred: ${result.data.bytesTransferred}`);
+				}
+				if (result.data.duration !== undefined) {
+					console.log(`[Publish FTP] Duration: ${result.data.duration}ms`);
+				}
+			}
+			
+			new Notice(t('messages.ftp_upload_success'), 3000);
 
-			// Set up connection type callback to remember successful connection
-			plugin.ftp.setConnectionTypeCallback((usedSecure: boolean) => {
-				ftpPreferredSecure = usedSecure;
+			// Send counter for FTP publish (don't wait for result)
+			plugin.hugoverse.sendCounter('ftp').catch(error => {
+				console.warn('Counter request failed (non-critical):', error);
 			});
-
-			// Set up progress callback
-			plugin.ftp.setProgressCallback((progress) => {
-				publishProgress = Math.round(progress.percentage);
-			});
-
-		let result;
-		try {
-			// Get project ID for incremental upload
-			const projectId = getProjectId();
-			
-			if (projectId) {
-				// Load previous manifest
-				const oldManifest = await plugin.projectService.loadManifest(projectId, 'ftp');
-				
-				// Try incremental upload first
-				let incrementalResult;
-				let shouldFallbackToFull = false;
-				
-				try {
-					// Use incremental upload
-					incrementalResult = await plugin.ftp.uploadDirectoryIncremental(
-						publicDir,
-						projectId,
-						oldManifest
-					);
-					
-					// Check if incremental upload failed
-					if (!incrementalResult.success) {
-						shouldFallbackToFull = true;
-						console.warn('[FTP] Incremental upload failed, will fallback to full upload');
-						new Notice(
-							t('messages.ftp_fallback_to_full') || 
-							'⚠️ Incremental upload failed, trying full upload as fallback...',
-							4000
-						);
-					}
-				} catch (err) {
-					// Incremental upload threw an error, fallback to full upload
-					shouldFallbackToFull = true;
-					console.error('[FTP] Incremental upload error, will fallback to full upload:', err);
-					new Notice(
-						t('messages.ftp_fallback_to_full') || 
-						'⚠️ Incremental upload failed, trying full upload as fallback...',
-						4000
-					);
-				}
-				
-				// Fallback to full upload if incremental failed
-				if (shouldFallbackToFull) {
-					console.log('[FTP] Starting full upload as fallback...');
-					// Reset progress to 0 for new upload attempt
-					publishProgress = 0;
-					
-					result = await plugin.ftp.uploadDirectory(publicDir);
-					
-					// If full upload succeeded, generate and save manifest for next time
-					if (result.success) {
-						console.log('[FTP] Full upload succeeded, generating manifest for next incremental upload');
-						const newManifest = await plugin.ftp.generateManifest(publicDir, projectId);
-						newManifest.uploadMethod = 'ftp';
-						newManifest.remoteDir = plugin.settings.ftpRemoteDir;
-						await plugin.projectService.saveManifest(newManifest);
-					}
-				} else {
-					// Incremental upload succeeded
-					result = {
-						success: incrementalResult.success,
-						usedSecure: incrementalResult.usedSecure,
-						error: incrementalResult.error
-					};
-					
-					// Save new manifest if successful
-					if (incrementalResult.success && incrementalResult.newManifest) {
-						await plugin.projectService.saveManifest(incrementalResult.newManifest);
-						
-						// Show incremental upload stats
-						if (incrementalResult.stats) {
-							const { uploaded, deleted, unchanged } = incrementalResult.stats;
-							const totalFiles = uploaded + unchanged;
-							const savedTime = totalFiles > 0 ? Math.round((unchanged / totalFiles) * 100) : 0;
-							new Notice(
-								t('messages.incremental_upload_stats', {
-									uploaded,
-									deleted,
-									unchanged,
-									saved: savedTime
-								}) || 
-								`✅ Incremental upload: ${uploaded} uploaded, ${deleted} deleted, ${unchanged} unchanged (${savedTime}% time saved)`,
-								4000
-							);
-						}
-					}
-				}
-			} else {
-				// Fallback to full upload if no project ID
-				result = await plugin.ftp.uploadDirectory(publicDir);
-			}
-		} finally {
-				// Restore original settings
-				plugin.settings.ftpServer = originalServer;
-				plugin.settings.ftpUsername = originalUsername;
-				plugin.settings.ftpPassword = originalPassword;
-				plugin.settings.ftpRemoteDir = originalRemoteDir;
-				plugin.settings.ftpIgnoreCert = originalIgnoreCert;
-				// Reinitialize FTP with original settings
-				plugin.initializeFTP();
-			}
-
-			if (result.success) {
-				publishSuccess = true;
-				publishUrl = ''; // FTP doesn't return a URL
-				
-				// Show appropriate success message
-				if (!result.usedSecure) {
-					new Notice(t('messages.ftp_fallback_to_plain'), 4000);
-				}
-				new Notice(t('messages.ftp_upload_success'), 3000);
-
-				// Save project configuration and add build history
-				await saveCurrentProjectConfiguration();
-				if (currentContents.length > 0 && siteName) {
-					const projectId = getProjectId();
-					if (projectId) {
-						await plugin.projectService.addBuildHistory({
-							projectId: projectId,
-							timestamp: Date.now(),
-							success: true,
-							type: 'publish',
-							publishMethod: 'ftp'
-						});
-					}
-				}
-
-				// Send counter for ftp publish (don't wait for result)
-				plugin.hugoverse.sendCounter('ftp').catch(error => {
-					console.warn('Counter request failed (non-critical):', error);
-				});
-			} else {
-				throw new Error(result.error || 'Unknown FTP error');
-			}
-
 		} catch (error) {
-			console.error('FTP upload failed:', error);
+			console.error('FTP deployment failed:', error);
 			throw new Error(t('messages.ftp_upload_failed', { error: error.message }));
 		}
 	}
@@ -2023,53 +1977,56 @@
 
 	// Test FTP connection
 	async function testFTPConnection() {
+		// Check if Foundry Publish Service is available
+		if (!plugin.foundryPublishService) {
+			ftpTestState = 'error';
+			ftpTestMessage = 'Publish service not initialized';
+			return;
+		}
+		
+		// Validate that we have a project to test with
+		if (!plugin.currentProjectName) {
+			ftpTestState = 'error';
+			ftpTestMessage = 'No project selected. Please right-click a folder first.';
+			return;
+		}
+		
 		ftpTestState = 'testing';
 		ftpTestMessage = '';
 		
 		try {
-			// Temporarily override plugin settings with panel configuration
-			const originalServer = plugin.settings.ftpServer;
-			const originalUsername = plugin.settings.ftpUsername;
-			const originalPassword = plugin.settings.ftpPassword;
-			const originalRemoteDir = plugin.settings.ftpRemoteDir;
-			const originalIgnoreCert = plugin.settings.ftpIgnoreCert;
+			// Save configuration before testing (ensures config is available for test)
+			await savePublishConfig();
 			
-			plugin.settings.ftpServer = ftpServer;
-			plugin.settings.ftpUsername = ftpUsername;
-			plugin.settings.ftpPassword = ftpPassword;
-			plugin.settings.ftpRemoteDir = ftpRemoteDir;
-			plugin.settings.ftpIgnoreCert = ftpIgnoreCert;
+			// Prepare FTP configuration
+			const ftpConfig = {
+				type: 'ftp',
+				host: ftpServer,
+				username: ftpUsername,
+				password: ftpPassword,
+				remotePath: ftpRemoteDir || '/',
+				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true, // Default to secure
+			};
 			
-			// Reinitialize FTP uploader with panel settings and preferred connection type
-			plugin.initializeFTP(ftpPreferredSecure);
-			
-			if (plugin.ftp) {
-				// Set up connection type callback to remember successful connection
-				plugin.ftp.setConnectionTypeCallback((usedSecure: boolean) => {
-					ftpPreferredSecure = usedSecure;
-				});
-			}
-			
-			let result;
-			try {
-				result = await plugin.testFTPConnection();
-			} finally {
-				// Restore original settings
-				plugin.settings.ftpServer = originalServer;
-				plugin.settings.ftpUsername = originalUsername;
-				plugin.settings.ftpPassword = originalPassword;
-				plugin.settings.ftpRemoteDir = originalRemoteDir;
-				plugin.settings.ftpIgnoreCert = originalIgnoreCert;
-				// Reinitialize FTP with original settings
-				plugin.initializeFTP();
-			}
+			// Use Foundry Publish Service to test connection
+			const result = await plugin.foundryPublishService.testConnection(
+				plugin.absWorkspacePath,
+				plugin.currentProjectName,
+				ftpConfig
+			);
 			
 			if (result.success) {
 				ftpTestState = 'success';
 				ftpTestMessage = result.message || t('settings.ftp_test_connection_success');
+				
+				// If the result includes connection type info, remember it
+				if (result.data?.usedSecure !== undefined) {
+					ftpPreferredSecure = result.data.usedSecure;
+					console.log('[FTP Test] Connection type:', ftpPreferredSecure ? 'FTPS' : 'FTP');
+				}
 			} else {
 				ftpTestState = 'error';
-				ftpTestMessage = result.message || t('settings.ftp_test_connection_failed');
+				ftpTestMessage = result.error || t('settings.ftp_test_connection_failed');
 			}
 		} catch (error) {
 			console.error('FTP test error:', error);

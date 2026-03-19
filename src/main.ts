@@ -33,6 +33,8 @@ import {
 	createObsidianPublishService,
 	type ObsidianPublishService,
 	type ObsidianProjectInfo,
+	type FTPConfig,
+	type NetlifyConfig,
 } from '@mdfriday/foundry';
 import { createObsidianHttpClient } from './http';
 
