@@ -223,13 +223,13 @@ export function createObsidianHttpClient(): PublishHttpClient {
  * Obsidian Identity HTTP Client
  * 
  * 为 Auth Service 和 License Service 提供的 HTTP 客户端
- * 实现 IdentityHttpClient 接口
+ * 实现 IdentityHttpClient 接口（HttpClient 的完整实现）
  */
 export class ObsidianIdentityHttpClient implements IdentityHttpClient {
   /**
    * POST JSON data
    */
-  async postJSON(url: string, data: any, headers?: Record<string, string>): Promise<IdentityHttpResponse> {
+  async post(url: string, data: any, headers?: Record<string, string>): Promise<IdentityHttpResponse> {
     const response = await requestUrl({
       url,
       method: 'POST',
@@ -238,6 +238,67 @@ export class ObsidianIdentityHttpClient implements IdentityHttpClient {
         ...headers,
       },
       body: JSON.stringify(data),
+    });
+
+    return this.adaptResponse(response);
+  }
+
+  /**
+   * POST JSON data (alias for compatibility)
+   */
+  async postJSON(url: string, data: any, headers?: Record<string, string>): Promise<IdentityHttpResponse> {
+    return this.post(url, data, headers);
+  }
+
+  /**
+   * POST form data (application/x-www-form-urlencoded)
+   * 
+   * 基于 Friday 插件的实现：
+   * friday/src/user.ts:85-95 (loginWithCredentials)
+   */
+  async postForm(url: string, data: Record<string, string>): Promise<IdentityHttpResponse> {
+    // 将数据转换为 URL 编码格式
+    const formBody = Object.entries(data)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .join('&');
+
+    const response = await requestUrl({
+      url,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formBody,
+    });
+
+    return this.adaptResponse(response);
+  }
+
+  /**
+   * POST multipart form data (for file uploads)
+   * 
+   * 基于 Friday 插件的 formDataToArrayBuffer 实现
+   * friday/src/hugoverse.ts:140-160
+   */
+  async postMultipart(
+    url: string,
+    data: Record<string, any>,
+    headers?: Record<string, string>
+  ): Promise<IdentityHttpResponse> {
+    // 生成随机 boundary
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2, 9);
+    
+    // 将 formData 转换为 ArrayBuffer
+    const arrayBufferBody = await this.formDataToArrayBuffer(data, boundary);
+
+    const response = await requestUrl({
+      url,
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        ...headers,
+      },
+      body: arrayBufferBody,
     });
 
     return this.adaptResponse(response);
@@ -276,6 +337,82 @@ export class ObsidianIdentityHttpClient implements IdentityHttpClient {
         return response.json;
       },
     };
+  }
+
+  /**
+   * 将 FormData 对象转换为 ArrayBuffer
+   * 
+   * 基于 Friday 插件的实现：
+   * friday/src/hugoverse.ts:220-268
+   */
+  private async formDataToArrayBuffer(
+    formData: Record<string, any>,
+    boundary: string
+  ): Promise<ArrayBuffer> {
+    const bodyParts: (string | Uint8Array)[] = [];
+
+    for (const [key, value] of Object.entries(formData)) {
+      bodyParts.push(`--${boundary}\r\n`);
+
+      if (typeof value === 'string') {
+        // 处理字符串值
+        bodyParts.push(`Content-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`);
+      } else if (value instanceof Blob) {
+        // 处理 Blob 值（文件上传）
+        const blobName = (value as any).name || 'file';
+        bodyParts.push(
+          `Content-Disposition: form-data; name="${key}"; filename="${blobName}"\r\n` +
+          `Content-Type: ${value.type || 'application/octet-stream'}\r\n\r\n`
+        );
+        
+        // 将 Blob 转换为 Uint8Array
+        const arrayBuffer = await value.arrayBuffer();
+        bodyParts.push(new Uint8Array(arrayBuffer));
+        bodyParts.push('\r\n');
+      } else if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
+        // 处理二进制数据
+        const uint8Array = value instanceof ArrayBuffer ? new Uint8Array(value) : value;
+        bodyParts.push(
+          `Content-Disposition: form-data; name="${key}"; filename="file"\r\n` +
+          `Content-Type: application/octet-stream\r\n\r\n`
+        );
+        bodyParts.push(uint8Array);
+        bodyParts.push('\r\n');
+      } else {
+        // 其他类型转换为字符串
+        bodyParts.push(`Content-Disposition: form-data; name="${key}"\r\n\r\n${String(value)}\r\n`);
+      }
+    }
+
+    // 添加结束 boundary
+    bodyParts.push(`--${boundary}--\r\n`);
+
+    // 计算总长度
+    let totalLength = 0;
+    for (const part of bodyParts) {
+      if (typeof part === 'string') {
+        totalLength += new TextEncoder().encode(part).byteLength;
+      } else {
+        totalLength += part.byteLength;
+      }
+    }
+
+    // 创建最终的 ArrayBuffer
+    const finalBuffer = new Uint8Array(totalLength);
+    let offset = 0;
+
+    for (const part of bodyParts) {
+      if (typeof part === 'string') {
+        const encoded = new TextEncoder().encode(part);
+        finalBuffer.set(encoded, offset);
+        offset += encoded.byteLength;
+      } else {
+        finalBuffer.set(part, offset);
+        offset += part.byteLength;
+      }
+    }
+
+    return finalBuffer.buffer;
   }
 }
 

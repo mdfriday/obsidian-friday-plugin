@@ -16,16 +16,16 @@ const DEVICE_ID_KEY = 'device_id';
  * License features returned from activation
  */
 export interface LicenseFeatures {
-    max_devices: number;
-    max_ips: number;
-    sync_enabled: boolean;
-    sync_quota: number;
-    publish_enabled: boolean;
-    max_sites: number;
-    max_storage: number;
-    custom_domain: boolean;
-    custom_sub_domain: boolean;
-    validity_days: number;
+    maxDevices: number;
+    maxIps: number;
+    syncEnabled: boolean;
+    syncQuota: number;
+    publishEnabled: boolean;
+    maxSites: number;
+    maxStorage: number;
+    customDomain: boolean;
+    customSubDomain: boolean;
+    validityDays: number;
 }
 
 /**

@@ -37,8 +37,14 @@ import {
 	type NetlifyConfig,
 	createObsidianAuthService,
 	type ObsidianAuthService,
+	createObsidianLicenseService,
+	type ObsidianLicenseService,
+	createObsidianDomainService,
+	type ObsidianDomainService,
 } from '@mdfriday/foundry';
 import { createObsidianHttpClient, createObsidianIdentityHttpClient } from './http';
+import { LicenseServiceManager } from './services/license';
+import { DomainServiceManager } from './services/domain';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
@@ -173,6 +179,10 @@ export default class FridayPlugin extends Plugin {
 	foundryServeService?: ObsidianServeService | null
 	foundryPublishService?: ObsidianPublishService | null
 	foundryAuthService?: ObsidianAuthService | null
+	foundryLicenseService?: ObsidianLicenseService | null
+	foundryDomainService?: ObsidianDomainService | null
+	licenseServiceManager?: LicenseServiceManager | null
+	domainServiceManager?: DomainServiceManager | null
 	// Current project name for tracking
 	currentProjectName?: string | null
 	
@@ -436,9 +446,29 @@ export default class FridayPlugin extends Plugin {
 		this.foundryServeService = createObsidianServeService(httpClient);
 		this.foundryPublishService = createObsidianPublishService(httpClient);
 		
-		// Create Identity HTTP client for Auth service
-		const identityHttpClient = createObsidianIdentityHttpClient();
-		this.foundryAuthService = await createObsidianAuthService(this.absWorkspacePath, identityHttpClient);
+	// Create Identity HTTP client for Auth, License, and Domain services
+	const identityHttpClient = createObsidianIdentityHttpClient();
+	this.foundryAuthService = await createObsidianAuthService(identityHttpClient);
+	this.foundryLicenseService = createObsidianLicenseService(identityHttpClient);
+	this.foundryDomainService = createObsidianDomainService(identityHttpClient);
+		
+		// Create License Service Manager
+		if (this.foundryLicenseService && this.foundryAuthService && this.foundryGlobalConfigService) {
+			this.licenseServiceManager = new LicenseServiceManager(
+				this.foundryLicenseService,
+				this.foundryAuthService,
+				this.foundryGlobalConfigService,
+				this.absWorkspacePath
+			);
+		}
+		
+	// Create Domain Service Manager
+	if (this.foundryDomainService) {
+		this.domainServiceManager = new DomainServiceManager(
+			this.foundryDomainService,
+			this.absWorkspacePath
+		);
+	}
 
 		console.log('[Friday] Foundry services initialized successfully');
 
@@ -1358,74 +1388,41 @@ export default class FridayPlugin extends Plugin {
 
 	/**
 	 * Refresh license usage information from API
-	 * Automatically re-login with license key if token is expired
 	 */
 	async refreshLicenseUsage() {
-		// Check if dependencies are initialized
-		if (!this.user || !this.hugoverse) {
+		// Check if license service is available
+		if (!this.licenseServiceManager) {
 			return;
 		}
 
-		const hugoverse = this.hugoverse;
-		const { license, userToken } = this.settings;
+		const { license } = this.settings;
 		
 		// Only fetch usage if license is active and not expired
 		if (!license || isLicenseExpired(license.expiresAt)) {
 			return;
 		}
 
-		let currentToken = userToken;
-
 		try {
-			// Try to fetch usage with current token
-			const usageResponse = await hugoverse.getLicenseUsage(currentToken, license.key);
-			if (usageResponse && usageResponse.disks) {
-				// Parse disk usage (convert string to number)
-				const totalDiskUsage = parseFloat(usageResponse.disks.total_disk_usage) || 0;
-				const maxStorage = license.features.max_storage || 1024;
+			const result = await this.licenseServiceManager.getLicenseUsage();
+			
+			if (result.success && result.data) {
+				const usage = result.data;
 				
-				this.settings.licenseUsage = {
-					totalDiskUsage,
-					maxStorage,
-					unit: usageResponse.disks.unit || 'MB',
-					lastUpdated: Date.now()
-				};
-				
-				await this.saveData(this.settings);
+				// Store disk usage information
+				if (usage.disk) {
+					this.settings.licenseUsage = {
+						totalDiskUsage: usage.disk.totalUsage || 0,
+						maxStorage: usage.disk.maxStorage || 1024,
+						unit: usage.disk.unit || 'MB',
+						lastUpdated: Date.now()
+					};
+					
+					await this.saveData(this.settings);
+				}
 			}
 		} catch (error) {
-			// If failed, try to re-login with license key (token might be expired)
-			console.error('[Friday] Failed to fetch usage, attempting to refresh token...');
-			
-			try {
-				// Re-login with license key
-				const email = licenseKeyToEmail(license.key);
-				const password = licenseKeyToPassword(license.key);
-				const newToken = await this.user.loginWithCredentials(email, password);
-				
-				if (newToken) {
-					// Retry with new token
-					const usageResponse = await hugoverse.getLicenseUsage(newToken, license.key);
-					if (usageResponse && usageResponse.disks) {
-						const totalDiskUsage = parseFloat(usageResponse.disks.total_disk_usage) || 0;
-						const maxStorage = license.features.max_storage || 1024;
-						
-						this.settings.licenseUsage = {
-							totalDiskUsage,
-							maxStorage,
-							unit: usageResponse.disks.unit || 'MB',
-							lastUpdated: Date.now()
-						};
-						
-						await this.saveData(this.settings);
-					}
-				} else {
-					console.warn('[Friday] Failed to refresh token, usage fetch skipped');
-				}
-			} catch (retryError) {
-				console.warn('[Friday] Failed to fetch license usage after token refresh:', retryError);
-				// Don't throw error, just log it - usage is not critical for plugin functionality
-			}
+			console.warn('[Friday] Failed to fetch license usage:', error);
+			// Don't throw error - usage is not critical for plugin functionality
 		}
 	}
 
@@ -1441,40 +1438,33 @@ export default class FridayPlugin extends Plugin {
 	 * Called when user clicks on plan badge in settings
 	 */
 	async refreshLicenseInfo(): Promise<void> {
-		// Check if dependencies are initialized
-		if (!this.hugoverse) {
+		// Check if license service is available
+		if (!this.licenseServiceManager) {
 			return;
 		}
 
-		const { license, userToken } = this.settings;
+		const { license } = this.settings;
 		
-		// Only fetch if license is active and not expired
+		// Only fetch if license exists and not expired
 		if (!license || isLicenseExpired(license.expiresAt)) {
 			return;
 		}
 
 		try {
-			const licenseInfo = await this.hugoverse.getLicenseInfo(userToken, license.key);
-			if (licenseInfo) {
+			const result = await this.licenseServiceManager.getLicenseInfo();
+			
+			if (result.success && result.data) {
+				const licenseInfo = result.data;
+				
 				// Update license data with latest info from server
-				// Merge all features from server, fallback to existing values
 				this.settings.license = {
-					...license,
-					expiresAt: licenseInfo.expires_at || license.expiresAt,
+					key: licenseInfo.key || license.key,
 					plan: licenseInfo.plan || license.plan,
-					features: {
-						max_devices: licenseInfo.features?.max_devices ?? license.features.max_devices,
-						max_ips: licenseInfo.features?.max_ips ?? license.features.max_ips,
-						sync_enabled: licenseInfo.features?.sync_enabled ?? license.features.sync_enabled,
-						sync_quota: licenseInfo.features?.sync_quota ?? license.features.sync_quota,
-						publish_enabled: licenseInfo.features?.publish_enabled ?? license.features.publish_enabled,
-						max_sites: licenseInfo.features?.max_sites ?? license.features.max_sites,
-						max_storage: licenseInfo.features?.max_storage ?? license.features.max_storage,
-						custom_domain: licenseInfo.features?.custom_domain ?? license.features.custom_domain,
-						custom_sub_domain: licenseInfo.features?.custom_sub_domain ?? license.features.custom_sub_domain,
-						validity_days: licenseInfo.features?.validity_days ?? license.features.validity_days,
-					}
+					expiresAt: licenseInfo.expiresAt || license.expiresAt,
+					activatedAt: licenseInfo.activatedAt || license.activatedAt,
+					features: licenseInfo.features || license.features
 				};
+				
 				await this.saveData(this.settings);
 			}
 		} catch (error) {
@@ -1489,12 +1479,12 @@ export default class FridayPlugin extends Plugin {
 	 * Called when user clicks refresh in settings
 	 */
 	async refreshSubdomainInfo(): Promise<void> {
-		// Check if dependencies are initialized
-		if (!this.hugoverse) {
+		// Check if domain service is available
+		if (!this.domainServiceManager) {
 			return;
 		}
 
-		const { license, userToken } = this.settings;
+		const { license } = this.settings;
 		
 		// Only fetch if license is active and not expired
 		if (!license || isLicenseExpired(license.expiresAt)) {
@@ -1502,9 +1492,11 @@ export default class FridayPlugin extends Plugin {
 		}
 
 		try {
-			const domainInfo = await this.hugoverse.getDomains(userToken, license.key);
-			if (domainInfo) {
-				var updated = false;
+			const result = await this.domainServiceManager.getDomainInfo();
+			if (result.success && result.data) {
+				const domainInfo = result.data;
+				let updated = false;
+				
 				if (domainInfo.subdomain) {
 					// Only update customSubdomain if it differs from the default (userDir)
 					// This handles the case where user's subdomain was changed from another device
@@ -1513,12 +1505,13 @@ export default class FridayPlugin extends Plugin {
 						updated = true;
 					}
 				}
-				if (domainInfo.cus_domain) {
-					this.settings.customDomain = domainInfo.cus_domain;
+				
+				if (domainInfo.customDomain) {
+					this.settings.customDomain = domainInfo.customDomain;
 					updated = true;
 				}
 
-				if (updated){
+				if (updated) {
 					await this.saveData(this.settings);
 				}
 			}
@@ -1612,19 +1605,19 @@ export default class FridayPlugin extends Plugin {
 			await config.set(workspace, 'publish.method', this.settings.publishMethod);
 			
 			// Save auth configuration to Foundry AuthService
-			if (this.foundryAuthService && this.settings.enterpriseServerUrl) {
-				const authConfig = {
-					apiUrl: this.settings.enterpriseServerUrl,
-					// websiteUrl can be derived from apiUrl or set separately if needed
-				};
-				
-				const updateResult = await this.foundryAuthService.updateConfig(authConfig);
-				if (updateResult.success) {
-					console.log('[Friday] Auth config saved to Foundry:', authConfig);
-				} else {
-					console.warn('[Friday] Failed to save auth config to Foundry:', updateResult.error);
-				}
+		if (this.foundryAuthService && this.settings.enterpriseServerUrl) {
+			const authConfig = {
+				apiUrl: this.settings.enterpriseServerUrl,
+				// websiteUrl can be derived from apiUrl or set separately if needed
+			};
+			
+			const updateResult = await this.foundryAuthService.updateConfig(this.absWorkspacePath, authConfig);
+			if (updateResult.success) {
+				console.log('[Friday] Auth config saved to Foundry:', authConfig);
+			} else {
+				console.warn('[Friday] Failed to save auth config to Foundry:', updateResult.error);
 			}
+		}
 			
 			console.log('[Friday] Settings saved to Foundry Global Config');
 		} catch (error) {
@@ -1690,17 +1683,48 @@ export default class FridayPlugin extends Plugin {
 				this.settings.customSubdomain = foundryConfig['site'].customSubdomain;
 			}
 			
-			// Load auth configuration from Foundry AuthService
-			if (this.foundryAuthService) {
-				const authConfigResult = await this.foundryAuthService.getConfig();
-				if (authConfigResult.success && authConfigResult.data) {
-					// Only load if local setting is empty
-					if (!this.settings.enterpriseServerUrl && authConfigResult.data.apiUrl) {
-						this.settings.enterpriseServerUrl = authConfigResult.data.apiUrl;
-						console.log('[Friday] Loaded auth config from Foundry:', authConfigResult.data);
-					}
+		// Load auth configuration from Foundry AuthService
+		if (this.foundryAuthService) {
+			const authConfigResult = await this.foundryAuthService.getConfig(this.absWorkspacePath);
+			if (authConfigResult.success && authConfigResult.data) {
+				// Only load if local setting is empty
+				if (!this.settings.enterpriseServerUrl && authConfigResult.data.apiUrl) {
+					this.settings.enterpriseServerUrl = authConfigResult.data.apiUrl;
+					console.log('[Friday] Loaded auth config from Foundry:', authConfigResult.data);
 				}
 			}
+		}
+			
+		// Load license configuration from global config
+		// Only load if local settings don't have license data
+		if (!this.settings.license && foundryConfig['auth']?.userInfo) {
+			const userInfo = foundryConfig['auth'].userInfo;
+			
+			// Load license data if available
+			if (userInfo.license) {
+				this.settings.license = {
+					key: userInfo.license.key || '',
+					plan: userInfo.license.plan || 'free',
+					expiresAt: userInfo.license.expiresAt || 0,
+					features: userInfo.license.features || {},
+					activatedAt: userInfo.license.activatedAt || 0
+				};
+				
+				console.log('[Friday] Loaded license from auth user info');
+			}
+			
+			// Load user data if available
+			if (userInfo.email) {
+				// Extract user directory from email (for MDFriday users)
+				const userDir = userInfo.email.split('@')[0];
+				this.settings.licenseUser = {
+					email: userInfo.email,
+					userDir: userDir
+				};
+				
+				console.log('[Friday] Loaded user info from auth');
+			}
+		}
 			
 			console.log('[Friday] Settings loaded from Foundry Global Config');
 		} catch (error) {
@@ -2034,7 +2058,7 @@ class FridaySettingTab extends PluginSettingTab {
 		mdfridaySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_app')});
 		
 		// Check if license is active and has custom_sub_domain permission
-		const hasSubdomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.custom_sub_domain === true;
+		const hasSubdomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.customSubDomain === true;
 		
 		if (hasSubdomainPermission) {
 			// Get effective subdomain: customSubdomain (if set) or default userDir
@@ -2159,28 +2183,26 @@ class FridaySettingTab extends PluginSettingTab {
 						isChecking = true;
 						updateButtonStates();
 
-						try {
-							const result = await this.plugin.hugoverse?.checkSubdomainAvailability(
-								userToken, license.key, inputSubdomain
-							);
+					try {
+						const result = await this.plugin.domainServiceManager?.checkSubdomain(inputSubdomain);
 
-							if (result) {
-								availabilityStatus = result.available ? 'available' : 'unavailable';
-								statusMessage = result.available 
-									? this.plugin.i18n.t('settings.subdomain_available')
-									: this.plugin.i18n.t('settings.subdomain_unavailable');
-							} else {
-								availabilityStatus = 'error';
-								statusMessage = this.plugin.i18n.t('settings.subdomain_check_failed');
-							}
-						} catch (error) {
+						if (result && result.success && result.data) {
+							availabilityStatus = result.data.available ? 'available' : 'unavailable';
+							statusMessage = result.data.available 
+								? this.plugin.i18n.t('settings.subdomain_available')
+								: this.plugin.i18n.t('settings.subdomain_unavailable');
+						} else {
 							availabilityStatus = 'error';
-							statusMessage = this.plugin.i18n.t('settings.subdomain_check_failed');
-						} finally {
-							isChecking = false;
-							updateStatusDisplay();
-							updateButtonStates();
+							statusMessage = result?.error || this.plugin.i18n.t('settings.subdomain_check_failed');
 						}
+					} catch (error) {
+						availabilityStatus = 'error';
+						statusMessage = this.plugin.i18n.t('settings.subdomain_check_failed');
+					} finally {
+						isChecking = false;
+						updateStatusDisplay();
+						updateButtonStates();
+					}
 					});
 			});
 
@@ -2196,41 +2218,39 @@ class FridaySettingTab extends PluginSettingTab {
 						isUpdating = true;
 						updateButtonStates();
 
-						try {
-							const result = await this.plugin.hugoverse?.updateSubdomain(
-								userToken, license.key, inputSubdomain
-							);
+					try {
+						const result = await this.plugin.domainServiceManager?.updateSubdomain(inputSubdomain);
 
-							if (result && result.new_subdomain) {
-								currentSubdomain = result.new_subdomain;
-								inputSubdomain = currentSubdomain;
-								subdomainInput.value = currentSubdomain;
-								subdomainSetting.setDesc(`${currentSubdomain}.mdfriday.com`);
-								
-								// Save custom subdomain to settings
-								this.plugin.settings.customSubdomain = result.new_subdomain;
-								await this.plugin.saveSettings();
-								
-								availabilityStatus = null;
-								statusMessage = '';
-								
-								new Notice(this.plugin.i18n.t('settings.subdomain_updated'));
-							} else {
-								availabilityStatus = 'error';
-								statusMessage = this.plugin.i18n.t('settings.subdomain_update_failed', { error: 'Unknown error' });
-							}
-						} catch (error) {
+						if (result && result.success && result.data) {
+							currentSubdomain = result.data.newSubdomain;
+							inputSubdomain = currentSubdomain;
+							subdomainInput.value = currentSubdomain;
+							subdomainSetting.setDesc(`${currentSubdomain}.mdfriday.com`);
+							
+							// Save custom subdomain to settings
+							this.plugin.settings.customSubdomain = result.data.newSubdomain;
+							await this.plugin.saveSettings();
+							
+							availabilityStatus = null;
+							statusMessage = '';
+							
+							new Notice(this.plugin.i18n.t('settings.subdomain_updated'));
+						} else {
 							availabilityStatus = 'error';
-							statusMessage = this.plugin.i18n.t('settings.subdomain_update_failed', { 
-								error: error instanceof Error ? error.message : String(error) 
-							});
-						} finally {
-							isUpdating = false;
-							updateStatusDisplay();
-							updateButtonStates();
+							statusMessage = result?.error || this.plugin.i18n.t('settings.subdomain_update_failed', { error: 'Unknown error' });
 						}
-					});
-			});
+					} catch (error) {
+						availabilityStatus = 'error';
+						statusMessage = this.plugin.i18n.t('settings.subdomain_update_failed', { 
+							error: error instanceof Error ? error.message : String(error) 
+						});
+					} finally {
+						isUpdating = false;
+						updateStatusDisplay();
+						updateButtonStates();
+					}
+				});
+		});
 
 			// Initial button states
 			updateButtonStates();
@@ -2247,7 +2267,7 @@ class FridaySettingTab extends PluginSettingTab {
 		mdfridayCustomDomainContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_custom_domain')});
 		
 		// Check if license is active and has custom_domain permission
-		const hasCustomDomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.custom_domain === true;
+		const hasCustomDomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.customDomain === true;
 		
 		if (hasCustomDomainPermission) {
 			const {customDomain} = this.plugin.settings;
@@ -2831,7 +2851,7 @@ class FridaySettingTab extends PluginSettingTab {
 			// Row 2: Storage Usage
 			const usage = this.plugin.settings.licenseUsage;
 			const usedStorage = usage?.totalDiskUsage || 0;
-			const maxStorage = license.features.max_storage || 1024;
+			const maxStorage = license.features.maxStorage || 1024;
 			const usagePercentage = maxStorage > 0 ? (usedStorage / maxStorage) * 100 : 0;
 			
 			const storageSetting = new Setting(containerEl)
@@ -2967,11 +2987,16 @@ class FridaySettingTab extends PluginSettingTab {
 							trialEmailEl.disabled = true;
 							
 							try {
-								const result = await this.plugin.hugoverse.requestTrialLicense(email);
+								// Use Foundry License Service
+								if (!this.plugin.licenseServiceManager) {
+									throw new Error('License service not available');
+								}
 								
-								if (result && result.success && result.license_key) {
+								const result = await this.plugin.licenseServiceManager.requestTrial(email);
+								
+								if (result.success && result.data?.key) {
 									// Success - fill the license key in the input above
-									inputEl.value = result.license_key;
+									inputEl.value = result.data.key;
 									
 									// Show success message
 									trialStatusEl.setText(this.plugin.i18n.t('settings.trial_request_success'));
@@ -2982,8 +3007,11 @@ class FridaySettingTab extends PluginSettingTab {
 									
 									// Clear the email field
 									trialEmailEl.value = '';
+									
+									// Refresh display to show activated license
+									this.display();
 								} else {
-									throw new Error('Invalid trial response');
+									throw new Error(result.error || 'Invalid trial response');
 								}
 							} catch (error) {
 								// Show error
@@ -3484,13 +3512,20 @@ class FridaySettingTab extends PluginSettingTab {
 	 */
 	private async performReset(): Promise<void> {
 		try {
-			const { license, userToken } = this.plugin.settings;
+			const { license } = this.plugin.settings;
 			if (!license) {
 				throw new Error('No license found');
 			}
 
-			// Step 1: Call backend API to reset cloud data
-			await this.plugin.hugoverse.resetUsage(userToken, license.key);
+			// Step 1: Call Foundry License Service to reset cloud data
+			if (!this.plugin.licenseServiceManager) {
+				throw new Error('License service not available');
+			}
+			
+			const result = await this.plugin.licenseServiceManager.resetUsage(true);
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to reset usage');
+			}
 
 			// Step 2: Close existing sync service
 			if (this.plugin.syncService?.isInitialized) {
@@ -3539,72 +3574,75 @@ class FridaySettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Activate license key
+	 * Activate license key using Foundry License Service
 	 * This is the main license activation flow:
-	 * 1. Convert license key to email/password
-	 * 2. Login with credentials
-	 * 3. Activate license with device info
-	 * 4. Store license data and configure sync
+	 * 1. Login with license key (get token)
+	 * 2. Activate license (Foundry uses the token automatically)
+	 * 3. Store license data
+	 * 4. Configure sync if enabled
 	 */
 	private async activateLicense(licenseKey: string): Promise<void> {
-		// Import required functions
-		const { getDeviceId, getDeviceName, getDeviceType } = await import('./license');
-
-		// Step 1: Convert license key to credentials
-		const email = licenseKeyToEmail(licenseKey);
-		const password = licenseKeyToPassword(licenseKey);
-
-		// Step 2: Login with credentials
-		const token = await this.plugin.user.loginWithCredentials(email, password);
-		if (!token) {
-			throw new Error('Login failed');
+		// Check if license service is available
+		if (!this.plugin.licenseServiceManager) {
+			throw new Error('License service not available');
 		}
 
-		// Step 3: Get device info
-		const deviceId = await getDeviceId();
-		const deviceName = getDeviceName();
-		const deviceType = getDeviceType();
+		// Step 1: Login with license key to get token
+		const loginResult = await this.plugin.licenseServiceManager.loginWithLicense(licenseKey);
+		
+		if (!loginResult.success) {
+			throw new Error(loginResult.error || 'Login with license failed');
+		}
+		
+		console.log('[Friday] Login successful, proceeding with activation');
 
-		// Step 4: Activate license
-		const response = await this.plugin.hugoverse.activateLicense(
-			token,
-			licenseKey,
-			deviceId,
-			deviceName,
-			deviceType
-		);
-
-		if (!response || !response.success) {
-			throw new Error('License activation failed');
+		// Step 2: Activate license using Foundry (uses the token from login)
+		// Returns complete info: license, user, sync, activation
+		const result = await this.plugin.licenseServiceManager.activateLicense(licenseKey);
+		
+		if (!result.success || !result.data) {
+			throw new Error(result.error || 'License activation failed');
 		}
 
-		// Step 5: Store license data
+		const licenseInfo = result.data;
+
+		// Step 3: Store license data
+		// Note: Foundry returns formatted fields (expires, plan) and masked key
+		// We need to store raw/processable values in settings
 		this.plugin.settings.license = {
-			key: licenseKey,
-			plan: response.plan,
-			expiresAt: response.expires_at,
-			features: response.features,
-			activatedAt: Date.now()
+			key: licenseKey, // Use original key, not masked
+			plan: licenseInfo.plan, // Already formatted by Foundry
+			expiresAt: this.parseExpiresField(licenseInfo.expires), // Convert formatted string to timestamp
+			features: licenseInfo.features,
+			activatedAt: Date.now() // Use current time as activation time
 		};
 
-		// Step 6: Store sync configuration
-		if (response.sync && response.features.sync_enabled) {
+		// Step 4: Store user data (if available)
+		if (licenseInfo.user) {
+			this.plugin.settings.licenseUser = {
+				email: licenseInfo.user.email,
+				userDir: licenseInfo.user.userDir
+			};
+		}
+
+		// Step 5: Store sync configuration (if available and sync is enabled)
+		if (licenseInfo.sync && licenseInfo.features.syncEnabled) {
 			this.plugin.settings.licenseSync = {
 				enabled: true,
-				endpoint: response.sync.db_endpoint,
-				dbName: response.sync.db_name,
-				email: response.sync.email,
-				dbPassword: response.sync.db_password
+				endpoint: licenseInfo.sync.dbEndpoint,
+				dbName: licenseInfo.sync.dbName,
+				email: licenseInfo.sync.email,
+				dbPassword: licenseInfo.sync.dbPassword
 			};
 
 			// Configure the actual sync config
 			this.plugin.settings.syncEnabled = true;
 			this.plugin.settings.syncConfig = {
 				...this.plugin.settings.syncConfig,
-				couchDB_URI: response.sync.db_endpoint.replace(`/${response.sync.db_name}`, ''),
-				couchDB_DBNAME: response.sync.db_name,
-				couchDB_USER: response.sync.email,
-				couchDB_PASSWORD: response.sync.db_password,
+				couchDB_URI: licenseInfo.sync.dbEndpoint.replace(`/${licenseInfo.sync.dbName}`, ''),
+				couchDB_DBNAME: licenseInfo.sync.dbName,
+				couchDB_USER: licenseInfo.sync.email,
+				couchDB_PASSWORD: licenseInfo.sync.dbPassword,
 				encrypt: true,
 				syncOnStart: true,
 				syncOnSave: true,
@@ -3612,42 +3650,63 @@ class FridaySettingTab extends PluginSettingTab {
 			};
 		}
 
-		// Step 7: Store user data
-		if (response.user) {
-			this.plugin.settings.licenseUser = {
-				email: response.user.email,
-				userDir: response.user.user_dir
-			};
-		}
+		// Step 6: Get first time activation flag from activation object
+		const isFirstTime = licenseInfo.activation?.firstTime || false;
 
-		// Step 8: Generate encryption passphrase if not exists (only for first time)
+		// Step 7: Generate encryption passphrase if not exists (only for first time)
 		// For non-first-time activation, user needs to manually input the passphrase
-		if (!this.plugin.settings.encryptionPassphrase && response.first_time) {
+		if (!this.plugin.settings.encryptionPassphrase && isFirstTime) {
 			this.plugin.settings.encryptionPassphrase = generateEncryptionPassphrase();
 			// Set in sync config too
 			this.plugin.settings.syncConfig.passphrase = this.plugin.settings.encryptionPassphrase;
 		}
 
-		// Step 9: Save all settings
+		// Step 8: Save all settings
 		await this.plugin.saveSettings();
 
-		// Step 10: Fetch license usage information
+		// Step 9: Fetch license usage information
 		await this.plugin.refreshLicenseUsage();
 
-		// Step 11: Set first time flag
-		this.firstTimeSync = response.first_time;
+		// Step 10: Set first time flag
+		this.firstTimeSync = isFirstTime;
 
-		// Step 12: Initialize sync service only for first-time activation
+		// Step 11: Initialize sync service only for first-time activation
 		// For non-first-time, user needs to input passphrase first, then manually download
 		// Network monitoring will be started after successful upload/download
-		if (this.plugin.settings.syncEnabled && response.first_time) {
+		if (this.plugin.settings.syncEnabled && isFirstTime) {
 			await this.plugin.initializeSyncService();
 		}
 
-		// Step 13: Refresh license state in Site panel (if open)
+		// Step 12: Refresh license state in Site panel (if open)
 		if (this.plugin.refreshLicenseState) {
 			this.plugin.refreshLicenseState();
 		}
+	}
+
+	/**
+	 * Parse Foundry's expires field to timestamp
+	 * Foundry may return:
+	 * - A formatted date string (e.g., "2025-12-31")
+	 * - A timestamp number
+	 * - An ISO date string (e.g., "2025-12-31T23:59:59Z")
+	 */
+	private parseExpiresField(expires: any): number {
+		// If already a number (timestamp), return it
+		if (typeof expires === 'number') {
+			return expires;
+		}
+		
+		// If it's a string, try to parse it
+		if (typeof expires === 'string') {
+			const timestamp = Date.parse(expires);
+			if (!isNaN(timestamp)) {
+				return timestamp;
+			}
+		}
+		
+		// Fallback: return a far future date (100 years from now)
+		console.warn('[Friday] Unable to parse expires field:', expires);
+		return Date.now() + (100 * 365 * 24 * 60 * 60 * 1000);
 	}
 }
 
