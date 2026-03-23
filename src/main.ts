@@ -45,6 +45,7 @@ import {
 import { createObsidianHttpClient, createObsidianIdentityHttpClient } from './http';
 import { LicenseServiceManager } from './services/license';
 import { DomainServiceManager } from './services/domain';
+import { LicenseStateManager } from './services/licenseState';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
@@ -183,6 +184,8 @@ export default class FridayPlugin extends Plugin {
 	foundryDomainService?: ObsidianDomainService | null
 	licenseServiceManager?: LicenseServiceManager | null
 	domainServiceManager?: DomainServiceManager | null
+	// License state manager (unified license state from Foundry)
+	licenseState?: LicenseStateManager | null
 	// Current project name for tracking
 	currentProjectName?: string | null
 	
@@ -470,7 +473,38 @@ export default class FridayPlugin extends Plugin {
 		);
 	}
 
-		console.log('[Friday] Foundry services initialized successfully');
+	// Create License State Manager (unified license state from Foundry)
+	if (this.foundryLicenseService && this.foundryAuthService && this.foundryDomainService) {
+		this.licenseState = new LicenseStateManager(
+			this.foundryLicenseService,
+			this.foundryAuthService,
+			this.foundryDomainService,
+			this.absWorkspacePath
+		);
+		
+		// Initialize license state
+		const initResult = await this.licenseState.initialize();
+		
+		if (initResult.isActivated) {
+			console.log('[Friday] License activated:', initResult.licenseKey);
+			
+			// Sync to settings (for UI display only)
+			await this.syncLicenseToSettings();
+			
+			// If has sync feature, initialize sync service
+			if (this.licenseState.hasFeature('syncEnabled')) {
+				console.log('[Friday] Sync feature enabled, will initialize sync service');
+				// Sync service will be initialized in setTimeout later
+			}
+		} else {
+			console.log('[Friday] No license activated or license check failed');
+			if (initResult.error) {
+				console.warn('[Friday] License initialization error:', initResult.error);
+			}
+		}
+	}
+
+	console.log('[Friday] Foundry services initialized successfully');
 
 		// Load settings from Foundry Global Config (merge with local settings)
 		await this.loadSettingsFromFoundryGlobalConfig();
@@ -1627,6 +1661,51 @@ export default class FridayPlugin extends Plugin {
 	}
 	
 	/**
+	 * Sync license state from Foundry to Obsidian settings
+	 * (Settings are used for UI display only, not for logic decisions)
+	 */
+	private async syncLicenseToSettings(): Promise<void> {
+		if (!this.licenseState) {
+			return;
+		}
+		
+		try {
+			const licenseInfo = this.licenseState.getLicenseInfo();
+			const authStatus = this.licenseState.getAuthStatus();
+			
+			// Update license data (for UI display)
+			if (licenseInfo) {
+				this.settings.license = {
+					key: this.licenseState.getLicenseKey() || '',
+					plan: licenseInfo.plan,
+					expiresAt: licenseInfo.expiresAt || 0,
+					features: licenseInfo.features,
+					activatedAt: Date.now()
+				};
+				console.log('[Friday] Synced license to settings:', {
+					plan: licenseInfo.plan,
+					expiresAt: licenseInfo.expiresAt
+				});
+			}
+			
+			// Update user data (for UI display)
+			if (authStatus?.email) {
+				this.settings.licenseUser = {
+					email: authStatus.email,
+					userDir: this.licenseState.getUserDir() || ''
+				};
+				console.log('[Friday] Synced user to settings:', authStatus.email);
+			}
+			
+			// Note: We don't call saveSettings() here because this is just in-memory cache
+			// The real data source is always Foundry
+			
+		} catch (error) {
+			console.error('[Friday] Error syncing license to settings:', error);
+		}
+	}
+
+	/**
 	 * Load settings from Foundry Global Config
 	 * Merge with existing settings (Obsidian local storage takes precedence if not empty)
 	 */
@@ -2057,12 +2136,14 @@ class FridaySettingTab extends PluginSettingTab {
 		// =========================================
 		mdfridaySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_app')});
 		
-		// Check if license is active and has custom_sub_domain permission
-		const hasSubdomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.customSubDomain === true;
+		// Check if license is active and has customSubDomain permission (use licenseState)
+		const hasSubdomainPermission = this.plugin.licenseState?.isActivated() && 
+			!this.plugin.licenseState.isExpired() && 
+			this.plugin.licenseState.hasFeature('customSubDomain');
 		
 		if (hasSubdomainPermission) {
-			// Get effective subdomain: customSubdomain (if set) or default userDir
-			const effectiveSubdomain = customSubdomain ?? licenseUser?.userDir ?? '';
+			// Get effective subdomain from licenseState
+			const effectiveSubdomain = this.plugin.licenseState.getSubdomain() || '';
 			
 			// State variables
 			let currentSubdomain = effectiveSubdomain;
@@ -2265,15 +2346,15 @@ class FridaySettingTab extends PluginSettingTab {
 		// MDFriday Custom Domain Settings (Independent Container)
 		// =========================================
 		mdfridayCustomDomainContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_custom_domain')});
-		
-		// Check if license is active and has custom_domain permission
-		const hasCustomDomainPermission = license && !isLicenseExpired(license.expiresAt) && license.features?.customDomain === true;
-		
+
+		// Check if license is active and has customDomain permission (use licenseState)
+		const hasCustomDomainPermission = this.plugin.licenseState?.isActivated() && 
+			!this.plugin.licenseState.isExpired() && 
+			this.plugin.licenseState.hasFeature('customDomain');
+
 		if (hasCustomDomainPermission) {
-			const {customDomain} = this.plugin.settings;
-			
-			// State variables
-			let currentDomain = customDomain || '';
+			// Get custom domain from licenseState or settings
+			let currentDomain = this.plugin.licenseState.getCustomDomain() || this.plugin.settings.customDomain || '';
 			let inputDomain = currentDomain;
 			let isChecking = false;
 			let isSaving = false;
@@ -2768,24 +2849,31 @@ class FridaySettingTab extends PluginSettingTab {
 	/**
 	 * Render License Section
 	 * Shows license key input when not activated, or license status when activated
+	 * 
+	 * Uses licenseState as the single source of truth
 	 */
 	private renderLicenseSection(containerEl: HTMLElement): void {
-		const license = this.plugin.settings.license;
-
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.license')});
 
-		if (license && !isLicenseExpired(license.expiresAt)) {
+		// Use licenseState for all license-related checks
+		if (this.plugin.licenseState?.isActivated() && !this.plugin.licenseState.isExpired()) {
 			// ========== License Active State ==========
+			
+			const licenseInfo = this.plugin.licenseState.getLicenseInfo();
+			if (!licenseInfo) {
+				console.warn('[Settings] License is activated but no license info available');
+				return;
+			}
 			
 			// Row 1: License Key (masked) + Valid Until + Plan Badge (clickable)
 			const licenseKeySetting = new Setting(containerEl)
-				.setName(maskLicenseKey(license.key))
-				.setDesc(this.plugin.i18n.t('settings.valid_until') + ': ' + formatExpirationDate(license.expiresAt));
+				.setName(maskLicenseKey(this.plugin.licenseState.getLicenseKey() || ''))
+				.setDesc(this.plugin.i18n.t('settings.valid_until') + ': ' + licenseInfo.expires);
 			
 			// Add clickable plan badge to the right
 			const planBadge = licenseKeySetting.controlEl.createSpan({
-				cls: `friday-plan-badge ${license.plan.toLowerCase()} clickable`,
-				text: formatPlanName(license.plan)
+				cls: `friday-plan-badge ${licenseInfo.plan.toLowerCase()} clickable`,
+				text: formatPlanName(licenseInfo.plan)
 			});
 			
 			// Make plan badge clickable to refresh license info
@@ -2809,10 +2897,13 @@ class FridaySettingTab extends PluginSettingTab {
 				planBadge.addClass('refreshing');
 				
 				try {
-					// Refresh license info (expires_at, plan, max_storage)
-					await this.plugin.refreshLicenseInfo();
+					// Refresh from Foundry
+					await this.plugin.licenseState?.refresh();
 					
-					// Refresh usage data
+					// Sync to settings (for UI display)
+					await this.plugin.syncLicenseToSettings();
+					
+					// Refresh usage data (if still using old method)
 					await this.plugin.refreshLicenseUsage();
 
 					// Refresh subdomain info if applicable
@@ -2837,7 +2928,7 @@ class FridaySettingTab extends PluginSettingTab {
 			});
 
 			// Add "Pricing Details" button next to the Plan Badge (only for Free plan)
-			if (license.plan.toLowerCase() === 'free') {
+			if (licenseInfo.plan.toLowerCase() === 'free') {
 				const pricingBtn = licenseKeySetting.controlEl.createEl('button', {
 					cls: 'friday-premium-btn',
 					text: this.plugin.i18n.t('settings.pricing_details') || '套餐详情'
@@ -2851,7 +2942,7 @@ class FridaySettingTab extends PluginSettingTab {
 			// Row 2: Storage Usage
 			const usage = this.plugin.settings.licenseUsage;
 			const usedStorage = usage?.totalDiskUsage || 0;
-			const maxStorage = license.features.maxStorage || 1024;
+			const maxStorage = this.plugin.licenseState.getMaxStorage();
 			const usagePercentage = maxStorage > 0 ? (usedStorage / maxStorage) * 100 : 0;
 			
 			const storageSetting = new Setting(containerEl)
@@ -3581,105 +3672,111 @@ class FridaySettingTab extends PluginSettingTab {
 	 * 3. Store license data
 	 * 4. Configure sync if enabled
 	 */
+	/**
+	 * Activate License
+	 * 
+	 * Simplified flow using licenseState as single source of truth
+	 */
 	private async activateLicense(licenseKey: string): Promise<void> {
-		// Check if license service is available
 		if (!this.plugin.licenseServiceManager) {
 			throw new Error('License service not available');
 		}
 
-		// Step 1: Login with license key to get token
-		const loginResult = await this.plugin.licenseServiceManager.loginWithLicense(licenseKey);
-		
-		if (!loginResult.success) {
-			throw new Error(loginResult.error || 'Login with license failed');
-		}
-		
-		console.log('[Friday] Login successful, proceeding with activation');
+		try {
+			// Step 1: Login with license key to get token
+			const loginResult = await this.plugin.licenseServiceManager.loginWithLicense(licenseKey);
+			
+			if (!loginResult.success) {
+				throw new Error(loginResult.error || 'Login with license failed');
+			}
+			
+			console.log('[Friday] Login successful, proceeding with activation');
 
-		// Step 2: Activate license using Foundry (uses the token from login)
-		// Returns complete info: license, user, sync, activation
-		const result = await this.plugin.licenseServiceManager.activateLicense(licenseKey);
-		
-		if (!result.success || !result.data) {
-			throw new Error(result.error || 'License activation failed');
-		}
+			// Step 2: Activate license using Foundry (uses the token from login)
+			const activateResult = await this.plugin.licenseServiceManager.activateLicense(licenseKey);
+			
+			if (!activateResult.success || !activateResult.data) {
+				throw new Error(activateResult.error || 'License activation failed');
+			}
 
-		const licenseInfo = result.data;
+			const licenseInfo = activateResult.data;
+			console.log('[Friday] License activation succeeded:', {
+				plan: licenseInfo.plan,
+				firstTime: licenseInfo.activation?.firstTime
+			});
 
-		// Step 3: Store license data
-		// Note: Foundry returns formatted fields (expires, plan) and masked key
-		// We need to store raw/processable values in settings
-		this.plugin.settings.license = {
-			key: licenseKey, // Use original key, not masked
-			plan: licenseInfo.plan, // Already formatted by Foundry
-			expiresAt: this.parseExpiresField(licenseInfo.expires), // Convert formatted string to timestamp
-			features: licenseInfo.features,
-			activatedAt: Date.now() // Use current time as activation time
-		};
+			// Step 3: Reinitialize license state from Foundry (single source of truth)
+			if (this.plugin.licenseState) {
+				const initResult = await this.plugin.licenseState.initialize();
+				
+				if (!initResult.isActivated) {
+					throw new Error('License activation succeeded but state initialization failed');
+				}
+				
+				console.log('[Friday] License state initialized successfully');
+			}
 
-		// Step 4: Store user data (if available)
-		if (licenseInfo.user) {
-			this.plugin.settings.licenseUser = {
-				email: licenseInfo.user.email,
-				userDir: licenseInfo.user.userDir
-			};
-		}
+			// Step 4: Sync to settings (for UI display only)
+			await this.plugin.syncLicenseToSettings();
 
-		// Step 5: Store sync configuration (if available and sync is enabled)
-		if (licenseInfo.sync && licenseInfo.features.syncEnabled) {
-			this.plugin.settings.licenseSync = {
-				enabled: true,
-				endpoint: licenseInfo.sync.dbEndpoint,
-				dbName: licenseInfo.sync.dbName,
-				email: licenseInfo.sync.email,
-				dbPassword: licenseInfo.sync.dbPassword
-			};
+			// Step 5: Configure sync if enabled
+			const isFirstTime = licenseInfo.activation?.firstTime || false;
+			
+			if (licenseInfo.sync && licenseInfo.features.syncEnabled) {
+				// Store sync configuration
+				this.plugin.settings.licenseSync = {
+					enabled: true,
+					endpoint: licenseInfo.sync.dbEndpoint,
+					dbName: licenseInfo.sync.dbName,
+					email: licenseInfo.sync.email,
+					dbPassword: licenseInfo.sync.dbPassword
+				};
 
-			// Configure the actual sync config
-			this.plugin.settings.syncEnabled = true;
-			this.plugin.settings.syncConfig = {
-				...this.plugin.settings.syncConfig,
-				couchDB_URI: licenseInfo.sync.dbEndpoint.replace(`/${licenseInfo.sync.dbName}`, ''),
-				couchDB_DBNAME: licenseInfo.sync.dbName,
-				couchDB_USER: licenseInfo.sync.email,
-				couchDB_PASSWORD: licenseInfo.sync.dbPassword,
-				encrypt: true,
-				syncOnStart: true,
-				syncOnSave: true,
-				liveSync: true
-			};
-		}
+				// Configure the actual sync config
+				this.plugin.settings.syncEnabled = true;
+				this.plugin.settings.syncConfig = {
+					...this.plugin.settings.syncConfig,
+					couchDB_URI: licenseInfo.sync.dbEndpoint.replace(`/${licenseInfo.sync.dbName}`, ''),
+					couchDB_DBNAME: licenseInfo.sync.dbName,
+					couchDB_USER: licenseInfo.sync.email,
+					couchDB_PASSWORD: licenseInfo.sync.dbPassword,
+					encrypt: true,
+					syncOnStart: true,
+					syncOnSave: true,
+					liveSync: true
+				};
 
-		// Step 6: Get first time activation flag from activation object
-		const isFirstTime = licenseInfo.activation?.firstTime || false;
+				// Generate encryption passphrase if not exists (only for first time)
+				if (!this.plugin.settings.encryptionPassphrase && isFirstTime) {
+					this.plugin.settings.encryptionPassphrase = generateEncryptionPassphrase();
+					this.plugin.settings.syncConfig.passphrase = this.plugin.settings.encryptionPassphrase;
+				}
+			}
 
-		// Step 7: Generate encryption passphrase if not exists (only for first time)
-		// For non-first-time activation, user needs to manually input the passphrase
-		if (!this.plugin.settings.encryptionPassphrase && isFirstTime) {
-			this.plugin.settings.encryptionPassphrase = generateEncryptionPassphrase();
-			// Set in sync config too
-			this.plugin.settings.syncConfig.passphrase = this.plugin.settings.encryptionPassphrase;
-		}
+			// Step 6: Save settings
+			await this.plugin.saveSettings();
 
-		// Step 8: Save all settings
-		await this.plugin.saveSettings();
+			// Step 7: Fetch license usage information
+			await this.plugin.refreshLicenseUsage();
 
-		// Step 9: Fetch license usage information
-		await this.plugin.refreshLicenseUsage();
+			// Step 8: Set first time flag
+			this.firstTimeSync = isFirstTime;
 
-		// Step 10: Set first time flag
-		this.firstTimeSync = isFirstTime;
+			// Step 9: Initialize sync service only for first-time activation
+			if (this.plugin.settings.syncEnabled && isFirstTime) {
+				await this.plugin.initializeSyncService();
+			}
 
-		// Step 11: Initialize sync service only for first-time activation
-		// For non-first-time, user needs to input passphrase first, then manually download
-		// Network monitoring will be started after successful upload/download
-		if (this.plugin.settings.syncEnabled && isFirstTime) {
-			await this.plugin.initializeSyncService();
-		}
+			// Step 10: Refresh license state in Site panel (if open)
+			if (this.plugin.refreshLicenseState) {
+				this.plugin.refreshLicenseState();
+			}
 
-		// Step 12: Refresh license state in Site panel (if open)
-		if (this.plugin.refreshLicenseState) {
-			this.plugin.refreshLicenseState();
+			console.log('[Friday] License activation completed successfully');
+			
+		} catch (error) {
+			console.error('[Friday] License activation failed:', error);
+			throw error;
 		}
 	}
 
