@@ -53,14 +53,19 @@
 #### 1. AuthService
 - **存储位置**: `workspace/.mdfriday/user-data.json`
 - **管理数据**:
-  - Server URL (apiUrl, websiteUrl)
+  - Server URL (apiUrl, websiteUrl) - **企业服务器 URL**
   - Authentication Token
   - User Email
   - Authentication Status
+  - Sync Config (Foundry 26.3.16+)
 - **访问方式**:
   - `authService.getConfig()` - 获取服务器配置
-  - `authService.getStatus()` - 获取认证状态
+  - `authService.getStatus()` - 获取认证状态（包含 sync config）
   - `authService.updateConfig()` - 更新服务器配置
+- **UI 集成**:
+  - Settings UI 修改企业服务器 URL 时需调用 `updateConfig()`
+  - 插件初始化时从 `getConfig()` 加载企业服务器 URL
+  - 本地 settings 优先（仅在为空时从 Foundry 加载）
 
 #### 2. LicenseService
 - **存储位置**: `workspace/.mdfriday/user-data.json`
@@ -105,6 +110,15 @@
   // 获取用户信息
   licenseState.getEmail()
   licenseState.getUserDir()
+  
+  // 获取 sync 配置（Foundry 26.3.16+）
+  licenseState.hasSyncConfig()
+  licenseState.getSyncConfig()
+  licenseState.isSyncActive()
+  licenseState.getSyncDbEndpoint()
+  licenseState.getSyncDbName()
+  licenseState.getSyncEmail()
+  licenseState.getSyncUserDir()
   
   // 获取域名信息
   licenseState.getSubdomain()
@@ -179,8 +193,11 @@
     // License 相关（从 licenseState 同步，仅用于显示）
     license: StoredLicenseData | null,     // ⚠️ For UI only
     licenseUser: StoredUserData | null,    // ⚠️ For UI only
-    licenseSync: StoredSyncData | null,    // ⚠️ For UI only
+    licenseSync: StoredSyncData | null,    // ⚠️ For UI only (Foundry 26.3.16+)
     licenseUsage: StoredUsageData | null,  // ⚠️ For UI only
+    
+    // 企业服务器 URL（双向存储）
+    enterpriseServerUrl: string,           // ⚠️ Also saved to Foundry via updateConfig()
     
     // 发布配置（默认值，可被 Global/Project Config 覆盖）
     ftpServer: string,
@@ -280,6 +297,71 @@ foundryProjectConfigService.set()
 Project Config (覆盖 Global Config)
 ```
 
+### 4. 企业服务器 URL 数据流（双向存储）
+
+```
+保存流程 (UI → Foundry):
+Settings UI onChange
+    ↓
+1. this.settings.enterpriseServerUrl = newValue
+2. await this.saveSettings()
+    ↓
+3. await authService.updateConfig(workspace, { apiUrl: newValue })
+    ↓
+双向保存:
+- Obsidian: .obsidian/plugins/mdfriday/data.json
+- Foundry: workspace/.mdfriday/user-data.json
+
+加载流程 (Foundry → Settings):
+插件初始化
+    ↓
+await authService.getConfig(workspace)
+    ↓
+检查 this.settings.enterpriseServerUrl
+    ↓
+如果为空 → 使用 Foundry 的 apiUrl
+如果不为空 → 保持本地值（本地优先）
+    ↓
+显示在 Settings UI
+
+优先级: 本地 settings > Foundry config
+```
+
+### 5. Sync 配置数据流（Foundry 26.3.16+）
+
+```
+获取 Sync 配置:
+插件初始化 / License 激活
+    ↓
+licenseState.initialize()
+    ↓
+authService.getStatus(workspace)
+    ↓
+返回 authStatus {
+  hasSyncConfig: boolean,
+  syncConfig: {
+    dbEndpoint, dbName, email,
+    dbPassword, userDir, status, isActive
+  }
+}
+    ↓
+licenseState 缓存
+    ↓
+syncLicenseToSettings()
+    ↓
+this.settings.licenseSync (UI 缓存)
+this.settings.syncConfig (SyncService 使用)
+
+查询 Sync 配置:
+UI Code
+    ↓
+licenseState.hasSyncConfig()      ← 推荐
+licenseState.getSyncConfig()      ← 推荐
+licenseState.isSyncActive()       ← 推荐
+    ↓
+authService.getStatus() (实时数据)
+```
+
 ## 代码示例
 
 ### ✅ 正确的用法
@@ -303,6 +385,23 @@ const customDomain = this.licenseState?.getCustomDomain();
 await this.licenseState?.refresh();
 await this.syncLicenseToSettings(); // 更新 UI 缓存
 this.display(); // 刷新 UI
+
+// 5. 获取 sync 配置（Foundry 26.3.16+）
+if (this.licenseState?.hasSyncConfig()) {
+  const syncConfig = this.licenseState.getSyncConfig();
+  console.log('DB Name:', syncConfig.dbName);
+  console.log('Is Active:', syncConfig.isActive);
+}
+
+// 6. 更新企业服务器 URL
+if (this.foundryAuthService && this.absWorkspacePath) {
+  await this.foundryAuthService.updateConfig(
+    this.absWorkspacePath,
+    { apiUrl: newUrl }
+  );
+  this.settings.enterpriseServerUrl = newUrl;
+  await this.saveSettings();
+}
 ```
 
 ### ❌ 错误的用法
@@ -310,13 +409,22 @@ this.display(); // 刷新 UI
 ```typescript
 // ❌ 不要用 settings 进行逻辑判断
 if (this.settings.license && !isLicenseExpired(this.settings.license.expiresAt)) {
-  // 可能是过期的缓存数据！
+  // 可能是过期的缓存数据！应该用 licenseState.isActivated()
 }
 
 // ❌ 不要用 settings 检查功能权限
 if (this.settings.license?.features.customSubDomain) {
-  // 数据可能不同步！
+  // 数据可能不同步！应该用 licenseState.hasFeature('customSubDomain')
 }
+
+// ❌ 不要用 settings.licenseSync 进行判断
+if (this.settings.licenseSync?.enabled) {
+  // 错误！应该用 licenseState.hasSyncConfig()
+}
+
+// ❌ 不要忘记调用 updateConfig 保存企业服务器 URL
+this.settings.enterpriseServerUrl = newUrl;
+await this.saveSettings(); // 不够！还需要调用 authService.updateConfig()
 
 // ❌ 不要手动保存 license 数据到 Global Config
 await config.set(workspace, 'auth.userInfo.license', {...}); // 错误！

@@ -40,8 +40,8 @@ export class LicenseServiceManager {
 					console.log('[Friday] Trial license key saved to global config');
 				}
 				
-				// Get full license info and save to auth user info
-				await this.syncLicenseInfoToAuth();
+				// Note: Auth and license data are now managed by Foundry Services
+				// No need to manually sync - use licenseState.initialize() to refresh
 				
 				return { success: true, data: result.data };
 			}
@@ -75,7 +75,7 @@ export class LicenseServiceManager {
 
 	/**
 	 * Activate license using license key
-	 * Saves the license key to global config
+	 * Saves the license key to global config for publishing
 	 */
 	async activateLicense(licenseKey: string): Promise<{ success: boolean; error?: string; data?: any }> {
 		try {
@@ -84,12 +84,12 @@ export class LicenseServiceManager {
 			if (result.success && result.data) {
 				console.log('[Friday] License activated successfully');
 				
-				// Save license key to global config
+				// Save license key to global config for MDFriday publishing
 				await this.saveLicenseKeyToConfig(licenseKey);
 				console.log('[Friday] License key saved to global config');
 				
-				// Sync license info to auth
-				await this.syncLicenseInfoToAuth();
+				// Note: Auth and license data are now managed by Foundry Services
+				// No need to manually sync - use licenseState.initialize() to refresh
 				
 				return { success: true, data: result.data };
 			}
@@ -157,7 +157,13 @@ export class LicenseServiceManager {
 	}
 
 	/**
-	 * Save license key to global config for publishing
+	 * Save license key to global config for MDFriday publishing
+	 * This is the ONLY data that should be saved to global config from license service
+	 * 
+	 * Purpose: Stores default license key for MDFriday publishing method
+	 * Location: workspace/.mdfriday/config.json under publish.mdfriday
+	 * 
+	 * Note: All other license/auth data is managed by Foundry Services in user-data.json
 	 */
 	private async saveLicenseKeyToConfig(licenseKey: string): Promise<void> {
 		await this.globalConfigService.set(
@@ -175,72 +181,5 @@ export class LicenseServiceManager {
 			'publish.mdfriday.enabled',
 			true
 		);
-	}
-
-	/**
-	 * Sync license info to auth user data
-	 * This stores license information in the auth workspace structure
-	 */
-	private async syncLicenseInfoToAuth(): Promise<void> {
-		try {
-			// Get license info
-			const licenseResult = await this.licenseService.getLicenseInfo(this.workspacePath);
-			if (!licenseResult.success || !licenseResult.data) {
-				console.warn('[Friday] No license info to sync');
-				return;
-			}
-
-			// Get auth status (includes token and email)
-			const authResult = await this.authService.getStatus(this.workspacePath);
-			if (!authResult.success || !authResult.data) {
-				console.warn('[Friday] No auth status to sync');
-				return;
-			}
-
-			// Get server config
-			const configResult = await this.authService.getConfig(this.workspacePath);
-			
-			const licenseData = licenseResult.data;
-			
-			// Parse expires field to timestamp
-			// Foundry returns 'expires' as formatted string, we need timestamp for storage
-			let expiresAtTimestamp = 0;
-			if (licenseData.expires) {
-				const parsed = Date.parse(licenseData.expires);
-				if (!isNaN(parsed)) {
-					expiresAtTimestamp = parsed;
-				}
-			}
-			
-			// Build the combined auth user info structure
-			const authUserInfo = {
-				serverConfig: configResult.success && configResult.data ? {
-					apiUrl: configResult.data.apiUrl,
-					websiteUrl: configResult.data.websiteUrl || ''
-				} : {},
-				token: authResult.data.token ? {
-					token: authResult.data.token
-				} : {},
-				license: {
-					key: licenseData.key, // This is masked key from Foundry
-					plan: licenseData.plan,
-					expiresAt: expiresAtTimestamp, // Convert expires string to timestamp
-					features: licenseData.features || {},
-					activatedAt: Date.now() // Use current time as fallback
-				},
-				email: authResult.data.email || ''
-			};
-
-			// Save to global config under a special key
-			await this.globalConfigService.set(
-				this.workspacePath,
-				'auth.userInfo',
-				authUserInfo
-			);
-			
-			console.log('[Friday] License info synced to auth user data');
-		} catch (error) {
-			console.error('[Friday] Error syncing license info to auth:', error);
-		}
 	}
 }

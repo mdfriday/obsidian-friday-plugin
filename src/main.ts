@@ -504,6 +504,22 @@ export default class FridayPlugin extends Plugin {
 		}
 	}
 
+	// Load enterprise server URL from AuthService config
+	if (this.foundryAuthService) {
+		try {
+			const configResult = await this.foundryAuthService.getConfig(this.absWorkspacePath);
+			if (configResult.success && configResult.data) {
+				// Only load to settings if local setting is empty (local settings have priority)
+				if (!this.settings.enterpriseServerUrl && configResult.data.apiUrl) {
+					this.settings.enterpriseServerUrl = configResult.data.apiUrl;
+					console.log('[Friday] Loaded enterprise server URL from Foundry:', configResult.data.apiUrl);
+				}
+			}
+		} catch (error) {
+			console.error('[Friday] Error loading enterprise server URL from Foundry:', error);
+		}
+	}
+
 	console.log('[Friday] Foundry services initialized successfully');
 
 		// Load settings from Foundry Global Config (merge with local settings)
@@ -1468,47 +1484,6 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Refresh license information from API
-	 * Called when user clicks on plan badge in settings
-	 */
-	async refreshLicenseInfo(): Promise<void> {
-		// Check if license service is available
-		if (!this.licenseServiceManager) {
-			return;
-		}
-
-		const { license } = this.settings;
-		
-		// Only fetch if license exists and not expired
-		if (!license || isLicenseExpired(license.expiresAt)) {
-			return;
-		}
-
-		try {
-			const result = await this.licenseServiceManager.getLicenseInfo();
-			
-			if (result.success && result.data) {
-				const licenseInfo = result.data;
-				
-				// Update license data with latest info from server
-				this.settings.license = {
-					key: licenseInfo.key || license.key,
-					plan: licenseInfo.plan || license.plan,
-					expiresAt: licenseInfo.expiresAt || license.expiresAt,
-					activatedAt: licenseInfo.activatedAt || license.activatedAt,
-					features: licenseInfo.features || license.features
-				};
-				
-				await this.saveData(this.settings);
-			}
-		} catch (error) {
-			console.warn('[Friday] Failed to refresh license info:', error);
-			// Re-throw to let caller handle error display
-			throw error;
-		}
-	}
-
-	/**
 	 * Refresh subdomain information from API
 	 * Called when user clicks refresh in settings
 	 */
@@ -1720,6 +1695,27 @@ export default class FridayPlugin extends Plugin {
 					userDir: this.licenseState.getUserDir() || ''
 				};
 				console.log('[Friday] Synced user to settings:', authStatus.email);
+			}
+			
+			// Update sync config data (for UI display)
+			// Sync config comes from authService.getStatus() in Foundry 26.3.16+
+			if (this.licenseState.hasSyncConfig()) {
+				const syncConfig = this.licenseState.getSyncConfig();
+				if (syncConfig) {
+					this.settings.licenseSync = {
+						enabled: true,
+						endpoint: syncConfig.dbEndpoint,
+						dbName: syncConfig.dbName,
+						email: syncConfig.email,
+						dbPassword: syncConfig.dbPassword || '' // Password might not be included in getStatus
+					};
+					console.log('[Friday] Synced sync config to settings:', {
+						dbName: syncConfig.dbName,
+						email: syncConfig.email,
+						userDir: syncConfig.userDir,
+						isActive: syncConfig.isActive
+					});
+				}
 			}
 			
 			// Note: We don't call saveSettings() here because this is just in-memory cache
@@ -2846,8 +2842,29 @@ class FridaySettingTab extends PluginSettingTab {
 					.setPlaceholder('https://your-enterprise-server.com')
 					.setValue(enterpriseServerUrl || '')
 					.onChange(async (value) => {
-						this.plugin.settings.enterpriseServerUrl = value.trim();
+						const trimmedValue = value.trim();
+						this.plugin.settings.enterpriseServerUrl = trimmedValue;
 						await this.plugin.saveSettings();
+						
+						// Also update to Foundry AuthService config
+						if (this.plugin.foundryAuthService && this.plugin.absWorkspacePath) {
+							try {
+								const configResult = await this.plugin.foundryAuthService.updateConfig(
+									this.plugin.absWorkspacePath,
+									{
+										apiUrl: trimmedValue || undefined
+									}
+								);
+								
+								if (configResult.success) {
+									console.log('[Friday] Enterprise server URL updated to Foundry:', trimmedValue);
+								} else {
+									console.error('[Friday] Failed to update enterprise server URL to Foundry:', configResult.error);
+								}
+							} catch (error) {
+								console.error('[Friday] Error updating enterprise server URL to Foundry:', error);
+							}
+						}
 					});
 				text.inputEl.style.width = '100%';
 			});

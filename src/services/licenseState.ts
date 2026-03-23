@@ -63,7 +63,8 @@ export class LicenseStateManager {
 			console.log('[LicenseState] Auth status:', {
 				isAuthenticated: this.authStatus.isAuthenticated,
 				hasLicense: !!this.authStatus.license,
-				email: this.authStatus.email
+				email: this.authStatus.email,
+				hasSyncConfig: this.authStatus.hasSyncConfig
 			});
 			
 			// 2. 判断是否已激活
@@ -264,5 +265,63 @@ export class LicenseStateManager {
 	 */
 	getLastUpdateTime(): number {
 		return this.lastUpdateTime;
+	}
+
+	/**
+	 * Check if sync is enabled and configured
+	 */
+	hasSyncConfig(): boolean {
+		return this.authStatus?.hasSyncConfig || false;
+	}
+
+	/**
+	 * Get sync configuration
+	 * Returns sync config from authStatus if available
+	 */
+	getSyncConfig(): any | null {
+		if (!this.authStatus?.hasSyncConfig || !this.authStatus?.syncConfig) {
+			return null;
+		}
+		return this.authStatus.syncConfig;
+	}
+
+	/**
+	 * Check if sync is active
+	 */
+	isSyncActive(): boolean {
+		const syncConfig = this.getSyncConfig();
+		return syncConfig?.isActive || false;
+	}
+
+	/**
+	 * Get CouchDB endpoint from sync config
+	 */
+	getSyncDbEndpoint(): string | null {
+		const syncConfig = this.getSyncConfig();
+		return syncConfig?.dbEndpoint || null;
+	}
+
+	/**
+	 * Get CouchDB database name from sync config
+	 */
+	getSyncDbName(): string | null {
+		const syncConfig = this.getSyncConfig();
+		return syncConfig?.dbName || null;
+	}
+
+	/**
+	 * Get sync email from sync config
+	 */
+	getSyncEmail(): string | null {
+		const syncConfig = this.getSyncConfig();
+		return syncConfig?.email || null;
+	}
+
+	/**
+	 * Get user directory from sync config
+	 */
+	getSyncUserDir(): string | null {
+		const syncConfig = this.getSyncConfig();
+		return syncConfig?.userDir || this.getUserDir();
 	}
 }
