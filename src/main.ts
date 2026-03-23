@@ -451,7 +451,7 @@ export default class FridayPlugin extends Plugin {
 		
 	// Create Identity HTTP client for Auth, License, and Domain services
 	const identityHttpClient = createObsidianIdentityHttpClient();
-	this.foundryAuthService = await createObsidianAuthService(identityHttpClient);
+	this.foundryAuthService = createObsidianAuthService(identityHttpClient);
 	this.foundryLicenseService = createObsidianLicenseService(identityHttpClient);
 	this.foundryDomainService = createObsidianDomainService(identityHttpClient);
 		
@@ -1594,6 +1594,27 @@ export default class FridayPlugin extends Plugin {
 	 * Save settings to Foundry Global Config
 	 * This allows Foundry services to access publish configurations
 	 */
+	/**
+	 * Save settings to Foundry Global Config
+	 * 
+	 * Data Storage Rules:
+	 * ✅ Global Config: Only stores DEFAULT publishing configurations
+	 *    - FTP settings (host, username, password, remotePath, ignoreCert)
+	 *    - Netlify settings (accessToken, siteId)
+	 *    - MDFriday publish settings (managed by LicenseServiceManager)
+	 *    - Publish method (ftp/netlify/mdfriday)
+	 *    - Download server preference
+	 * 
+	 * ❌ NOT stored in Global Config:
+	 *    - Domain settings (use DomainService)
+	 *    - Auth config (use AuthService)
+	 *    - License data (use LicenseService)
+	 * 
+	 * Data Flow:
+	 * - Foundry Services (Auth, License, Domain) = Single Source of Truth
+	 * - Global Config = Default publish settings for new projects
+	 * - Obsidian Settings = UI display cache only
+	 */
 	private async saveSettingsToFoundryGlobalConfig() {
 		if (!this.foundryGlobalConfigService || !this.absWorkspacePath) {
 			return;
@@ -1603,7 +1624,11 @@ export default class FridayPlugin extends Plugin {
 			const config = this.foundryGlobalConfigService;
 			const workspace = this.absWorkspacePath;
 			
-			// Save FTP settings
+			console.log('[Friday] Saving default publish settings to Global Config...');
+			
+			// ========================================
+			// FTP Publish Settings (Default)
+			// ========================================
 			if (this.settings.ftpServer) {
 				await config.set(workspace, 'publish.ftp.host', this.settings.ftpServer);
 			}
@@ -1618,7 +1643,9 @@ export default class FridayPlugin extends Plugin {
 			}
 			await config.set(workspace, 'publish.ftp.ignoreCert', this.settings.ftpIgnoreCert);
 			
-			// Save Netlify settings
+			// ========================================
+			// Netlify Publish Settings (Default)
+			// ========================================
 			if (this.settings.netlifyAccessToken) {
 				await config.set(workspace, 'publish.netlify.accessToken', this.settings.netlifyAccessToken);
 			}
@@ -1626,36 +1653,34 @@ export default class FridayPlugin extends Plugin {
 				await config.set(workspace, 'publish.netlify.siteId', this.settings.netlifyProjectId);
 			}
 			
-			// Save domain settings
-			if (this.settings.customDomain) {
-				await config.set(workspace, 'site.customDomain', this.settings.customDomain);
-			}
-			if (this.settings.customSubdomain) {
-				await config.set(workspace, 'site.customSubdomain', this.settings.customSubdomain);
-			}
-			
-			// Save general settings
+			// ========================================
+			// General Publish Settings
+			// ========================================
 			await config.set(workspace, 'site.downloadServer', this.settings.downloadServer);
 			await config.set(workspace, 'publish.method', this.settings.publishMethod);
 			
-			// Save auth configuration to Foundry AuthService
-		if (this.foundryAuthService && this.settings.enterpriseServerUrl) {
-			const authConfig = {
-				apiUrl: this.settings.enterpriseServerUrl,
-				// websiteUrl can be derived from apiUrl or set separately if needed
-			};
+			// ========================================
+			// NOTE: The following are NOT saved here anymore:
+			// ========================================
+			// ❌ Domain settings (customDomain, customSubdomain)
+			//    → Use DomainService.getDomainInfo() / updateSubdomain() / addCustomDomain()
+			//    → Read from: licenseState.getSubdomain() / getCustomDomain()
+			//
+			// ❌ Auth configuration (enterpriseServerUrl)
+			//    → Use AuthService.getConfig() / updateConfig()
+			//    → Managed by AuthService in workspace/.mdfriday/user-data.json
+			//
+			// ❌ License data (license, licenseUser, licenseSync)
+			//    → Use LicenseService.getLicenseInfo() / activateLicense()
+			//    → Read from: licenseState (unified license state manager)
+			//
+			// ❌ MDFriday publish license key
+			//    → Managed by LicenseServiceManager.saveLicenseKeyToConfig()
+			//    → Automatically saved during license activation
 			
-			const updateResult = await this.foundryAuthService.updateConfig(this.absWorkspacePath, authConfig);
-			if (updateResult.success) {
-				console.log('[Friday] Auth config saved to Foundry:', authConfig);
-			} else {
-				console.warn('[Friday] Failed to save auth config to Foundry:', updateResult.error);
-			}
-		}
-			
-			console.log('[Friday] Settings saved to Foundry Global Config');
+			console.log('[Friday] Default publish settings saved to Global Config');
 		} catch (error) {
-			console.error('[Friday] Error saving settings to Foundry Global Config:', error);
+			console.error('[Friday] Error saving settings to Global Config:', error);
 			// Don't throw error - this is not critical, settings are already saved to Obsidian storage
 		}
 	}
@@ -1707,7 +1732,20 @@ export default class FridayPlugin extends Plugin {
 
 	/**
 	 * Load settings from Foundry Global Config
-	 * Merge with existing settings (Obsidian local storage takes precedence if not empty)
+	 * 
+	 * Data Loading Rules:
+	 * ✅ Load from Global Config: Only DEFAULT publishing configurations
+	 *    - FTP settings (as default for new projects)
+	 *    - Netlify settings (as default for new projects)
+	 *    - Publish method preference
+	 *    - Download server preference
+	 * 
+	 * ❌ NOT loaded from Global Config anymore:
+	 *    - Domain settings → Use licenseState.getSubdomain() / getCustomDomain()
+	 *    - Auth config → Loaded by AuthService during initialization
+	 *    - License data → Loaded by licenseState.initialize()
+	 * 
+	 * Priority: Local Obsidian settings > Global Config (for publish settings)
 	 */
 	private async loadSettingsFromFoundryGlobalConfig() {
 		if (!this.foundryGlobalConfigService || !this.absWorkspacePath) {
@@ -1727,9 +1765,11 @@ export default class FridayPlugin extends Plugin {
 			}
 			
 			const foundryConfig = listResult.data.config;
-			console.log('[Friday] Loading settings from Foundry Global Config');
+			console.log('[Friday] Loading default publish settings from Global Config');
 			
-			// Load FTP settings (only if local setting is empty)
+			// ========================================
+			// Load FTP Settings (only if local setting is empty)
+			// ========================================
 			if (!this.settings.ftpServer && foundryConfig['publish']?.ftp?.host) {
 				this.settings.ftpServer = foundryConfig['publish'].ftp.host;
 			}
@@ -1746,7 +1786,9 @@ export default class FridayPlugin extends Plugin {
 				this.settings.ftpIgnoreCert = foundryConfig['publish'].ftp.ignoreCert;
 			}
 			
-			// Load Netlify settings (only if local setting is empty)
+			// ========================================
+			// Load Netlify Settings (only if local setting is empty)
+			// ========================================
 			if (!this.settings.netlifyAccessToken && foundryConfig['publish']?.netlify?.accessToken) {
 				this.settings.netlifyAccessToken = foundryConfig['publish'].netlify.accessToken;
 			}
@@ -1754,60 +1796,25 @@ export default class FridayPlugin extends Plugin {
 				this.settings.netlifyProjectId = foundryConfig['publish'].netlify.siteId;
 			}
 			
-			// Load domain settings (only if local setting is empty)
-			if (!this.settings.customDomain && foundryConfig['site']?.customDomain) {
-				this.settings.customDomain = foundryConfig['site'].customDomain;
-			}
-			if (!this.settings.customSubdomain && foundryConfig['site']?.customSubdomain) {
-				this.settings.customSubdomain = foundryConfig['site'].customSubdomain;
-			}
+			// ========================================
+			// NOTE: The following are NOT loaded here anymore:
+			// ========================================
+			// ❌ Domain settings (customDomain, customSubdomain)
+			//    → Read from: licenseState.getSubdomain() / getCustomDomain()
+			//    → DomainService is the single source of truth
+			//
+			// ❌ Auth configuration (enterpriseServerUrl)
+			//    → Loaded by: AuthService during initialization
+			//    → Already available via authService.getConfig()
+			//
+			// ❌ License data (license, licenseUser)
+			//    → Loaded by: licenseState.initialize() during plugin initialization
+			//    → LicenseState is the single source of truth
+			//    → Data is synced to settings by syncLicenseToSettings() for UI display only
 			
-		// Load auth configuration from Foundry AuthService
-		if (this.foundryAuthService) {
-			const authConfigResult = await this.foundryAuthService.getConfig(this.absWorkspacePath);
-			if (authConfigResult.success && authConfigResult.data) {
-				// Only load if local setting is empty
-				if (!this.settings.enterpriseServerUrl && authConfigResult.data.apiUrl) {
-					this.settings.enterpriseServerUrl = authConfigResult.data.apiUrl;
-					console.log('[Friday] Loaded auth config from Foundry:', authConfigResult.data);
-				}
-			}
-		}
-			
-		// Load license configuration from global config
-		// Only load if local settings don't have license data
-		if (!this.settings.license && foundryConfig['auth']?.userInfo) {
-			const userInfo = foundryConfig['auth'].userInfo;
-			
-			// Load license data if available
-			if (userInfo.license) {
-				this.settings.license = {
-					key: userInfo.license.key || '',
-					plan: userInfo.license.plan || 'free',
-					expiresAt: userInfo.license.expiresAt || 0,
-					features: userInfo.license.features || {},
-					activatedAt: userInfo.license.activatedAt || 0
-				};
-				
-				console.log('[Friday] Loaded license from auth user info');
-			}
-			
-			// Load user data if available
-			if (userInfo.email) {
-				// Extract user directory from email (for MDFriday users)
-				const userDir = userInfo.email.split('@')[0];
-				this.settings.licenseUser = {
-					email: userInfo.email,
-					userDir: userDir
-				};
-				
-				console.log('[Friday] Loaded user info from auth');
-			}
-		}
-			
-			console.log('[Friday] Settings loaded from Foundry Global Config');
+			console.log('[Friday] Default publish settings loaded from Global Config');
 		} catch (error) {
-			console.error('[Friday] Error loading settings from Foundry Global Config:', error);
+			console.error('[Friday] Error loading settings from Global Config:', error);
 			// Don't throw error - we can still use local settings
 		}
 	}
