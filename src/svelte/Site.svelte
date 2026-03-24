@@ -3,6 +3,9 @@
 	import FridayPlugin from "../main";
 	import ProgressBar from "./ProgressBar.svelte";
 	import {onMount, onDestroy, tick} from "svelte";
+	import type { ValidPublishMethod } from "../types/publish";
+	import { normalizePublishMethod, VALID_PUBLISH_METHODS, DEFAULT_PUBLISH_METHOD } from "../types/publish";
+	import { generateRandomId } from "../utils/common";
 	import * as path from "path";
 	import * as fs from "fs";
 	import {startIncrementalBuild, IncrementalBuildConfig, IncrementalBuildCoordinator} from "@mdfriday/foundry";
@@ -100,19 +103,7 @@
 	let publishProgress = 0;
 	let publishSuccess = false;
 	let publishUrl = '';
-	// Map legacy 'mdfriday' to 'mdf-share' for compatibility
-	let selectedPublishOption: 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' =
-	(() => {
-		const method = plugin.settings.publishMethod;
-		// 兼容旧的 'mdfriday' 值
-		if (method === 'mdfriday') return 'mdf-share';
-		// 验证是否是有效值
-		const validMethods = ['netlify', 'ftp', 'mdf-share', 'mdf-app', 'mdf-custom', 'mdf-enterprise'];
-		if (validMethods.includes(method)) {
-			return method as any;
-		}
-		return 'netlify';
-	})();
+	let selectedPublishOption: ValidPublishMethod = normalizePublishMethod(plugin.settings.publishMethod);
 	
 	// Netlify configuration (project-specific)
 	let netlifyAccessToken = '';
@@ -274,10 +265,9 @@
 			
 			// Load publish configuration
 			if (config['publish']) {
-				// Load publish method (兼容旧值)
+				// Load publish method
 				if (config['publish'].method) {
-					const method = config['publish'].method;
-					selectedPublishOption = (method === 'mdfriday' ? 'mdf-share' : method);
+					selectedPublishOption = normalizePublishMethod(config['publish'].method);
 				}
 				
 				// Load Netlify config
@@ -362,9 +352,7 @@
 					}
 				}
 				if (globalConfig.publish.method) {
-					// 兼容旧值
-					const method = globalConfig.publish.method;
-					selectedPublishOption = (method === 'mdfriday' ? 'mdf-share' : method);
+					selectedPublishOption = normalizePublishMethod(globalConfig.publish.method);
 				}
 					return;
 				}
@@ -600,10 +588,9 @@
 
 			// 3. Load publish configuration
 			if (state.config.publish) {
-				// Load publish method (兼容旧值)
+				// Load publish method
 				if (state.config.publish.method) {
-					const method = state.config.publish.method;
-					selectedPublishOption = (method === 'mdfriday' ? 'mdf-share' : method) as any;
+					selectedPublishOption = normalizePublishMethod(state.config.publish.method);
 				}
 				
 				// Load FTP configuration
@@ -808,7 +795,10 @@
 		// Register this component to Main.ts for direct method calls
 		if (plugin.registerSiteComponent) {
 			plugin.registerSiteComponent({
+				// Core lifecycle methods
 				initialize,
+				
+				// Progress and callback methods
 				updateBuildProgress,
 				updatePublishProgress,
 				onBuildComplete,
@@ -819,22 +809,21 @@
 				onPublishComplete,
 				onPublishError,
 				onConnectionTestSuccess,
-				onConnectionTestError
+				onConnectionTestError,
+				
+				// Quick share and utility methods (migrated from old architecture)
+				setSitePath: setSitePathExternal,
+				startPreviewAndWait,
+				selectMDFShare,
+				refreshLicenseState
 			});
 		}
 		
-		// ==================== OLD ARCHITECTURE: Register callbacks (for compatibility) ====================
-		// Register methods so they can be called from main.ts
+		// ==================== OLD ARCHITECTURE: Register callbacks (for Project Management Modal only) ====================
+		// TODO: These will be removed when Project Management feature is refactored
 		plugin.applyProjectConfigurationToPanel = applyProjectConfiguration;
 		plugin.exportHistoryBuild = exportHistoryBuild;
 		plugin.clearPreviewHistory = clearPreviewHistory;
-		plugin.reloadFoundryProjectConfig = loadFoundryProjectConfig; // Register reload function (OLD - will be deprecated)
-		
-		// Register quick share methods for internet icon
-		plugin.setSitePath = setSitePathExternal;
-		plugin.startPreviewAndWait = startPreviewAndWait;
-		plugin.selectMDFShare = selectMDFShare;
-		plugin.refreshLicenseState = refreshLicenseState;
 		
 		// Notify Main.ts that component is ready
 		if (plugin.handleSiteEvent && plugin.currentProjectName) {
@@ -1606,63 +1595,6 @@
 		}
 	}
 
-	async function createSitePathStructure(previewDir: string): Promise<string> {
-		if (sitePath === '/') {
-			// Default root path, return public directory directly
-			return path.join(previewDir, 'public');
-		}
-
-		// Create directory structure for non-root site path
-		// e.g., sitePath = "/path/sub" should create "path" dir and symlink "sub" to "public"
-		const pathParts = sitePath.split('/').filter(part => part !== '');
-		
-		if (pathParts.length === 0) {
-			// Fallback to root
-			return path.join(previewDir, 'public');
-		}
-
-		// Start from preview directory as root
-		let currentDir = previewDir;
-		
-		// Create all parent directories except the last one
-		for (let i = 0; i < pathParts.length - 1; i++) {
-			currentDir = path.join(currentDir, pathParts[i]);
-			if (!await app.vault.adapter.exists(currentDir)) {
-				await app.vault.adapter.mkdir(currentDir);
-			}
-		}
-
-		// Create symlink or copy for the final directory
-		const finalDirName = pathParts[pathParts.length - 1];
-		const finalDirPath = path.join(currentDir, finalDirName);
-		const publicDir = path.join(previewDir, 'public');
-
-		// Remove existing symlink/directory if it exists
-		if (await app.vault.adapter.exists(finalDirPath)) {
-			await app.vault.adapter.rmdir(finalDirPath, true);
-		}
-
-		const adapter = app.vault.adapter;
-		if (adapter instanceof FileSystemAdapter) {
-			const absFinalDirPath = path.join(adapter.getBasePath(), finalDirPath);
-			const absPublicDir = path.join(adapter.getBasePath(), publicDir);
-			try {
-				if (isWindows) {
-					await fs.promises.symlink(absPublicDir, absFinalDirPath, 'junction');
-				} else {
-					await fs.promises.symlink(absPublicDir, absFinalDirPath, 'dir');
-				}
-			} catch (error) {
-				console.error('Failed to create symlink for site path:', error);
-				// Fallback: copy directory
-				await fs.promises.cp(absPublicDir, absFinalDirPath, { recursive: true });
-			}
-		}
-
-		// Return the preview directory as root for HTTP server
-		return previewDir;
-	}
-
 	async function startPreview() {
 		if (currentContents.length === 0) {
 			new Notice(t('messages.no_folder_or_file_selected'), 3000);
@@ -2271,118 +2203,12 @@
 		previousFtpConfig = currentFtpConfig;
 	}
 
-	function generateRandomId(): string {
-		return Math.random().toString(36).substring(2, 8);
-	}
-
-	async function createPreviewDirectory(previewDir: string) {
-		// Create preview root directory
-		const previewRoot = path.join(plugin.pluginDir, 'preview');
-		if (!await app.vault.adapter.exists(previewRoot)) {
-			await app.vault.adapter.mkdir(previewRoot);
-		}
-
-		// Create specific preview directory
-		if (!await app.vault.adapter.exists(previewDir)) {
-			await app.vault.adapter.mkdir(previewDir);
-		}
-
-		// Create content subdirectory
-		const contentDir = path.join(previewDir, 'content');
-		if (!await app.vault.adapter.exists(contentDir)) {
-			await app.vault.adapter.mkdir(contentDir);
-		}
-
-		const publicDir = path.join(previewDir, 'public');
-		if (!await app.vault.adapter.exists(publicDir)) {
-			await app.vault.adapter.mkdir(publicDir);
-		}
-
-		// Create ob-images subdirectory for Obsidian app:// images
-		const obImagesDir = path.join(publicDir, 'ob-images');
-		if (!await app.vault.adapter.exists(obImagesDir)) {
-			await app.vault.adapter.mkdir(obImagesDir);
-		}
-
-		// Create static subdirectory if site assets are configured
-		if (currentAssets && currentAssets.folder) {
-			const staticDir = path.join(previewDir, 'static');
-			if (!await app.vault.adapter.exists(staticDir)) {
-				await app.vault.adapter.mkdir(staticDir);
-			}
-		}
-	}
+	// Note: generateRandomId is now imported from utils/common.ts
 
 	async function createThemesDirectory() {
 		if (!await app.vault.adapter.exists(themesDir)) {
 			await app.vault.adapter.mkdir(themesDir);
 		}
-	}
-
-	async function createConfigFile(previewDir: string) {
-		const config: any = {
-			baseURL: sitePath, // Use site path as base URL
-			title: siteName,
-			contentDir: "content",
-			publishDir: "public",
-			defaultContentLanguage: defaultContentLanguage,
-			taxonomies: {
-				tag: "tags",
-				category: "categories"
-			},
-			module: {
-				imports: [
-					{
-						path: selectedThemeDownloadUrl,
-					}
-				]
-			},
-			markdown: {
-				useInternalRenderer: !hasOBTag,
-			},
-			params: {
-				branding: !hasPublishPermission, // Hide branding if user has publish permission
-				...(sitePassword && sitePassword.trim() ? { password: sitePassword.trim() } : {})
-			}
-		};
-
-		// Add services configuration if any values are provided
-		const services: any = {};
-		
-		if (googleAnalyticsId && googleAnalyticsId.trim()) {
-			services.googleAnalytics = {
-				id: googleAnalyticsId.trim()
-			};
-		}
-		
-		if (disqusShortname && disqusShortname.trim()) {
-			services.disqus = {
-				shortname: disqusShortname.trim()
-			};
-		}
-		
-		// Only add services to config if there are any services configured
-		if (Object.keys(services).length > 0) {
-			config.services = services;
-		}
-
-		// Add languages configuration if multiple languages are configured
-		if (currentContents.length > 0) {
-			const languages: any = {};
-			
-			currentContents.forEach((content, index) => {
-				const contentDir = index === 0 ? "content" : `content.${content.languageCode}`;
-				languages[content.languageCode] = {
-					contentDir: contentDir,
-					weight: content.weight
-				};
-			});
-			
-			config.languages = languages;
-		}
-
-		const configPath = path.join(previewDir, 'config.json');
-		await app.vault.adapter.write(configPath, JSON.stringify(config, null, 2));
 	}
 
 	async function exportSite() {
@@ -2421,201 +2247,6 @@
 		} finally {
 			isExporting = false;
 		}
-	}
-
-	async function linkMultiLanguageContents(previewDir: string) {
-		// Link all language contents
-		for (let i = 0; i < currentContents.length; i++) {
-			const content = currentContents[i];
-			const contentDir = i === 0 ? "content" : `content.${content.languageCode}`;
-			const targetPath = path.join(previewDir, contentDir);
-			
-			if (content.folder) {
-				await linkFolderContents(content.folder, targetPath);
-			} else if (content.file) {
-				await linkSingleFileContent(content.file, targetPath);
-			}
-		}
-	}
-
-	async function linkFolderContents(folder: TFolder, targetPath: string) {
-		// Get absolute path of source folder
-		const adapter = app.vault.adapter;
-		let sourcePath: string;
-		let absTargetPath: string;
-
-		if (adapter instanceof FileSystemAdapter) {
-			sourcePath = path.join(adapter.getBasePath(), folder.path);
-			absTargetPath = path.join(adapter.getBasePath(), targetPath);
-
-			absSelectedFolderPath.push(sourcePath);
-			absProjContentPath.push(absTargetPath);
-		} else {
-			// If not FileSystemAdapter, fall back to copying files
-			console.warn('Not using FileSystemAdapter, falling back to copying files');
-			await copyFolderContents(folder, targetPath);
-			return;
-		}
-
-		try {
-			if (await app.vault.adapter.exists(targetPath)) {
-				await app.vault.adapter.rmdir(targetPath, true);
-			}
-
-			if (isWindows) {
-				await fs.promises.symlink(sourcePath, absTargetPath, 'junction');
-				return;
-			}
-
-			await fs.promises.symlink(sourcePath, absTargetPath, 'dir');
-		} catch (error) {
-			console.error('Failed to create symbolic link, falling back to copying:', error);
-			// If symbolic link fails, fall back to copying files
-			await copyFolderContents(folder, targetPath);
-		}
-	}
-
-	async function copyFolderContents(folder: TFolder, targetPath: string) {
-		// Recursively copy folder contents (kept as backup solution)
-		const copyRecursive = async (sourceFolder: TFolder, destPath: string) => {
-			for (const child of sourceFolder.children) {
-				if (child instanceof TFolder) {
-					const childDestPath = path.join(destPath, child.name);
-					if (!await app.vault.adapter.exists(childDestPath)) {
-						await app.vault.adapter.mkdir(childDestPath);
-					}
-					await copyRecursive(child, childDestPath);
-				} else if (child instanceof TFile) {
-					const childDestPath = path.join(destPath, child.name);
-					try {
-						const content = await app.vault.read(child);
-						await app.vault.adapter.write(childDestPath, content);
-					} catch (error) {
-						console.warn(`Failed to copy file ${child.path}:`, error);
-					}
-				}
-			}
-		};
-
-		await copyRecursive(folder, targetPath);
-	}
-
-	async function linkSingleFileContent(file: TFile, targetPath: string) {
-		// Get absolute path of source file
-		const adapter = app.vault.adapter;
-		let sourcePath: string;
-		let absTargetPath: string;
-		let absContentDir: string;
-
-		if (adapter instanceof FileSystemAdapter) {
-			sourcePath = path.join(adapter.getBasePath(), file.path);
-			absContentDir = path.join(adapter.getBasePath(), targetPath);
-			absTargetPath = path.join(absContentDir, 'index.md');
-
-			absSelectedFolderPath.push(path.dirname(sourcePath));
-			absProjContentPath.push(absContentDir);
-		} else {
-			// If not FileSystemAdapter, fall back to copying file
-			console.warn('Not using FileSystemAdapter, falling back to copying file');
-			await copySingleFileContent(file, targetPath);
-			return;
-		}
-
-		try {
-			// Create content directory if it doesn't exist
-			if (!await app.vault.adapter.exists(targetPath)) {
-				await app.vault.adapter.mkdir(targetPath);
-			}
-
-			// Remove existing index.md if it exists
-			if (await app.vault.adapter.exists(path.join(targetPath, 'index.md'))) {
-				await app.vault.adapter.remove(path.join(targetPath, 'index.md'));
-			}
-
-			// Create symbolic link to the file as index.md
-			if (isWindows) {
-				await fs.promises.symlink(sourcePath, absTargetPath, 'file');
-			} else {
-				await fs.promises.symlink(sourcePath, absTargetPath);
-			}
-		} catch (error) {
-			console.error('Failed to create symbolic link for file, falling back to copying:', error);
-			// If symbolic link fails, fall back to copying file
-			await copySingleFileContent(file, targetPath);
-		}
-	}
-
-	async function copySingleFileContent(file: TFile, targetPath: string) {
-		// Create content directory if it doesn't exist
-		if (!await app.vault.adapter.exists(targetPath)) {
-			await app.vault.adapter.mkdir(targetPath);
-		}
-
-		// Copy the file as index.md
-		const indexPath = path.join(targetPath, 'index.md');
-		try {
-			const fileContent = await app.vault.read(file);
-			await app.vault.adapter.write(indexPath, fileContent);
-		} catch (error) {
-			console.error('Failed to copy file content:', error);
-			throw error;
-		}
-	}
-
-	async function copySiteAssetsToPreview(previewDir: string) {
-		if (!currentAssets || !currentAssets.folder) {
-			return;
-		}
-
-		const assetsSourceFolder = currentAssets.folder;
-		const staticTargetDir = path.join(previewDir, 'static');
-
-		try {
-			// Get absolute paths
-			const adapter = app.vault.adapter;
-			if (adapter instanceof FileSystemAdapter) {
-				const absSourcePath = path.join(adapter.getBasePath(), assetsSourceFolder.path);
-				const absTargetPath = path.join(adapter.getBasePath(), staticTargetDir);
-
-				// Use Node.js fs to copy the directory recursively
-				await fs.promises.cp(absSourcePath, absTargetPath, { 
-					recursive: true,
-					force: true // Overwrite existing files
-				});
-
-			} else {
-				// Fallback: use Obsidian's API to copy files
-				await copyAssetsUsingObsidianAPI(assetsSourceFolder, staticTargetDir);
-			}
-		} catch (error) {
-			console.error('Failed to copy site assets:', error);
-			// Don't throw error, just log it - assets are optional
-		}
-	}
-
-	async function copyAssetsUsingObsidianAPI(sourceFolder: TFolder, targetDir: string) {
-		// Recursively copy folder contents using Obsidian's API
-		const copyRecursive = async (sourceFolder: TFolder, destPath: string) => {
-			for (const child of sourceFolder.children) {
-				if (child instanceof TFolder) {
-					const childDestPath = path.join(destPath, child.name);
-					if (!await app.vault.adapter.exists(childDestPath)) {
-						await app.vault.adapter.mkdir(childDestPath);
-					}
-					await copyRecursive(child, childDestPath);
-				} else if (child instanceof TFile) {
-					const childDestPath = path.join(destPath, child.name);
-					try {
-						const content = await app.vault.readBinary(child);
-						await app.vault.adapter.writeBinary(childDestPath, content);
-					} catch (error) {
-						console.warn(`Failed to copy asset file ${child.path}:`, error);
-					}
-				}
-			}
-		};
-
-		await copyRecursive(sourceFolder, targetDir);
 	}
 
 	async function ensureRootFolderExists() {

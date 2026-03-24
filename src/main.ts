@@ -48,6 +48,10 @@ import { DomainServiceManager } from './services/domain';
 import { LicenseStateManager } from './services/licenseState';
 import { ProjectServiceManager } from './services/project';
 import type { SiteEventType, SiteEventData, ProjectState } from './types/events';
+import type { PublishMethod, ValidPublishMethod } from './types/publish';
+import { DEFAULT_PUBLISH_METHOD, normalizePublishMethod } from './types/publish';
+import { generateRandomId } from './utils/common';
+import { getDefaultTheme, shouldUseInternalRenderer } from './utils/theme';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
@@ -82,7 +86,7 @@ interface FridaySettings {
 	// General Settings
 	downloadServer: 'global' | 'east';
 	// Publish Settings
-	publishMethod: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom';
+	publishMethod: PublishMethod;
 	netlifyAccessToken: string;
 	netlifyProjectId: string;
 	// FTP Settings
@@ -199,15 +203,10 @@ export default class FridayPlugin extends Plugin {
 	isProjectInitializing: boolean = false
 	
 	// PC-only callbacks (optional)
+	// TODO: These are for Project Management Modal - will be removed when that feature is refactored
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
 	exportHistoryBuild: ((previewId: string) => Promise<void>) | null = null
 	clearPreviewHistory: ((projectId: string) => Promise<void>) | null = null
-	reloadFoundryProjectConfig: (() => Promise<void>) | null = null // Reload Foundry project config into panel
-	// Quick share methods for internet icon (PC-only)
-	setSitePath: ((path: string) => void) | null = null
-	startPreviewAndWait: (() => Promise<boolean>) | null = null
-	selectMDFShare: (() => void) | null = null
-	refreshLicenseState: (() => void) | null = null
 	
 	// PC-only state
 	private previousDownloadServer: 'global' | 'east' = 'global'
@@ -914,8 +913,8 @@ export default class FridayPlugin extends Plugin {
 		try {
 			console.log('[Friday] Creating new project:', projectName);
 
-			// Collect initial configuration
-			const initialConfig = this.collectInitialConfig();
+			// Collect initial configuration with project context
+			const initialConfig = this.collectInitialConfig(projectName, folder, file);
 
 			// Create project through ProjectServiceManager
 			const result = await this.projectServiceManager.createProject({
@@ -943,19 +942,77 @@ export default class FridayPlugin extends Plugin {
 
 	/**
 	 * Collect initial configuration for new project
+	 * Prepares complete configuration including baseURL, title, theme, etc.
+	 * 
+	 * @param projectName - Project name
+	 * @param folder - Selected folder (if folder project)
+	 * @param file - Selected file (if file project)
+	 * @returns Complete initial configuration
 	 */
-	private collectInitialConfig(): Record<string, any> {
-		const publishMethod = this.settings.publishMethod === 'mdfriday' 
-			? 'mdf-share' 
-			: this.settings.publishMethod;
-
+	private collectInitialConfig(projectName: string, folder: TFolder | null, file: TFile | null): Record<string, any> {
+		const publishMethod = normalizePublishMethod(this.settings.publishMethod);
+		
+		// Determine if this is a folder project
+		const isFolder = folder !== null;
+		
+		// Get default theme based on project type
+		const defaultTheme = getDefaultTheme(isFolder);
+		
+		// Calculate baseURL
+		let baseURL = '/';
+		if (publishMethod === 'mdf-share') {
+			const userDir = this.settings.licenseUser?.userDir || '';
+			if (userDir) {
+				const previewId = generateRandomId();
+				baseURL = `/s/${userDir}/${previewId}`;
+			}
+		}
+		
+		// Check if user has publish permission (affects branding)
+		const hasPublishPermission = this.licenseState?.hasPublishPermission() || false;
+		
+		// Build complete configuration
 		const config: Record<string, any> = {
+			// Basic settings
+			baseURL,
+			title: projectName,
+			contentDir: 'content',
+			publishDir: 'public',
+			defaultContentLanguage: 'en',
+			
+			// Taxonomies (default Hugo taxonomies)
+			taxonomies: {
+				tag: 'tags',
+				category: 'categories'
+			},
+			
+			// Theme configuration
+			module: {
+				imports: [
+					{
+						path: defaultTheme.downloadUrl
+					}
+				]
+			},
+			
+			// Markdown renderer settings
+			markdown: {
+				useInternalRenderer: shouldUseInternalRenderer(defaultTheme.tags)
+			},
+			
+			// Site parameters
+			params: {
+				branding: !hasPublishPermission  // Show branding if no publish permission
+				// password can be added later by user through UI
+			},
+			
+			// Publish configuration
 			publish: {
 				method: publishMethod
 			}
 		};
-
-		// Apply default FTP configuration
+		
+		// Apply default FTP configuration if available
 		if (this.settings.ftpServer || this.settings.ftpUsername) {
 			config.publish.ftp = {
 				host: this.settings.ftpServer || '',
@@ -965,7 +1022,7 @@ export default class FridayPlugin extends Plugin {
 			};
 		}
 
-		// Apply default Netlify configuration
+		// Apply default Netlify configuration if available
 		if (this.settings.netlifyAccessToken || this.settings.netlifyProjectId) {
 			config.publish.netlify = {
 				accessToken: this.settings.netlifyAccessToken || '',
@@ -997,10 +1054,6 @@ export default class FridayPlugin extends Plugin {
 			// Step 3: Get complete project configuration from Foundry
 			if (!this.projectServiceManager) {
 				console.error('[Friday] ProjectServiceManager not available');
-				// Fallback to old mechanism
-				if (this.reloadFoundryProjectConfig) {
-					await this.reloadFoundryProjectConfig();
-				}
 				return;
 			}
 			
@@ -1020,12 +1073,7 @@ export default class FridayPlugin extends Plugin {
 				await this.siteComponent.initialize(projectState);
 				console.log('[Friday] Project configuration applied to UI via new architecture');
 			} else {
-				console.warn('[Friday] Site component not registered or initialize method not available');
-				// Fallback to old mechanism (transitional compatibility)
-				if (this.reloadFoundryProjectConfig) {
-					console.log('[Friday] Falling back to old reload mechanism');
-					await this.reloadFoundryProjectConfig();
-				}
+				console.error('[Friday] Site component not registered - cannot apply configuration');
 			}
 			
 			new Notice(`Loaded project: ${project.name}`);
@@ -1075,40 +1123,6 @@ export default class FridayPlugin extends Plugin {
 		} catch (error) {
 			console.error('[Friday] Error saving project config:', error);
 		}
-	}
-
-	/**
-	 * Build project using Foundry build service
-	 */
-	async buildFoundryProject(projectName: string) {
-		if (!this.foundryBuildService) {
-			new Notice('Build service not initialized');
-			return;
-		}
-
-		try {
-			new Notice(`Building project: ${projectName}...`);
-			
-			const result = await this.foundryBuildService.buildProject({
-				workspacePath: this.absWorkspacePath,
-				projectNameOrPath: projectName,
-				clean: true,
-				parallel: true,
-			});
-
-			if (result.success) {
-				new Notice(`Build completed in ${result.data?.duration}ms`);
-				console.log('[Friday] Build output:', result.data?.outputDir);
-				return result.data?.outputDir;
-			} else {
-				new Notice(`Build failed: ${result.error}`);
-				console.error('[Friday] Build error:', result.error);
-			}
-		} catch (error) {
-			console.error('[Friday] Error building project:', error);
-			new Notice(`Build error: ${error}`);
-		}
-		return null;
 	}
 
 	/**
@@ -1220,49 +1234,6 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Check if preview server is running
-	 */
-	isFoundryPreviewServerRunning(): boolean {
-		return this.foundryServeService?.isRunning() || false;
-	}
-
-	/**
-	 * 使用 setAll 一次性保存整个项目配置
-	 * 用于新项目初始化，避免多次写入竞争
-	 * 
-	 * @param projectName - 项目名称
-	 * @param config - 完整的配置对象
-	 * @returns 保存是否成功
-	 */
-	async setAllProjectConfig(projectName: string, config: Record<string, any>): Promise<boolean> {
-		if (!this.foundryProjectConfigService) {
-			console.error('[Friday] Project config service not initialized');
-			return false;
-		}
-
-		try {
-			console.log('[Friday] Saving entire project config with setAll...');
-			
-			const result = await this.foundryProjectConfigService.setAll(
-				this.absWorkspacePath,
-				projectName,
-				config
-			);
-
-			if (result.success) {
-				console.log('[Friday] Entire project config saved successfully');
-				return true;
-			} else {
-				console.error('[Friday] Failed to save project config:', result.error);
-				return false;
-			}
-		} catch (error) {
-			console.error('[Friday] Error saving project config:', error);
-			return false;
-		}
-	}
-
-	/**
 	 * Sync multiple config values at once
 	 * 
 	 * @deprecated 使用 setAllProjectConfig 替代（避免并发写入竞争）
@@ -1320,190 +1291,6 @@ export default class FridayPlugin extends Plugin {
 		return {};
 	}
 
-	/**
-	 * Try to get project ID from folder or file
-	 * Returns the project ID if it can be determined
-	 */
-	async tryGetProjectId(folder: TFolder | null, file: TFile | null): Promise<string | null> {
-		if (!folder && !file) {
-			return null;
-		}
-
-		let projectId = folder?.path || file?.path || '';
-		
-		// Try to get parent folder for better project identification
-		const contentFolder = folder || (file ? file.parent : null);
-		if (contentFolder && contentFolder.parent) {
-			// Check if this looks like a content subfolder (content, content.en, etc.)
-			const folderName = contentFolder.name.toLowerCase();
-			if (folderName === 'content' || folderName.startsWith('content.')) {
-				// Use parent folder path as project ID
-				projectId = contentFolder.parent.path;
-			}
-		}
-		
-		return projectId || null;
-	}
-
-	/**
-	 * Apply existing project configuration to panel
-	 * This mimics clicking "Apply to Panel" button
-	 */
-	async applyExistingProjectToPanel(project: ProjectConfig) {
-		try {
-			// Use the registered method from Site.svelte to apply complete project configuration
-			if (this.applyProjectConfigurationToPanel) {
-				this.applyProjectConfigurationToPanel(project);
-			} else {
-				console.error('applyProjectConfigurationToPanel method not registered yet');
-			}
-		} catch (error) {
-			console.error('Failed to apply project configuration:', error);
-		}
-	}
-
-	/**
-	 * Detect if a folder has structured content (content directories and static folder)
-	 */
-	async detectStructuredFolder(folder: TFolder): Promise<boolean> {
-		try {
-			const children = folder.children;
-			const childNames = children.map(child => child.name.toLowerCase());
-			
-			// Check for content directories (content, content.en, content.zh, etc.)
-			const hasContentDirs = childNames.some(name => 
-				name === 'content' || name.startsWith('content.')
-			);
-			
-			// Check for static directory
-			const hasStaticDir = childNames.includes('static');
-			
-			// Consider it structured if it has at least content directories
-			return hasContentDirs;
-		} catch (error) {
-			console.warn('Error detecting structured folder:', error);
-			return false;
-		}
-	}
-
-	/**
-	 * Process a structured folder by automatically adding content directories and static folder
-	 * (Desktop only)
-	 */
-	async processStructuredFolder(folder: TFolder) {
-		if (!Platform.isDesktop || !this.site) {
-			return;
-		}
-		
-		try {
-			const children = folder.children;
-			const contentFolders: { folder: TFolder; languageCode: string; weight: number }[] = [];
-			let staticFolder: TFolder | null = null;
-
-			// Analyze child directories
-			for (const child of children) {
-				if (!(child instanceof TFolder)) continue;
-				
-				const childName = child.name.toLowerCase();
-				
-				// Check for content directories
-				if (childName === 'content') {
-					contentFolders.push({
-						folder: child,
-						languageCode: 'en', // Default language for 'content'
-						weight: 0 // Highest priority for default content
-					});
-				} else if (childName.startsWith('content.')) {
-					const langCode = childName.split('.')[1];
-					const mappedLangCode = this.mapLanguageCode(langCode);
-					contentFolders.push({
-						folder: child,
-						languageCode: mappedLangCode,
-						weight: 1 // Lower priority for language-specific content
-					});
-				}
-				
-				// Check for static directory
-				if (childName === 'static') {
-					staticFolder = child;
-				}
-			}
-
-			// Sort content folders: 'content' first, then others by folder name
-			contentFolders.sort((a, b) => {
-				// 'content' (weight 0) always comes first
-				if (a.weight !== b.weight) {
-					return a.weight - b.weight;
-				}
-				// For language-specific folders, sort by folder name alphabetically
-				return a.folder.name.localeCompare(b.folder.name);
-			});
-
-			// Add content folders to multilingual content
-			if (contentFolders.length > 0) {
-				// Initialize with first content folder (should be 'content' due to sorting)
-				this.site.initializeContentWithLanguage(
-					contentFolders[0].folder, 
-					null, 
-					contentFolders[0].languageCode
-				);
-
-				// Add remaining content folders with proper weight assignment
-				for (let i = 1; i < contentFolders.length; i++) {
-					this.site.addLanguageContentWithCode(
-						contentFolders[i].folder,
-						null,
-						contentFolders[i].languageCode
-					);
-				}
-			}
-
-			// Set static folder as site assets
-			if (staticFolder) {
-				this.site.setSiteAssets(staticFolder);
-			}
-
-			// Show success message
-			const contentCount = contentFolders.length;
-			const hasStatic = staticFolder !== null;
-			
-			let message = this.i18n.t('messages.structured_folder_processed', {
-				contentCount,
-				folderName: folder.name
-			});
-			
-			if (hasStatic) {
-				message += ' ' + this.i18n.t('messages.static_folder_detected');
-			}
-			
-			new Notice(message, 5000);
-
-		} catch (error) {
-			console.error('Error processing structured folder:', error);
-			// Fallback to normal folder processing
-			this.site.initializeContent(folder, null);
-		}
-	}
-
-	/**
-	 * Map language codes to supported language codes
-	 */
-	private mapLanguageCode(code: string): string {
-		const languageMap: { [key: string]: string } = {
-			'en': 'en',
-			'zh': 'zh',
-			'zh-cn': 'zh',
-			'zh-hans': 'zh',
-			'es': 'es',
-			'fr': 'fr',
-			'de': 'de',
-			'ja': 'ja',
-			'ko': 'ko',
-			'pt': 'pt'
-		};
-		
-		return languageMap[code.toLowerCase()] || 'en';
-	}
 
 	async setSiteAssets(folder: TFolder) {
 		if (!Platform.isDesktop || !this.site) {
@@ -1632,21 +1419,25 @@ export default class FridayPlugin extends Plugin {
 			await new Promise(resolve => setTimeout(resolve, 500));
 
 			// Step 2: Select MDFriday Share publish option first
-			if (this.selectMDFShare) {
-				this.selectMDFShare();
+			if (this.siteComponent?.selectMDFShare) {
+				this.siteComponent.selectMDFShare();
+			} else {
+				console.error('[Friday] Site component not available for selectMDFShare');
+				new Notice('Site component not ready', 3000);
+				return;
 			}
 
 			// Step 3: Set sitePath to "/s/{userDir}" for MDFriday Share (previewId will be added in startPreview)
-			if (this.setSitePath && this.settings.licenseUser?.userDir) {
-				this.setSitePath(`/s/${this.settings.licenseUser.userDir}`);
+			if (this.siteComponent?.setSitePath && this.settings.licenseUser?.userDir) {
+				this.siteComponent.setSitePath(`/s/${this.settings.licenseUser.userDir}`);
 			}
 
 			// Wait a bit for sitePath to be set
 			await new Promise(resolve => setTimeout(resolve, 100));
 
 			// Step 4: Generate preview
-			if (this.startPreviewAndWait) {
-				const previewSuccess = await this.startPreviewAndWait();
+			if (this.siteComponent?.startPreviewAndWait) {
+				const previewSuccess = await this.siteComponent.startPreviewAndWait();
 				if (!previewSuccess) {
 					new Notice(this.i18n.t('messages.preview_failed_generic'), 5000);
 					return;
@@ -4106,8 +3897,8 @@ class FridaySettingTab extends PluginSettingTab {
 			}
 
 			// Step 10: Refresh license state in Site panel (if open)
-			if (this.plugin.refreshLicenseState) {
-				this.plugin.refreshLicenseState();
+			if (this.plugin.siteComponent?.refreshLicenseState) {
+				this.plugin.siteComponent.refreshLicenseState();
 			}
 
 			console.log('[Friday] License activation completed successfully');

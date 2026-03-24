@@ -112,6 +112,10 @@ export class LicenseStateManager {
 		}
 	}
 
+	hasPublishPermission(): boolean {
+		return this.isActivated() && this.hasFeature('publishEnabled');
+	}
+
 	/**
 	 * 检查是否已激活
 	 */
