@@ -46,6 +46,8 @@ import { createObsidianHttpClient, createObsidianIdentityHttpClient } from './ht
 import { LicenseServiceManager } from './services/license';
 import { DomainServiceManager } from './services/domain';
 import { LicenseStateManager } from './services/licenseState';
+import { ProjectServiceManager } from './services/project';
+import type { SiteEventType, SiteEventData, ProjectState } from './types/events';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
@@ -113,7 +115,7 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	// General Settings defaults
 	downloadServer: 'global',
 	// Publish Settings defaults
-	publishMethod: 'mdfriday',
+	publishMethod: 'mdf-share',
 	netlifyAccessToken: '',
 	netlifyProjectId: '',
 	// FTP Settings defaults
@@ -184,10 +186,17 @@ export default class FridayPlugin extends Plugin {
 	foundryDomainService?: ObsidianDomainService | null
 	licenseServiceManager?: LicenseServiceManager | null
 	domainServiceManager?: DomainServiceManager | null
+	projectServiceManager?: ProjectServiceManager | null
 	// License state manager (unified license state from Foundry)
 	licenseState?: LicenseStateManager | null
 	// Current project name for tracking
 	currentProjectName?: string | null
+	
+	// Site.svelte component reference (for new event-driven architecture)
+	siteComponent?: any | null
+	
+	// Project initialization flag (prevents auto-save during new project creation)
+	isProjectInitializing: boolean = false
 	
 	// PC-only callbacks (optional)
 	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
@@ -449,11 +458,11 @@ export default class FridayPlugin extends Plugin {
 		this.foundryServeService = createObsidianServeService(httpClient);
 		this.foundryPublishService = createObsidianPublishService(httpClient);
 		
-	// Create Identity HTTP client for Auth, License, and Domain services
-	const identityHttpClient = createObsidianIdentityHttpClient();
-	this.foundryAuthService = createObsidianAuthService(identityHttpClient);
-	this.foundryLicenseService = createObsidianLicenseService(identityHttpClient);
-	this.foundryDomainService = createObsidianDomainService(identityHttpClient);
+		// Create Identity HTTP client for Auth, License, and Domain services
+		const identityHttpClient = createObsidianIdentityHttpClient();
+		this.foundryAuthService = createObsidianAuthService(identityHttpClient);
+		this.foundryLicenseService = createObsidianLicenseService(identityHttpClient);
+		this.foundryDomainService = createObsidianDomainService(identityHttpClient);
 		
 		// Create License Service Manager
 		if (this.foundryLicenseService && this.foundryAuthService && this.foundryGlobalConfigService) {
@@ -471,6 +480,12 @@ export default class FridayPlugin extends Plugin {
 			this.foundryDomainService,
 			this.absWorkspacePath
 		);
+	}
+
+	// Create Project Service Manager
+	if (this.foundryProjectService && this.foundryProjectConfigService) {
+		this.projectServiceManager = new ProjectServiceManager(this);
+		console.log('[Friday] Project Service Manager initialized');
 	}
 
 	// Create License State Manager (unified license state from Foundry)
@@ -632,8 +647,19 @@ export default class FridayPlugin extends Plugin {
 			// Project exists, load its configuration and apply to panel
 			await this.applyFoundryProjectToPanel(existingProject, folder, file);
 		} else {
-			// Project doesn't exist, create it
-			await this.createFoundryProject(projectName, folder, file);
+			// Project doesn't exist, create it first
+			const created = await this.createFoundryProject(projectName, folder, file);
+			
+			if (created) {
+				// After creation, get the project and apply to panel (same flow as existing project)
+				const newProject = await this.getFoundryProject(projectName);
+				if (newProject) {
+					await this.applyFoundryProjectToPanel(newProject, folder, file);
+				} else {
+					console.error('[Friday] Failed to retrieve newly created project');
+					new Notice('Project created but failed to load');
+				}
+			}
 		}
 
 		// Open or reveal the publish panel
@@ -686,63 +712,273 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Create new Foundry project
+	 * Register Site component
 	 */
-	private async createFoundryProject(projectName: string, folder: TFolder | null, file: TFile | null) {
-		if (!this.foundryProjectService) {
+	/**
+	 * Register Site.svelte component for direct method calls
+	 * Part of new event-driven architecture
+	 */
+	registerSiteComponent(component: any) {
+		this.siteComponent = component;
+		console.log('[Friday] Site component registered for new architecture');
+	}
+
+	/**
+	 * Handle Site component events
+	 */
+	async handleSiteEvent<T extends SiteEventType>(
+		type: T,
+		data: SiteEventData[T]
+	): Promise<void> {
+		console.log('[Friday] Handling site event:', type, data);
+
+		switch (type) {
+			case 'initialized':
+				await this.onSiteInitialized(data as SiteEventData['initialized']);
+				break;
+
+			case 'configChanged':
+				await this.onConfigChanged(data as SiteEventData['configChanged']);
+				break;
+
+			case 'buildRequested':
+				await this.onBuildRequested(data as SiteEventData['buildRequested']);
+				break;
+
+			case 'previewRequested':
+				await this.onPreviewRequested(data as SiteEventData['previewRequested']);
+				break;
+
+			case 'publishRequested':
+				await this.onPublishRequested(data as SiteEventData['publishRequested']);
+				break;
+
+			case 'testConnection':
+				await this.onTestConnection(data as SiteEventData['testConnection']);
+				break;
+
+			case 'stopPreview':
+				await this.onStopPreview(data as SiteEventData['stopPreview']);
+				break;
+		}
+	}
+
+	// ==================== Event Handlers ====================
+
+	private async onSiteInitialized(data: SiteEventData['initialized']) {
+		console.log('[Friday] Site component initialized for project:', data.projectName);
+	}
+
+	private async onConfigChanged(data: SiteEventData['configChanged']) {
+		if (!this.currentProjectName || !this.projectServiceManager) {
 			return;
 		}
 
-		try {
-			const adapter = this.app.vault.adapter;
-			if (!(adapter instanceof FileSystemAdapter)) {
-				new Notice('FileSystemAdapter not available');
-				return;
-			}
+		// Save configuration to Foundry
+		const success = await this.projectServiceManager.saveConfig(
+			this.currentProjectName,
+			data.key,
+			data.value
+		);
 
-			const basePath = adapter.getBasePath();
-			
-			// Prepare create options
-			const createOptions: any = {
-				name: projectName,
-				workspacePath: this.absWorkspacePath,
-				language: 'en',
-			};
-
-			if (folder) {
-				// Create from folder
-				const sourceFolderPath = `${basePath}/${folder.path}`;
-				createOptions.sourceFolder = sourceFolderPath;
-			} else if (file) {
-				// Create from single file
-				const sourceFilePath = `${basePath}/${file.path}`;
-				createOptions.sourceFile = sourceFilePath;
-			}
-
-		// Create project
-		const result = await this.foundryProjectService.createProject(createOptions);
-		
-		if (result.success) {
-			new Notice(`Project "${projectName}" created successfully`);
-			console.log('[Friday] Project created:', result.data);
-			
-			// Set current project name
-			this.currentProjectName = projectName;
-			
-			// Initialize site with the new project
-			this.site.initializeContent(folder, file);
-		} else {
-			new Notice(`Failed to create project: ${result.error}`);
-			console.error('[Friday] Project creation failed:', result.error);
+		if (!success) {
+			new Notice(`Failed to save configuration: ${data.key}`);
 		}
+	}
+
+	private async onBuildRequested(data: SiteEventData['buildRequested']) {
+		if (!this.projectServiceManager) {
+			return;
+		}
+
+		// Create progress callback
+		const onProgress = (progress: any) => {
+			// Send progress updates to Site component
+			this.siteComponent?.updateBuildProgress?.(progress);
+		};
+
+		// Execute build
+		const result = await this.projectServiceManager.build(
+			data.projectName,
+			onProgress
+		);
+
+		if (result.success) {
+			new Notice('Build completed successfully');
+			this.siteComponent?.onBuildComplete?.(result);
+		} else {
+			new Notice(`Build failed: ${result.error}`);
+			this.siteComponent?.onBuildError?.(result.error);
+		}
+	}
+
+	private async onPreviewRequested(data: SiteEventData['previewRequested']) {
+		if (!this.projectServiceManager) {
+			return;
+		}
+
+		const { projectName, port, renderer } = data;
+
+		// Create progress callback
+		const onProgress = (progress: any) => {
+			// Send progress updates to Site component
+			this.siteComponent?.updateBuildProgress?.(progress);
+		};
+
+		// Start preview
+		const result = await this.projectServiceManager.startPreview(
+			projectName,
+			{ port, renderer, onProgress }
+		);
+
+		if (result.success) {
+			new Notice(`Preview started: ${result.url}`);
+			this.siteComponent?.onPreviewStarted?.(result);
+		} else {
+			new Notice(`Preview failed: ${result.error}`);
+			this.siteComponent?.onPreviewError?.(result.error);
+		}
+	}
+
+	private async onPublishRequested(data: SiteEventData['publishRequested']) {
+		if (!this.projectServiceManager) {
+			return;
+		}
+
+		const { projectName, method, config } = data;
+
+		// Create progress callback
+		const onProgress = (progress: any) => {
+			// Send progress updates to Site component
+			this.siteComponent?.updatePublishProgress?.(progress);
+		};
+
+		// Execute publish
+		const result = await this.projectServiceManager.publish(
+			projectName,
+			{ method, config, onProgress }
+		);
+
+		if (result.success) {
+			new Notice(`Published successfully: ${result.url}`);
+			this.siteComponent?.onPublishComplete?.(result);
+		} else {
+			new Notice(`Publish failed: ${result.error}`);
+			this.siteComponent?.onPublishError?.(result.error);
+		}
+	}
+
+	private async onTestConnection(data: SiteEventData['testConnection']) {
+		if (!this.projectServiceManager) {
+			return;
+		}
+
+		const result = await this.projectServiceManager.testConnection(
+			data.projectName,
+			data.config
+		);
+
+		if (result.success) {
+			new Notice('Connection test successful');
+			this.siteComponent?.onConnectionTestSuccess?.(result.message);
+		} else {
+			new Notice(`Connection test failed: ${result.error}`);
+			this.siteComponent?.onConnectionTestError?.(result.error);
+		}
+	}
+
+	private async onStopPreview(data: SiteEventData['stopPreview']) {
+		if (!this.projectServiceManager) {
+			return;
+		}
+
+		const success = await this.projectServiceManager.stopPreview(data.projectName);
+
+		if (success) {
+			this.siteComponent?.onPreviewStopped?.();
+		}
+	}
+
+	// ==================== Project Management ====================
+
+	/**
+	 * Create new Foundry project (simplified - only creates project)
+	 */
+	private async createFoundryProject(projectName: string, folder: TFolder | null, file: TFile | null): Promise<boolean> {
+		if (!this.projectServiceManager) {
+			console.error('[Friday] ProjectServiceManager not available');
+			new Notice('Project service not available');
+			return false;
+		}
+
+		try {
+			console.log('[Friday] Creating new project:', projectName);
+
+			// Collect initial configuration
+			const initialConfig = this.collectInitialConfig();
+
+			// Create project through ProjectServiceManager
+			const result = await this.projectServiceManager.createProject({
+				name: projectName,
+				folder,
+				file,
+				initialConfig
+			});
+
+			if (!result.success) {
+				throw new Error(result.error);
+			}
+
+			console.log('[Friday] Project created successfully:', projectName);
+			new Notice(`Project "${projectName}" created successfully`);
+			
+			return true;
+
 		} catch (error) {
 			console.error('[Friday] Error creating project:', error);
 			new Notice(`Error creating project: ${error}`);
+			return false;
 		}
 	}
 
 	/**
+	 * Collect initial configuration for new project
+	 */
+	private collectInitialConfig(): Record<string, any> {
+		const publishMethod = this.settings.publishMethod === 'mdfriday' 
+			? 'mdf-share' 
+			: this.settings.publishMethod;
+
+		const config: Record<string, any> = {
+			publish: {
+				method: publishMethod
+			}
+		};
+
+		// Apply default FTP configuration
+		if (this.settings.ftpServer || this.settings.ftpUsername) {
+			config.publish.ftp = {
+				host: this.settings.ftpServer || '',
+				username: this.settings.ftpUsername || '',
+				password: this.settings.ftpPassword || '',
+				remotePath: this.settings.ftpRemoteDir || '/',
+			};
+		}
+
+		// Apply default Netlify configuration
+		if (this.settings.netlifyAccessToken || this.settings.netlifyProjectId) {
+			config.publish.netlify = {
+				accessToken: this.settings.netlifyAccessToken || '',
+				siteId: this.settings.netlifyProjectId || '',
+			};
+		}
+
+		return config;
+	}
+
+	/**
 	 * Apply existing Foundry project configuration to panel
+	 * Uses new architecture: Main.ts as Controller, Site.svelte as View
 	 */
 	private async applyFoundryProjectToPanel(project: ObsidianProjectInfo, folder: TFolder | null, file: TFile | null) {
 		if (!this.foundryProjectConfigService) {
@@ -752,34 +988,74 @@ export default class FridayPlugin extends Plugin {
 		try {
 			console.log('[Friday] Applying project to panel:', project.name);
 			
-			// Set current project name FIRST before loading config
+			// Step 1: Set current project name FIRST before any operations
 			this.currentProjectName = project.name;
 			
-			// Initialize content with folder/file
+			// Step 2: Initialize content selection (site.ts data management)
 			this.site.initializeContent(folder, file);
 			
-			// Reload Foundry project configuration into the panel
-			// This will update all UI fields with the project's saved configuration
-			if (this.reloadFoundryProjectConfig) {
-				await this.reloadFoundryProjectConfig();
-				console.log('[Friday] Project configuration applied to panel');
+			// Step 3: Get complete project configuration from Foundry
+			if (!this.projectServiceManager) {
+				console.error('[Friday] ProjectServiceManager not available');
+				// Fallback to old mechanism
+				if (this.reloadFoundryProjectConfig) {
+					await this.reloadFoundryProjectConfig();
+				}
+				return;
+			}
+			
+			const config = await this.projectServiceManager.getConfig(project.name);
+			
+			// Step 4: Prepare complete ProjectState
+			const projectState: ProjectState = {
+				name: project.name,
+				folder,
+				file,
+				config,
+				status: 'active'
+			};
+			
+			// Step 5: Call Site.svelte's initialize method (NEW ARCHITECTURE)
+			if (this.siteComponent?.initialize) {
+				await this.siteComponent.initialize(projectState);
+				console.log('[Friday] Project configuration applied to UI via new architecture');
+			} else {
+				console.warn('[Friday] Site component not registered or initialize method not available');
+				// Fallback to old mechanism (transitional compatibility)
+				if (this.reloadFoundryProjectConfig) {
+					console.log('[Friday] Falling back to old reload mechanism');
+					await this.reloadFoundryProjectConfig();
+				}
 			}
 			
 			new Notice(`Loaded project: ${project.name}`);
+			
 		} catch (error) {
 			console.error('[Friday] Error applying project to panel:', error);
-			// Fallback to normal initialization
+			// Fallback: at least initialize content
 			this.site.initializeContent(folder, file);
 		}
 	}
 
 	/**
+	 * 为新创建的项目应用初始配置
+	 * 收集所有初始配置，一次性写入（不包括动态 sitePath，由 UI reactive 处理）
+	 */
+	/**
 	 * Save project configuration from panel settings
 	 * Call this method when user modifies settings in the panel
+	 * 
+	 * Note: Skips saving during project initialization to prevent write conflicts
 	 */
 	async saveFoundryProjectConfig(projectName: string, configKey: string, configValue: any) {
 		if (!this.foundryProjectConfigService) {
 			console.error('[Friday] Project config service not initialized');
+			return;
+		}
+
+		// Skip saving during project initialization
+		if (this.isProjectInitializing) {
+			console.log('[Friday] Skipping save during project initialization');
 			return;
 		}
 
@@ -951,8 +1227,46 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
+	 * 使用 setAll 一次性保存整个项目配置
+	 * 用于新项目初始化，避免多次写入竞争
+	 * 
+	 * @param projectName - 项目名称
+	 * @param config - 完整的配置对象
+	 * @returns 保存是否成功
+	 */
+	async setAllProjectConfig(projectName: string, config: Record<string, any>): Promise<boolean> {
+		if (!this.foundryProjectConfigService) {
+			console.error('[Friday] Project config service not initialized');
+			return false;
+		}
+
+		try {
+			console.log('[Friday] Saving entire project config with setAll...');
+			
+			const result = await this.foundryProjectConfigService.setAll(
+				this.absWorkspacePath,
+				projectName,
+				config
+			);
+
+			if (result.success) {
+				console.log('[Friday] Entire project config saved successfully');
+				return true;
+			} else {
+				console.error('[Friday] Failed to save project config:', result.error);
+				return false;
+			}
+		} catch (error) {
+			console.error('[Friday] Error saving project config:', error);
+			return false;
+		}
+	}
+
+	/**
 	 * Sync multiple config values at once
-	 * Useful when user saves all settings in the panel
+	 * 
+	 * @deprecated 使用 setAllProjectConfig 替代（避免并发写入竞争）
+	 * 保留此方法仅用于向后兼容
 	 */
 	async syncFoundryProjectConfig(projectName: string, configMap: Record<string, any>) {
 		if (!this.foundryProjectConfigService) {

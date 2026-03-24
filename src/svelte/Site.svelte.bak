@@ -549,14 +549,13 @@
 
 	/**
 	 * Initialize component with project state
-	 * Called by Main.ts after project creation or when loading existing project
+	 * Called by Main.ts after project creation
 	 */
 	export async function initialize(state: ProjectState) {
 		console.log('[Site] Initializing with project state:', state.name);
 
 		// Load configuration to UI
 		if (state.config) {
-			// 1. Load basic information
 			if (state.config.title) {
 				siteName = state.config.title;
 			}
@@ -564,74 +563,42 @@
 				sitePath = state.config.baseURL;
 			}
 
-			// 2. Load theme configuration
+			// Load theme
 			if (state.config.module?.imports?.[0]?.path) {
 				const themeUrl = state.config.module.imports[0].path;
 				selectedThemeDownloadUrl = themeUrl;
-				userHasSelectedTheme = true;
 				
-				// Find theme by download URL to get complete theme info
-				try {
-					const allThemes = await themeApiService.getAllThemes(plugin);
-					const matchedTheme = allThemes.find(theme => theme.download_url === themeUrl);
-					
-					if (matchedTheme) {
-						selectedThemeId = matchedTheme.id;
-						selectedThemeName = matchedTheme.title || matchedTheme.name;
-						console.log('[Site] Loaded theme:', selectedThemeName, 'ID:', selectedThemeId);
-					} else {
-						// Fallback: determine from URL
-						if (themeUrl.includes('book')) {
-							selectedThemeName = BOOK_THEME_NAME;
-							selectedThemeId = BOOK_THEME_ID;
-						} else if (themeUrl.includes('note')) {
-							selectedThemeName = NOTE_THEME_NAME;
-							selectedThemeId = NOTE_THEME_ID;
-						} else if (themeUrl.includes('quartz')) {
-							selectedThemeName = 'Quartz';
-							selectedThemeId = 17;
-						}
-						console.warn('[Site] Theme not found by URL, used fallback:', themeUrl);
-					}
-				} catch (error) {
-					console.error('[Site] Error finding theme by URL:', error);
+				// Determine theme name and ID from URL
+				if (themeUrl.includes('book')) {
+					selectedThemeName = BOOK_THEME_NAME;
+					selectedThemeId = BOOK_THEME_ID;
+				} else if (themeUrl.includes('note')) {
+					selectedThemeName = NOTE_THEME_NAME;
+					selectedThemeId = NOTE_THEME_ID;
 				}
 			}
 
-			// 3. Load publish configuration
-			if (state.config.publish) {
-				// Load publish method (兼容旧值)
-				if (state.config.publish.method) {
-					const method = state.config.publish.method;
-					selectedPublishOption = (method === 'mdfriday' ? 'mdf-share' : method) as any;
-				}
-				
-				// Load FTP configuration
-				if (state.config.publish.ftp) {
-					ftpServer = state.config.publish.ftp.host || '';
-					ftpUsername = state.config.publish.ftp.username || '';
-					ftpPassword = state.config.publish.ftp.password || '';
-					ftpRemoteDir = state.config.publish.ftp.remotePath || '';
-					
-					// Load secure preference (new API)
-					if (state.config.publish.ftp.secure !== undefined) {
-						ftpPreferredSecure = state.config.publish.ftp.secure;
-					}
-					
-					// Backward compatibility: also check old ignoreCert field
-					if (state.config.publish.ftp.ignoreCert !== undefined) {
-						ftpIgnoreCert = state.config.publish.ftp.ignoreCert;
-					}
-				}
-
-				// Load Netlify configuration
-				if (state.config.publish.netlify) {
-					netlifyAccessToken = state.config.publish.netlify.accessToken || '';
-					netlifyProjectId = state.config.publish.netlify.siteId || '';
-				}
+			// Load publish configuration
+			if (state.config.publish?.method) {
+				const method = state.config.publish.method;
+				selectedPublishOption = (method === 'mdfriday' ? 'mdf-share' : method) as any;
 			}
 
-			// 4. Load advanced settings
+			// Load FTP configuration
+			if (state.config.publish?.ftp) {
+				ftpHost = state.config.publish.ftp.host || '';
+				ftpUsername = state.config.publish.ftp.username || '';
+				ftpPassword = state.config.publish.ftp.password || '';
+				ftpRemotePath = state.config.publish.ftp.remotePath || '/';
+			}
+
+			// Load Netlify configuration
+			if (state.config.publish?.netlify) {
+				netlifyAccessToken = state.config.publish.netlify.accessToken || '';
+				netlifyProjectId = state.config.publish.netlify.siteId || '';
+			}
+
+			// Load advanced settings
 			if (state.config.services?.googleAnalytics?.id) {
 				googleAnalyticsId = state.config.services.googleAnalytics.id;
 			}
@@ -641,21 +608,6 @@
 			if (state.config.params?.password) {
 				sitePassword = state.config.params.password;
 			}
-
-			// 5. Load language configuration
-			if (state.config.languages && state.config.defaultContentLanguage) {
-				console.log('[Site] Loading language configuration:', state.config.languages);
-				console.log('[Site] Default content language:', state.config.defaultContentLanguage);
-				
-				// Apply language configuration (with initializing flag to prevent saves)
-				await applyLanguageConfiguration(
-					state.config.languages,
-					state.config.defaultContentLanguage,
-					true // isInitializing = true
-				);
-			}
-
-			console.log('[Site] Project configuration loaded to UI');
 		}
 
 		// Notify Main.ts that initialization is complete
@@ -804,31 +756,11 @@
 		// Load Foundry project configuration
 		await loadFoundryProjectConfig();
 		
-		// ==================== NEW ARCHITECTURE: Register component ====================
-		// Register this component to Main.ts for direct method calls
-		if (plugin.registerSiteComponent) {
-			plugin.registerSiteComponent({
-				initialize,
-				updateBuildProgress,
-				updatePublishProgress,
-				onBuildComplete,
-				onBuildError,
-				onPreviewStarted,
-				onPreviewError,
-				onPreviewStopped,
-				onPublishComplete,
-				onPublishError,
-				onConnectionTestSuccess,
-				onConnectionTestError
-			});
-		}
-		
-		// ==================== OLD ARCHITECTURE: Register callbacks (for compatibility) ====================
 		// Register methods so they can be called from main.ts
 		plugin.applyProjectConfigurationToPanel = applyProjectConfiguration;
 		plugin.exportHistoryBuild = exportHistoryBuild;
 		plugin.clearPreviewHistory = clearPreviewHistory;
-		plugin.reloadFoundryProjectConfig = loadFoundryProjectConfig; // Register reload function (OLD - will be deprecated)
+		plugin.reloadFoundryProjectConfig = loadFoundryProjectConfig; // Register reload function
 		
 		// Register quick share methods for internet icon
 		plugin.setSitePath = setSitePathExternal;
@@ -2024,6 +1956,224 @@
 			publishSuccess = false;
 		}
 		// Note: isPublishing will be set to false by onPublishComplete/onPublishError callbacks
+	}
+			} else if (selectedPublishOption === 'ftp') {
+				// FTP deployment
+				await publishToFTP(publicDir);
+			} else if (selectedPublishOption === 'mdf-share') {
+				// MDFriday Share deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
+
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'share');
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%)
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday preview');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL
+				publishUrl = deployPath;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-share',
+							url: publishUrl
+						});
+					}
+				}
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-share').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			} else if (selectedPublishOption === 'mdf-app') {
+				// MDFriday Subdomain deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
+
+				// MDFriday Subdomain uses sitePath as name and type 'sub'
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'sub', sitePath);
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday Subdomain preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%)
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday Subdomain');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL for MDFriday Subdomain
+				// deployPath is the path, need to build full URL: https://<subdomain>.mdfriday.com/<deployPath>
+				const subdomain = plugin.getEffectiveSubdomain();
+				const basePath = deployPath.startsWith('/') ? deployPath : `/${deployPath}`;
+				const normalizedPath = basePath === '/' ? '' : basePath;
+				publishUrl = `https://${subdomain}.mdfriday.com${normalizedPath}`;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-app',
+							url: publishUrl
+						});
+					}
+				}
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-app').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			} else if (selectedPublishOption === 'mdf-custom') {
+				// MDFriday Custom Domain deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
+
+				// MDFriday Custom Domain uses sitePath as name and type 'custom'
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'custom', sitePath);
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday Custom Domain preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%)
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday Custom Domain');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL for MDFriday Custom Domain
+				// deployPath is the path, need to build full URL: https://<customdomain>/<deployPath>
+				const customDomain = plugin.settings.customDomain;
+				if (!customDomain) {
+					throw new Error('Custom domain not configured');
+				}
+				const basePath = deployPath.startsWith('/') ? deployPath : `/${deployPath}`;
+				const normalizedPath = basePath === '/' ? '' : basePath;
+				publishUrl = `https://${customDomain}${normalizedPath}`;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-custom',
+							url: publishUrl
+						});
+					}
+				}
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-custom').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			} else if (selectedPublishOption === 'mdf-enterprise') {
+				// MDFriday Enterprise deployment
+				const zipContent = await createZipFromDirectory(publicDir);
+				publishProgress = 50;
+
+				// MDFriday Enterprise uses sitePath as name and type 'enterprise'
+				const previewApiId = await plugin.hugoverse.createMDFPreview(previewId, zipContent, 'enterprise', sitePath);
+				if (!previewApiId) {
+					throw new Error('Failed to create MDFriday Enterprise preview');
+				}
+				publishProgress = 80;
+
+				// Step 3: Deploy the preview (80-100%) with license key
+				const licenseKey = plugin.settings.license?.key || '';
+				const deployPath = await plugin.hugoverse.deployMDFridayPreview(previewApiId, licenseKey);
+				if (!deployPath) {
+					throw new Error('Failed to deploy MDFriday Enterprise');
+				}
+				publishProgress = 100;
+
+				// Step 4: Construct final publish URL for MDFriday Enterprise
+				// Use enterprise server URL from settings
+				const enterpriseServerUrl = plugin.settings.enterpriseServerUrl;
+				if (!enterpriseServerUrl) {
+					throw new Error('Enterprise server URL not configured');
+				}
+				// Extract main domain from URL (e.g., mdfriday.sunwei.xyz -> sunwei.xyz)
+				const fullHost = enterpriseServerUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+				const hostParts = fullHost.split('.');
+				// Get last 2 parts (domain.tld), e.g., sunwei.xyz
+				const host = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : fullHost;
+				const basePath = deployPath.startsWith('/') ? deployPath : `/${deployPath}`;
+				const normalizedPath = basePath === '/' ? '' : basePath;
+				publishUrl = `https://${host}${normalizedPath}`;
+				publishSuccess = true;
+
+				new Notice(t('messages.site_published_successfully'), 3000);
+
+				// Save project configuration and add build history
+				await saveCurrentProjectConfiguration();
+				if (currentContents.length > 0 && siteName) {
+					const projectId = getProjectId();
+					if (projectId) {
+						await plugin.projectService.addBuildHistory({
+							projectId: projectId,
+							timestamp: Date.now(),
+							success: true,
+							type: 'publish',
+							publishMethod: 'mdf-enterprise',
+							url: publishUrl
+						});
+					}
+				}
+
+				// Send counter for publish (don't wait for result)
+				plugin.hugoverse.sendCounter('mdf-enterprise').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			}
+			
+		} catch (error) {
+			console.error('Publishing failed:', error);
+			new Notice(t('messages.publishing_failed', { error: error.message }), 5000);
+		} finally {
+			isPublishing = false;
+		}
 	}
 
 	async function publishToNetlify(publicDir: string) {
