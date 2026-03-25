@@ -179,29 +179,29 @@
 		(requiresEnterprisePermission && !hasEnterprisePermission);
 
 	// Auto-generate sitePath for mdf-share when publish option changes
-	$: {
-		if (selectedPublishOption === 'mdf-share' && plugin.settings.license && userDir) {
-			// Check if sitePath needs to be generated or updated
-			if (sitePath.startsWith(`/s/${userDir}`) || !sitePath.startsWith('/s')) {
-				// Generate new sitePath with format: /s/{userDir}/{previewId}
-				const timestamp = Date.now().toString().slice(-6);
-				const randomStr = Math.random().toString(36).substring(2, 5);
-				const newPreviewId = `${timestamp}${randomStr}`;
-				const newSitePath = `/s/${userDir}/${newPreviewId}`;
-				
-				// Update sitePath
-				sitePath = newSitePath;
-				previewId = newPreviewId;
-				
-				console.log('[Site] Auto-generated sitePath for mdf-share:', sitePath);
-				
-				// Save to config (only if not initializing)
-				if (!plugin.isProjectInitializing) {
-					saveFoundryConfig('baseURL', sitePath);
-				}
-			}
-		}
-	}
+	// $: {
+	// 	if (selectedPublishOption === 'mdf-share' && plugin.settings.license && userDir) {
+	// 		// Check if sitePath needs to be generated or updated
+	// 		if (sitePath.startsWith(`/s/${userDir}`) || !sitePath.startsWith('/s')) {
+	// 			// Generate new sitePath with format: /s/{userDir}/{previewId}
+	// 			const timestamp = Date.now().toString().slice(-6);
+	// 			const randomStr = Math.random().toString(36).substring(2, 5);
+	// 			const newPreviewId = `${timestamp}${randomStr}`;
+	// 			const newSitePath = `/s/${userDir}/${newPreviewId}`;
+	//
+	// 			// Update sitePath
+	// 			sitePath = newSitePath;
+	// 			previewId = newPreviewId;
+	//
+	// 			console.log('[Site] Auto-generated sitePath for mdf-share:', sitePath);
+	//
+	// 			// Save to config (only if not initializing)
+	// 			if (!plugin.isProjectInitializing) {
+	// 				saveFoundryConfig('baseURL', sitePath);
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	// ==================== Foundry Integration Functions ====================
 	
@@ -516,15 +516,31 @@
 	}
 	
 	/**
-	 * Save multiple config values to Foundry
+	 * Save multiple config values to Foundry using event system
+	 * Skips during project initialization
 	 */
 	async function saveFoundryConfigBatch(configMap: Record<string, any>) {
 		if (!plugin.currentProjectName) {
 			return;
 		}
 		
+		// Skip saving during project initialization
+		if (plugin.isProjectInitializing) {
+			console.log('[Site] Skipping batch config save during initialization');
+			return;
+		}
+		
 		try {
-			await plugin.syncFoundryProjectConfig(plugin.currentProjectName, configMap);
+			// Use event system for each config entry
+			if (plugin.handleSiteEvent) {
+				const promises = Object.entries(configMap).map(([key, value]) =>
+					plugin.handleSiteEvent('configChanged', { key, value })
+				);
+				await Promise.all(promises);
+			} else {
+				// Fallback to old method if event system not available
+				await plugin.syncFoundryProjectConfig(plugin.currentProjectName, configMap);
+			}
 			console.log('[Site] Saved batch config:', configMap);
 		} catch (error) {
 			console.error('[Site] Error saving batch config:', error);
@@ -997,6 +1013,12 @@
 			return;
 		}
 		
+		// Skip saving during project initialization
+		if (plugin.isProjectInitializing) {
+			console.log('[Site] Skipping language config save during initialization');
+			return;
+		}
+		
 		try {
 			// Build languages configuration from current contents
 			const languages: Record<string, any> = {};
@@ -1014,18 +1036,18 @@
 				? currentContents[0].languageCode 
 				: 'en';
 			
-			// Save both languages and defaultContentLanguage
-			await plugin.saveFoundryProjectConfig(
-				plugin.currentProjectName,
-				'languages',
-				languages
-			);
-			
-			await plugin.saveFoundryProjectConfig(
-				plugin.currentProjectName,
-				'defaultContentLanguage',
-				defaultLang
-			);
+			// Save both languages and defaultContentLanguage using event system
+			if (plugin.handleSiteEvent) {
+				await plugin.handleSiteEvent('configChanged', {
+					key: 'languages',
+					value: languages
+				});
+				
+				await plugin.handleSiteEvent('configChanged', {
+					key: 'defaultContentLanguage',
+					value: defaultLang
+				});
+			}
 			
 			console.log('[Site] Saved language configuration:', {
 				languages,
@@ -1633,33 +1655,6 @@
 				
 				// Note: Progress updates and completion will be handled by callbacks
 				// (updateBuildProgress, onPreviewStarted, onPreviewError)
-			} else {
-				// Fallback to old method
-				const url = await plugin.startFoundryPreviewServer(
-					plugin.currentProjectName,
-					serverPort,
-					hasOBTag ? customRenderer : undefined,
-					(progress) => {
-						if (progress.phase === 'initializing') {
-							buildProgress = Math.min(10, progress.percentage * 0.1);
-						} else if (progress.phase === 'building') {
-							buildProgress = 10 + (progress.percentage * 0.8);
-						} else if (progress.phase === 'watching' || progress.phase === 'ready') {
-							buildProgress = 90 + (progress.percentage * 0.1);
-						}
-						console.log(`[Preview] ${progress.phase}: ${progress.message}`);
-					}
-				);
-				
-				if (url) {
-					previewUrl = url;
-					hasPreview = true;
-					buildProgress = 100;
-					serverRunning = true;
-					new Notice(t('messages.preview_generated_successfully'), 3000);
-				} else {
-					throw new Error('Failed to start preview server');
-				}
 			}
 
 			// Send counter for preview (don't wait for result)
@@ -1772,10 +1767,16 @@
 	}
 	
 	/**
-	 * Save publish configuration to Foundry project config
+	 * Save publish configuration to Foundry project config using event system
 	 */
 	async function savePublishConfig() {
 		if (!plugin.currentProjectName) {
+			return;
+		}
+		
+		// Skip saving during project initialization
+		if (plugin.isProjectInitializing) {
+			console.log('[Site] Skipping publish config save during initialization');
 			return;
 		}
 		
@@ -1807,11 +1808,20 @@
 				}
 			}
 			
-			await plugin.saveFoundryProjectConfig(
-				plugin.currentProjectName,
-				'publish',
-				publishConfig
-			);
+			// Use event system to save configuration
+			if (plugin.handleSiteEvent) {
+				await plugin.handleSiteEvent('configChanged', {
+					key: 'publish',
+					value: publishConfig
+				});
+			} else {
+				// Fallback to old method if event system not available
+				await plugin.saveFoundryProjectConfig(
+					plugin.currentProjectName,
+					'publish',
+					publishConfig
+				);
+			}
 			
 			console.log('[Site] Saved publish config to Foundry:', publishConfig);
 		} catch (error) {

@@ -136,7 +136,7 @@ export class ProjectServiceManager {
 	 */
 	async getConfig(projectName: string): Promise<Record<string, any>> {
 		try {
-			const result = await this.plugin.foundryProjectConfigService.getAll(
+			const result = await this.plugin.foundryProjectConfigService.list(
 				this.plugin.absWorkspacePath,
 				projectName
 			);
@@ -251,17 +251,17 @@ export class ProjectServiceManager {
 		}
 	): Promise<PreviewResult> {
 		try {
-			const { port, renderer, onProgress } = options;
+		const { port, renderer, onProgress } = options;
 
-			const result = await this.plugin.foundryServeService.start(
-				this.plugin.absWorkspacePath,
+		const result = await this.plugin.foundryServeService.startServer(
+			{
+				workspacePath: this.plugin.absWorkspacePath,
 				projectName,
-				{
-					port,
-					markdownRenderer: renderer,
-					onProgress
-				}
-			);
+				port,
+				markdown: renderer
+			},
+			onProgress
+		);
 
 			if (result.success && result.data) {
 				return {

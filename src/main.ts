@@ -211,6 +211,9 @@ export default class FridayPlugin extends Plugin {
 	// PC-only state
 	private previousDownloadServer: 'global' | 'east' = 'global'
 	
+	// View management state
+	private viewInitialized: boolean = false
+	
 	// Dynamic module references for PC-only features
 	private ThemeSelectionModalClass?: typeof ThemeSelectionModal
 	private ProjectManagementModalClass?: typeof ProjectManagementModal
@@ -231,10 +234,8 @@ export default class FridayPlugin extends Plugin {
 				const basePath = adapter.getBasePath();
 				this.absWorkspacePath = `${basePath}/${this.pluginDir}/workspace`;
 			}
-			
-			setTimeout(() => {
-				void this.initDesktopFeatures();
-			}, 0);
+
+			await this.initDesktopFeatures();
 		} else {
 			await this.initMobileFeatures();
 		}
@@ -653,7 +654,9 @@ export default class FridayPlugin extends Plugin {
 				// After creation, get the project and apply to panel (same flow as existing project)
 				const newProject = await this.getFoundryProject(projectName);
 				if (newProject) {
+					this.isProjectInitializing = true; // Set flag to prevent auto-saving during initialization
 					await this.applyFoundryProjectToPanel(newProject, folder, file);
+					this.isProjectInitializing = false; // Reset flag after initialization
 				} else {
 					console.error('[Friday] Failed to retrieve newly created project');
 					new Notice('Project created but failed to load');
@@ -661,20 +664,8 @@ export default class FridayPlugin extends Plugin {
 			}
 		}
 
-		// Open or reveal the publish panel
-		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
-		if (leaves.length > 0) {
-			await this.app.workspace.revealLeaf(leaves[0]);
-		} else {
-			// If no existing view, create a new one
-			const leaf = this.app.workspace.getRightLeaf(false);
-			if (leaf) {
-				await leaf.setViewState({
-					type: FRIDAY_SERVER_VIEW_TYPE,
-					active: true,
-				});
-			}
-		}
+		// Open or reveal the publish panel using unified method
+		await this.activateView();
 	}
 
 	/**
@@ -1311,19 +1302,8 @@ export default class FridayPlugin extends Plugin {
 				rightSplit.expand();
 			}
 
-			const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
-			if (leaves.length > 0) {
-				await this.app.workspace.revealLeaf(leaves[0]);
-			} else {
-				// If no existing view, create a new one
-				const leaf = this.app.workspace.getRightLeaf(false);
-				if (leaf) {
-					await leaf.setViewState({
-						type: FRIDAY_SERVER_VIEW_TYPE,
-						active: true,
-					});
-				}
-			}
+			// Use unified method to activate view
+			await this.activateView();
 		}
 	}
 
@@ -1454,16 +1434,77 @@ export default class FridayPlugin extends Plugin {
 	}
 
 
+	// ==================== View Management Methods ====================
+	// These methods manage the Friday Service view lifecycle and ensure only one instance exists
+	
+	/**
+	 * Initialize the Friday Service view on plugin load
+	 * Called automatically during desktop features initialization
+	 * Only creates the view once per plugin load session
+	 */
 	initLeaf(): void {
-		if (this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE).length > 0) return
+		// Only initialize once per plugin load
+		if (this.viewInitialized) {
+			return;
+		}
+		
+		this.activateView();
+		this.viewInitialized = true;
+	}
 
-		this.app.workspace.getRightLeaf(false)?.setViewState({
-			type: FRIDAY_SERVER_VIEW_TYPE,
-			active: true,
-		}).then(r => {})
+	/**
+	 * Unified method to activate/reveal Friday Service view
+	 * This should be used by all features that need to show the panel
+	 * 
+	 * Behavior:
+	 * - If view exists: reveals the first instance
+	 * - If no view exists: creates a new one in the right sidebar
+	 * 
+	 * @returns Promise that resolves when view is activated
+	 */
+	async activateView(): Promise<void> {
+		const leaves = this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
+		
+		// If view exists, reveal the first one
+		if (leaves.length > 0) {
+			await this.app.workspace.revealLeaf(leaves[0]);
+			return;
+		}
+		
+		// Create new view if none exists
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf) {
+			await leaf.setViewState({
+				type: FRIDAY_SERVER_VIEW_TYPE,
+				active: true,
+			});
+		}
+	}
+
+	/**
+	 * Check if Friday Service view is currently open
+	 * @returns true if at least one view instance exists
+	 */
+	isViewOpen(): boolean {
+		return this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE).length > 0;
+	}
+
+	/**
+	 * Get all Friday Service view leaves
+	 * Useful for advanced view management
+	 * @returns Array of WorkspaceLeaf instances
+	 */
+	getViewLeaves() {
+		return this.app.workspace.getLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
 	}
 
 	async onunload() {
+		// Clean up Friday Service views
+		this.app.workspace.detachLeavesOfType(FRIDAY_SERVER_VIEW_TYPE);
+		
+		// Reset view initialization state
+		this.viewInitialized = false;
+		
 		// Clean up sync status display
 		if (this.syncStatusDisplay) {
 			this.syncStatusDisplay.onunload();
