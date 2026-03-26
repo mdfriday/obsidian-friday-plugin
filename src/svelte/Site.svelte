@@ -138,32 +138,12 @@
 	// Track last saved configuration to avoid unnecessary saves
 	let lastSavedLanguageConfig: string = '';
 	
-	// Local variables for license-based features
-	let userDir = '';
-	let isLicenseActivated = false;
-	let hasPublishPermission = false;
-	let hasSubdomainPermission = false;
-	let hasCustomDomainPermission = false;
-	let hasEnterprisePermission = false;
+	// License state - directly use plugin.licenseState methods in UI
 	let publishOptions: Array<{ value: string; label: string }> = [];
 
-	// Reactive block to update license-related state (similar to theme selection at line 64-79)
+	// Reactive block to update publish options
 	$: {
-		// Update userDir from settings
-		userDir = plugin.settings.licenseUser?.userDir || '';
-		
-		// Check if license is activated (required for MDFriday features)
-		isLicenseActivated = !!(plugin.settings.license && userDir);
-		
-		// Check feature permissions from license
-		const features = plugin.settings.license?.features;
-		const licenseplan = plugin.settings.license?.plan;
-		hasPublishPermission = isLicenseActivated && features?.publish_enabled === true;
-		hasSubdomainPermission = isLicenseActivated && features?.custom_sub_domain === true;
-		hasCustomDomainPermission = isLicenseActivated && features?.custom_domain === true;
-		hasEnterprisePermission = isLicenseActivated && licenseplan === 'enterprise' && !!plugin.settings.enterpriseServerUrl;
-		
-		// Update publish options - MDFriday Share, MDFriday Subdomain, MDFriday Custom Domain, and MDFriday Enterprise are always shown
+		// Update publish options - always show all 6 options
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
@@ -174,41 +154,32 @@
 		];
 	}
 
-	// Check if current publish option requires license and permissions
-	$: requiresPublishPermission = selectedPublishOption === 'mdf-share';
-	$: requiresSubdomainPermission = selectedPublishOption === 'mdf-app';
-	$: requiresCustomDomainPermission = selectedPublishOption === 'mdf-custom';
-	$: requiresEnterprisePermission = selectedPublishOption === 'mdf-enterprise';
-	$: isPublishDisabled =
-		(requiresPublishPermission && !hasPublishPermission) ||
-		(requiresSubdomainPermission && !hasSubdomainPermission) ||
-		(requiresCustomDomainPermission && !hasCustomDomainPermission) ||
-		(requiresEnterprisePermission && !hasEnterprisePermission);
+	// Helper function to check if current publish option has required permission
+	function hasCurrentPublishPermission(): boolean {
+		const licenseState = plugin.licenseState;
+		if (!licenseState || !licenseState.isActivated() || licenseState.isExpired()) {
+			return false;
+		}
+		
+		switch (selectedPublishOption) {
+			case 'mdf-share':
+				return licenseState.hasPublishPermission();
+			case 'mdf-app':
+				return licenseState.hasFeature('customSubDomain');
+			case 'mdf-custom':
+				return licenseState.hasFeature('customDomain');
+			case 'mdf-enterprise':
+				return licenseState.getPlan() === 'enterprise' && !!plugin.settings.enterpriseServerUrl;
+			case 'netlify':
+			case 'ftp':
+				return true; // No license required for Netlify and FTP
+			default:
+				return false;
+		}
+	}
 
-	// Auto-generate sitePath for mdf-share when publish option changes
-	// $: {
-	// 	if (selectedPublishOption === 'mdf-share' && plugin.settings.license && userDir) {
-	// 		// Check if sitePath needs to be generated or updated
-	// 		if (sitePath.startsWith(`/s/${userDir}`) || !sitePath.startsWith('/s')) {
-	// 			// Generate new sitePath with format: /s/{userDir}/{previewId}
-	// 			const timestamp = Date.now().toString().slice(-6);
-	// 			const randomStr = Math.random().toString(36).substring(2, 5);
-	// 			const newPreviewId = `${timestamp}${randomStr}`;
-	// 			const newSitePath = `/s/${userDir}/${newPreviewId}`;
-	//
-	// 			// Update sitePath
-	// 			sitePath = newSitePath;
-	// 			previewId = newPreviewId;
-	//
-	// 			console.log('[Site] Auto-generated sitePath for mdf-share:', sitePath);
-	//
-	// 			// Save to config (only if not initializing)
-	// 			if (!plugin.isProjectInitializing) {
-	// 				saveFoundryConfig('baseURL', sitePath);
-	// 			}
-	// 		}
-	// 	}
-	// }
+	// Check if publish button should be disabled
+	$: isPublishDisabled = !hasCurrentPublishPermission();
 
 	// ==================== Foundry Integration Functions ====================
 	
@@ -813,8 +784,7 @@
 				// Quick share and utility methods (migrated from old architecture)
 				setSitePath: setSitePathExternal,
 				startPreviewAndWait,
-				selectMDFShare,
-				refreshLicenseState
+				selectMDFShare
 			});
 		}
 		
@@ -851,23 +821,6 @@
 	// Select MDFriday Share publish option
 	function selectMDFShare() {
 		selectedPublishOption = 'mdf-share';
-	}
-
-	// Refresh license state from plugin settings (called after license activation)
-	export function refreshLicenseState() {
-		// Update userDir and isLicenseActivated by triggering reactive update
-		userDir = plugin.settings.licenseUser?.userDir || '';
-		isLicenseActivated = !!(plugin.settings.license && userDir);
-		
-		// Update publish options - keep all 6 options consistent with reactive statement
-		publishOptions = [
-			{ value: 'netlify', label: t('ui.publish_option_netlify') },
-			{ value: 'ftp', label: t('ui.publish_option_ftp') },
-			{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') },
-			{ value: 'mdf-app', label: t('ui.publish_option_mdfriday_app') },
-			{ value: 'mdf-custom', label: t('ui.publish_option_mdfriday_custom') },
-			{ value: 'mdf-enterprise', label: t('ui.publish_option_mdfriday_enterprise') },
-		];
 	}
 
 	onDestroy(() => {
@@ -2642,56 +2595,56 @@
 			<!-- MDFriday Share Info -->
 			{#if selectedPublishOption === 'mdf-share'}
 				<div class="publish-config">
-					<div class="field-hint">
-						{t('ui.mdfriday_share_hint')}
+				<div class="field-hint">
+					{t('ui.mdfriday_share_hint')}
+				</div>
+				{#if !(plugin.licenseState?.hasPublishPermission())}
+					<div class="license-warning">
+						⚠️ {t('settings.upgrade_for_mdfshare')}
 					</div>
-					{#if !hasPublishPermission}
-						<div class="license-warning">
-							⚠️ {t('settings.upgrade_for_mdfshare')}
-						</div>
-					{/if}
+				{/if}
 				</div>
 			{/if}
 
 			<!-- MDFriday Subdomain Info -->
 			{#if selectedPublishOption === 'mdf-app'}
 				<div class="publish-config">
-					<div class="field-hint">
-						{t('ui.mdfriday_app_hint')}
+				<div class="field-hint">
+					{t('ui.mdfriday_app_hint')}
+				</div>
+				{#if !(plugin.licenseState?.hasFeature('customSubDomain'))}
+					<div class="license-warning">
+						⚠️ {t('settings.upgrade_for_subdomain')}
 					</div>
-					{#if !hasSubdomainPermission}
-						<div class="license-warning">
-							⚠️ {t('settings.upgrade_for_subdomain')}
-						</div>
-					{/if}
+				{/if}
 				</div>
 			{/if}
 
 			<!-- MDFriday Custom Domain Info -->
 			{#if selectedPublishOption === 'mdf-custom'}
 				<div class="publish-config">
-					<div class="field-hint">
-						{t('ui.mdfriday_custom_hint')}
+				<div class="field-hint">
+					{t('ui.mdfriday_custom_hint')}
+				</div>
+				{#if !(plugin.licenseState?.hasFeature('customDomain'))}
+					<div class="license-warning">
+						⚠️ {t('settings.upgrade_for_custom_domain')}
 					</div>
-					{#if !hasCustomDomainPermission}
-						<div class="license-warning">
-							⚠️ {t('settings.upgrade_for_custom_domain')}
-						</div>
-					{/if}
+				{/if}
 				</div>
 			{/if}
 
 			<!-- MDFriday Enterprise Info -->
 			{#if selectedPublishOption === 'mdf-enterprise'}
 				<div class="publish-config">
-					<div class="field-hint">
-						{t('ui.mdfriday_enterprise_hint')}
+				<div class="field-hint">
+					{t('ui.mdfriday_enterprise_hint')}
+				</div>
+				{#if !(plugin.licenseState?.isActivated() && !plugin.licenseState?.isExpired() && plugin.licenseState?.getPlan() === 'enterprise' && plugin.settings.enterpriseServerUrl)}
+					<div class="license-warning">
+						⚠️ {t('settings.upgrade_for_enterprise')}
 					</div>
-					{#if !hasEnterprisePermission}
-						<div class="license-warning">
-							⚠️ {t('settings.upgrade_for_enterprise')}
-						</div>
-					{/if}
+				{/if}
 				</div>
 			{/if}
 

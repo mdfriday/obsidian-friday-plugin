@@ -3997,11 +3997,6 @@ class FridaySettingTab extends PluginSettingTab {
 				await this.plugin.initializeSyncService();
 			}
 
-			// Step 10: Refresh license state in Site panel (if open)
-			if (this.plugin.siteComponent?.refreshLicenseState) {
-				this.plugin.siteComponent.refreshLicenseState();
-			}
-
 			console.log('[Friday] License activation completed successfully');
 			
 		} catch (error) {
