@@ -1,6 +1,6 @@
 import type FridayPlugin from '../main';
-import type { TFolder, TFile } from 'obsidian';
-import type { ProgressUpdate } from '../types/events';
+import type {TFile, TFolder} from 'obsidian';
+import type {ProgressUpdate} from '../types/events';
 
 /**
  * Project Service Manager
@@ -290,12 +290,7 @@ export class ProjectServiceManager {
 	 */
 	async stopPreview(projectName: string): Promise<boolean> {
 		try {
-			const result = await this.plugin.foundryServeService.stop(
-				this.plugin.absWorkspacePath,
-				projectName
-			);
-
-			return result.success;
+			return await this.plugin.foundryServeService.stopServer();
 		} catch (error) {
 			console.error('[ProjectServiceManager] Error stopping preview:', error);
 			return false;

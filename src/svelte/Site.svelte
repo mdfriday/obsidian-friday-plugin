@@ -1683,6 +1683,19 @@
 			return;
 		}
 
+		// Stop previous preview if running to avoid port conflicts
+		if (hasPreview || serverRunning) {
+			console.log('[Site] Stopping previous preview before starting new one');
+			try {
+				await stopPreview();
+				// Wait a moment for the server to fully stop
+				await new Promise(resolve => setTimeout(resolve, 500));
+			} catch (error) {
+				console.warn('[Site] Error stopping previous preview:', error);
+				// Continue anyway, the new server start might handle the conflict
+			}
+		}
+
 		isBuilding = true;
 		buildProgress = 0;
 		hasPreview = false;
@@ -1795,11 +1808,26 @@
 	 * Stop preview server
 	 */
 	async function stopPreview() {
+		if (!plugin.currentProjectName) {
+			return;
+		}
+		
 		try {
-			await plugin.stopFoundryPreviewServer();
-			hasPreview = false;
-			previewUrl = '';
-			serverRunning = false;
+			// Use event system to request stop preview
+			if (plugin.handleSiteEvent) {
+				await plugin.handleSiteEvent('stopPreview', {
+					projectName: plugin.currentProjectName
+				});
+				// Note: State will be updated by onPreviewStopped() callback
+			} else {
+				// Fallback to direct method
+				await plugin.stopFoundryPreviewServer();
+				// Manually update state for fallback path
+				hasPreview = false;
+				previewUrl = '';
+				serverRunning = false;
+			}
+			
 			new Notice('Preview server stopped', 2000);
 		} catch (error) {
 			console.error('Error stopping preview:', error);
