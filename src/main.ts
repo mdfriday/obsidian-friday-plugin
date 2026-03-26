@@ -4004,31 +4004,5 @@ class FridaySettingTab extends PluginSettingTab {
 			throw error;
 		}
 	}
-
-	/**
-	 * Parse Foundry's expires field to timestamp
-	 * Foundry may return:
-	 * - A formatted date string (e.g., "2025-12-31")
-	 * - A timestamp number
-	 * - An ISO date string (e.g., "2025-12-31T23:59:59Z")
-	 */
-	private parseExpiresField(expires: any): number {
-		// If already a number (timestamp), return it
-		if (typeof expires === 'number') {
-			return expires;
-		}
-		
-		// If it's a string, try to parse it
-		if (typeof expires === 'string') {
-			const timestamp = Date.parse(expires);
-			if (!isNaN(timestamp)) {
-				return timestamp;
-			}
-		}
-		
-		// Fallback: return a far future date (100 years from now)
-		console.warn('[Friday] Unable to parse expires field:', expires);
-		return Date.now() + (100 * 365 * 24 * 60 * 60 * 1000);
-	}
 }
 

@@ -131,6 +131,20 @@ export class LicenseStateManager {
 	}
 
 	/**
+	 * 获取 access token (from auth login)
+	 */
+	getAccessToken(): string | null {
+		return this.authStatus?.token || null;
+	}
+
+	/**
+	 * 获取 API URL (server URL)
+	 */
+	getApiUrl(): string | null {
+		return this.authStatus?.serverUrl || null;
+	}
+
+	/**
 	 * 检查是否过期
 	 */
 	isExpired(): boolean {

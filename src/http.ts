@@ -35,18 +35,36 @@ export class ObsidianHttpClient implements PublishHttpClient {
   /**
    * POST multipart form data (for file uploads)
    * 
-   * 基于 Friday 插件的 formDataToArrayBuffer 实现
+   * Converts Record<string, any> to FormData, with special handling for 'asset' field
    */
   async postMultipart(
     url: string,
     formData: Record<string, any>,
     headers?: Record<string, string>
   ): Promise<PublishHttpResponse> {
+    // Create FormData and populate fields
+    const form = new FormData();
+    
+    for (const [key, value] of Object.entries(formData)) {
+      if (key === 'asset' && typeof value === 'object' && 
+          'data' in value && 'filename' in value && 'contentType' in value) {
+        // Handle special 'asset' field format: {data: Uint8Array, filename: string, contentType: string}
+        const blob = new Blob([value.data], { type: value.contentType || 'application/octet-stream' });
+        form.append(key, blob, value.filename);
+      } else if (typeof value === 'string' || typeof value === 'number') {
+        // Handle string and number values
+        form.append(key, value.toString());
+      } else {
+        // Handle other types
+        form.append(key, String(value));
+      }
+    }
+
     // 生成随机 boundary
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2, 9);
     
-    // 将 formData 转换为 ArrayBuffer
-    const arrayBufferBody = await this.formDataToArrayBuffer(formData, boundary);
+    // 将 FormData 转换为 ArrayBuffer
+    const arrayBufferBody = await this.formDataToArrayBufferFromFormData(form, boundary);
 
     const response = await requestUrl({
       url,
@@ -124,6 +142,65 @@ export class ObsidianHttpClient implements PublishHttpClient {
         return response.json;
       },
     };
+  }
+
+  /**
+   * 将 FormData 转换为 ArrayBuffer（用于 multipart 请求）
+   * Based on hugoverse.ts implementation
+   */
+  private async formDataToArrayBufferFromFormData(
+    formData: FormData,
+    boundary: string
+  ): Promise<ArrayBuffer> {
+    const bodyParts: (string | Uint8Array)[] = [];
+
+    // 用来存储所有的字段数据，先同步收集信息
+    const formDataEntries: { value: FormDataEntryValue; key: string }[] = [];
+
+    formData.forEach((value, key) => {
+      formDataEntries.push({ value, key });
+    });
+
+    // 处理收集的数据，使用 for...of 遍历并进行异步操作
+    for (const { value, key } of formDataEntries) {
+      bodyParts.push(`--${boundary}\r\n`);
+
+      if (typeof value === 'string') {
+        // 处理字符串值
+        bodyParts.push(`Content-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`);
+      } else if (value instanceof Blob) {
+        // 处理 Blob 值（文件上传）
+        const blobName = (value as any).name || 'file';
+        bodyParts.push(
+          `Content-Disposition: form-data; name="${key}"; filename="${blobName}"\r\n`
+        );
+        bodyParts.push(`Content-Type: ${value.type || 'application/octet-stream'}\r\n\r\n`);
+
+        // 使用 await 等待 Blob 转换为 ArrayBuffer
+        const arrayBuffer = await value.arrayBuffer();
+        bodyParts.push(new Uint8Array(arrayBuffer));
+        bodyParts.push('\r\n');
+      }
+    }
+
+    // 添加结束边界
+    bodyParts.push(`--${boundary}--\r\n`);
+
+    // 将所有部分合并为一个 ArrayBuffer
+    const encoder = new TextEncoder();
+    const encodedParts = bodyParts.map(part => (typeof part === 'string' ? encoder.encode(part) : part));
+
+    // 计算总长度并创建最终的 ArrayBuffer
+    const totalLength = encodedParts.reduce((acc, curr) => acc + curr.length, 0);
+    const combinedArray = new Uint8Array(totalLength);
+    let offset = 0;
+
+    for (const part of encodedParts) {
+      combinedArray.set(part, offset);
+      offset += part.length;
+    }
+
+    return combinedArray.buffer;
   }
 
   /**
@@ -277,19 +354,36 @@ export class ObsidianIdentityHttpClient implements IdentityHttpClient {
   /**
    * POST multipart form data (for file uploads)
    * 
-   * 基于 Friday 插件的 formDataToArrayBuffer 实现
-   * friday/src/hugoverse.ts:140-160
+   * Converts Record<string, any> to FormData, with special handling for 'asset' field
    */
   async postMultipart(
     url: string,
     data: Record<string, any>,
     headers?: Record<string, string>
   ): Promise<IdentityHttpResponse> {
+    // Create FormData and populate fields
+    const formData = new FormData();
+    
+    for (const [key, value] of Object.entries(data)) {
+      if (key === 'asset' && typeof value === 'object' && 
+          'data' in value && 'filename' in value && 'contentType' in value) {
+        // Handle special 'asset' field format: {data: Uint8Array, filename: string, contentType: string}
+        const blob = new Blob([value.data], { type: value.contentType || 'application/octet-stream' });
+        formData.append(key, blob, value.filename);
+      } else if (typeof value === 'string' || typeof value === 'number') {
+        // Handle string and number values
+        formData.append(key, value.toString());
+      } else {
+        // Handle other types
+        formData.append(key, String(value));
+      }
+    }
+
     // 生成随机 boundary
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2, 9);
     
-    // 将 formData 转换为 ArrayBuffer
-    const arrayBufferBody = await this.formDataToArrayBuffer(data, boundary);
+    // 将 FormData 转换为 ArrayBuffer
+    const arrayBufferBody = await this.formDataToArrayBufferFromFormData(formData, boundary);
 
     const response = await requestUrl({
       url,
@@ -337,6 +431,65 @@ export class ObsidianIdentityHttpClient implements IdentityHttpClient {
         return response.json;
       },
     };
+  }
+
+  /**
+   * 将 FormData 转换为 ArrayBuffer（用于 multipart 请求）
+   * Based on hugoverse.ts implementation
+   */
+  private async formDataToArrayBufferFromFormData(
+    formData: FormData,
+    boundary: string
+  ): Promise<ArrayBuffer> {
+    const bodyParts: (string | Uint8Array)[] = [];
+
+    // 用来存储所有的字段数据，先同步收集信息
+    const formDataEntries: { value: FormDataEntryValue; key: string }[] = [];
+
+    formData.forEach((value, key) => {
+      formDataEntries.push({ value, key });
+    });
+
+    // 处理收集的数据，使用 for...of 遍历并进行异步操作
+    for (const { value, key } of formDataEntries) {
+      bodyParts.push(`--${boundary}\r\n`);
+
+      if (typeof value === 'string') {
+        // 处理字符串值
+        bodyParts.push(`Content-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`);
+      } else if (value instanceof Blob) {
+        // 处理 Blob 值（文件上传）
+        const blobName = (value as any).name || 'file';
+        bodyParts.push(
+          `Content-Disposition: form-data; name="${key}"; filename="${blobName}"\r\n`
+        );
+        bodyParts.push(`Content-Type: ${value.type || 'application/octet-stream'}\r\n\r\n`);
+
+        // 使用 await 等待 Blob 转换为 ArrayBuffer
+        const arrayBuffer = await value.arrayBuffer();
+        bodyParts.push(new Uint8Array(arrayBuffer));
+        bodyParts.push('\r\n');
+      }
+    }
+
+    // 添加结束边界
+    bodyParts.push(`--${boundary}--\r\n`);
+
+    // 将所有部分合并为一个 ArrayBuffer
+    const encoder = new TextEncoder();
+    const encodedParts = bodyParts.map(part => (typeof part === 'string' ? encoder.encode(part) : part));
+
+    // 计算总长度并创建最终的 ArrayBuffer
+    const totalLength = encodedParts.reduce((acc, curr) => acc + curr.length, 0);
+    const combinedArray = new Uint8Array(totalLength);
+    let offset = 0;
+
+    for (const part of encodedParts) {
+      combinedArray.set(part, offset);
+      offset += part.length;
+    }
+
+    return combinedArray.buffer;
   }
 
   /**

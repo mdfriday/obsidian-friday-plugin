@@ -181,181 +181,6 @@
 	// Check if publish button should be disabled
 	$: isPublishDisabled = !hasCurrentPublishPermission();
 
-	// ==================== Foundry Integration Functions ====================
-	
-	/**
-	 * Load project configuration from Foundry
-	 */
-	async function loadFoundryProjectConfig() {
-		if (!plugin.currentProjectName) {
-			console.log('[Site] No current project name, skipping config load');
-			return;
-		}
-		
-		// Check if project is being initialized
-		const isInitializing = plugin.isProjectInitializing;
-		
-		if (isInitializing) {
-			console.log('[Site] Project is initializing, loading config without triggering saves');
-		}
-		
-		try {
-			const config = await plugin.getFoundryProjectConfigMap(plugin.currentProjectName);
-			
-			// Apply configuration to UI
-			if (config['title']) {
-				siteName = config['title'];
-			}
-			if (config['baseURL']) {
-				sitePath = config['baseURL'];
-			}
-			if (config['module']?.imports?.[0]?.path) {
-				const themeUrl = config['module'].imports[0].path;
-				selectedThemeDownloadUrl = themeUrl;
-				userHasSelectedTheme = true;
-				
-				// Find theme by download URL to get complete theme info (ID and name)
-				try {
-					const allThemes = await themeApiService.getAllThemes(plugin);
-					const matchedTheme = allThemes.find(theme => theme.download_url === themeUrl);
-					
-					if (matchedTheme) {
-						selectedThemeId = matchedTheme.id;
-						selectedThemeName = matchedTheme.title || matchedTheme.name;
-						console.log('[Site] Loaded theme:', selectedThemeName, 'ID:', selectedThemeId);
-					} else {
-						console.warn('[Site] Theme not found by URL:', themeUrl);
-						// Keep the URL but theme selector might not highlight correctly
-					}
-				} catch (error) {
-					console.error('[Site] Error finding theme by URL:', error);
-				}
-			}
-			if (config['services']?.googleAnalytics?.id) {
-				googleAnalyticsId = config['services'].googleAnalytics.id;
-			}
-			if (config['params']?.disqusShortname) {
-				disqusShortname = config['params'].disqusShortname;
-			}
-			if (config['params']?.password) {
-				sitePassword = config['params'].password;
-			}
-			
-			// Load publish configuration
-			if (config['publish']) {
-				// Load publish method
-				if (config['publish'].method) {
-					selectedPublishOption = normalizePublishMethod(config['publish'].method);
-				}
-				
-				// Load Netlify config
-				if (config['publish'].netlify) {
-					netlifyAccessToken = config['publish'].netlify.accessToken || '';
-					netlifyProjectId = config['publish'].netlify.siteId || '';
-				}
-				
-			// Load FTP config
-			if (config['publish'].ftp) {
-				ftpServer = config['publish'].ftp.host || '';
-				ftpUsername = config['publish'].ftp.username || '';
-				ftpPassword = config['publish'].ftp.password || '';
-				ftpRemoteDir = config['publish'].ftp.remotePath || '';
-				
-				// Load secure preference (new API)
-				if (config['publish'].ftp.secure !== undefined) {
-					ftpPreferredSecure = config['publish'].ftp.secure;
-				}
-				
-				// Backward compatibility: also check old ignoreCert field
-				if (config['publish'].ftp.ignoreCert !== undefined) {
-					ftpIgnoreCert = config['publish'].ftp.ignoreCert;
-				}
-			}
-			} else if (!isInitializing) {
-				// No project-level publish config, load from global settings
-				// ✅ 只有非初始化状态才触发保存
-				await loadPublishConfigFromSettings();
-			}
-			
-			// Load language configuration and apply to UI
-			if (config['languages'] && config['defaultContentLanguage']) {
-				console.log('[Site] Loaded language configuration:', config['languages']);
-				console.log('[Site] Default content language:', config['defaultContentLanguage']);
-				
-				// Apply language configuration to current contents
-				// ✅ 传递初始化标志，防止保存
-				await applyLanguageConfiguration(
-					config['languages'], 
-					config['defaultContentLanguage'],
-					isInitializing
-				);
-			}
-			
-			console.log('[Site] Loaded project config:', config);
-		} catch (error) {
-			console.error('[Site] Error loading project config:', error);
-		}
-	}
-	
-	/**
-	 * Load publish configuration from global settings (fallback)
-	 */
-	async function loadPublishConfigFromSettings() {
-		// Try to load from Foundry Global Config first
-		if (plugin.foundryGlobalConfigService && plugin.absWorkspacePath) {
-			try {
-				const globalConfigResult = await plugin.foundryGlobalConfigService.list(plugin.absWorkspacePath);
-				const globalConfig = globalConfigResult.data?.config;
-				
-				if (globalConfig?.publish) {
-					// Load from Foundry Global Config
-					if (globalConfig.publish.netlify) {
-						netlifyAccessToken = globalConfig.publish.netlify.accessToken || '';
-						netlifyProjectId = globalConfig.publish.netlify.siteId || '';
-					}
-				if (globalConfig.publish.ftp) {
-					ftpServer = globalConfig.publish.ftp.host || '';
-					ftpUsername = globalConfig.publish.ftp.username || '';
-					ftpPassword = globalConfig.publish.ftp.password || '';
-					ftpRemoteDir = globalConfig.publish.ftp.remotePath || '';
-					
-					// Load secure preference (new API)
-					if (globalConfig.publish.ftp.secure !== undefined) {
-						ftpPreferredSecure = globalConfig.publish.ftp.secure;
-					}
-					
-					// Backward compatibility: also check old ignoreCert field
-					if (globalConfig.publish.ftp.ignoreCert !== undefined) {
-						ftpIgnoreCert = globalConfig.publish.ftp.ignoreCert;
-					}
-				}
-				if (globalConfig.publish.method) {
-					selectedPublishOption = normalizePublishMethod(globalConfig.publish.method);
-				}
-					return;
-				}
-			} catch (error) {
-				console.warn('[Site] Failed to load from Foundry Global Config, using plugin settings');
-			}
-		}
-		
-		// Fallback to plugin settings
-		// 兼容旧值 'mdfriday' 映射为 'mdf-share'
-		selectedPublishOption = (plugin.settings.publishMethod === 'mdfriday' 
-			? 'mdf-share' 
-			: plugin.settings.publishMethod) || 'netlify';
-		netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
-		netlifyProjectId = plugin.settings.netlifyProjectId || '';
-		ftpServer = plugin.settings.ftpServer || '';
-		ftpUsername = plugin.settings.ftpUsername || '';
-		ftpPassword = plugin.settings.ftpPassword || '';
-		ftpRemoteDir = plugin.settings.ftpRemoteDir || '';
-		ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined 
-			? plugin.settings.ftpIgnoreCert 
-			: true;
-		ftpPreferredSecure = undefined;
-	}
-	
 	/**
 	 * Apply language configuration from Foundry config to UI
 	 */
@@ -757,9 +582,6 @@
 		if (adapter instanceof FileSystemAdapter) {
 			basePath = adapter.getBasePath()
 		}
-		
-		// Load Foundry project configuration
-		await loadFoundryProjectConfig();
 		
 		// ==================== NEW ARCHITECTURE: Register component ====================
 		// Register this component to Main.ts for direct method calls
@@ -1834,39 +1656,43 @@
 					remotePath: ftpRemoteDir || '/',
 					secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true
 				};
-			} else if (selectedPublishOption === 'mdf-share') {
-				publishConfig = {
-					type: 'mdfriday',
-					deploymentType: 'share',
-					enabled: true,
-					licenseKey: plugin.settings.license?.key || '',
-					apiUrl: GetBaseUrl(plugin.settings)
-				};
-			} else if (selectedPublishOption === 'mdf-app') {
-				publishConfig = {
-					type: 'mdfriday',
-					deploymentType: 'sub',
-					enabled: true,
-					licenseKey: plugin.settings.license?.key || '',
-					apiUrl: GetBaseUrl(plugin.settings)
-				};
-			} else if (selectedPublishOption === 'mdf-custom') {
-				publishConfig = {
-					type: 'mdfriday',
-					deploymentType: 'custom',
-					enabled: true,
-					licenseKey: plugin.settings.license?.key || '',
-					apiUrl: GetBaseUrl(plugin.settings)
-				};
-			} else if (selectedPublishOption === 'mdf-enterprise') {
-				publishConfig = {
-					type: 'mdfriday',
-					deploymentType: 'enterprise',
-					enabled: true,
-					licenseKey: plugin.settings.license?.key || '',
-					apiUrl: plugin.settings.enterpriseServerUrl || GetBaseUrl(plugin.settings)
-				};
-			}
+		} else if (selectedPublishOption === 'mdf-share') {
+			publishConfig = {
+				type: 'mdfriday',
+				deploymentType: 'share',
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			};
+		} else if (selectedPublishOption === 'mdf-app') {
+			publishConfig = {
+				type: 'mdfriday',
+				deploymentType: 'sub',
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			};
+		} else if (selectedPublishOption === 'mdf-custom') {
+			publishConfig = {
+				type: 'mdfriday',
+				deploymentType: 'custom',
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			};
+		} else if (selectedPublishOption === 'mdf-enterprise') {
+			publishConfig = {
+				type: 'mdfriday',
+				deploymentType: 'enterprise',
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.settings.enterpriseServerUrl || plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			};
+		}
 
 			// Use event system to request publish from Main.ts
 			if (plugin.handleSiteEvent) {
