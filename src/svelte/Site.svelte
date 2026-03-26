@@ -133,6 +133,10 @@
 	
 	// Debounce timeout for auto-saving language configuration
 	let languageConfigSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+	// Prevent infinite loop when saving language configuration
+	let isSavingLanguageConfig: boolean = false;
+	// Track last saved configuration to avoid unnecessary saves
+	let lastSavedLanguageConfig: string = '';
 	
 	// Local variables for license-based features
 	let userDir = '';
@@ -515,38 +519,6 @@
 			console.log(`[Site] Saved config: ${key} = ${value}`);
 		} catch (error) {
 			console.error('[Site] Error saving config:', error);
-		}
-	}
-	
-	/**
-	 * Save multiple config values to Foundry using event system
-	 * Skips during project initialization
-	 */
-	async function saveFoundryConfigBatch(configMap: Record<string, any>) {
-		if (!plugin.currentProjectName) {
-			return;
-		}
-		
-		// Skip saving during project initialization
-		if (plugin.isProjectInitializing) {
-			console.log('[Site] Skipping batch config save during initialization');
-			return;
-		}
-		
-		try {
-			// Use event system for each config entry
-			if (plugin.handleSiteEvent) {
-				const promises = Object.entries(configMap).map(([key, value]) =>
-					plugin.handleSiteEvent('configChanged', { key, value })
-				);
-				await Promise.all(promises);
-			} else {
-				// Fallback to old method if event system not available
-				await plugin.syncFoundryProjectConfig(plugin.currentProjectName, configMap);
-			}
-			console.log('[Site] Saved batch config:', configMap);
-		} catch (error) {
-			console.error('[Site] Error saving batch config:', error);
 		}
 	}
 
@@ -998,6 +970,10 @@
 		userHasSelectedTheme = false; // 重置主题选择标志，允许重新自动选择
 		previousContentLength = 0; // 重置内容长度跟踪，允许下次首次添加时设置站点名称
 		
+		// Reset language config save state
+		lastSavedLanguageConfig = '';
+		isSavingLanguageConfig = false;
+		
 		// 清空发布配置
 		netlifyAccessToken = '';
 		netlifyProjectId = '';
@@ -1014,19 +990,36 @@
 	// 监听语言内容变化，自动保存语言配置
 	// 当添加、删除或修改语言内容时触发
 	$: {
-		if (currentContents.length > 0 && !plugin.isProjectInitializing && plugin.currentProjectName) {
-			// Clear previous timeout to debounce rapid changes
-			if (languageConfigSaveTimeout) {
-				clearTimeout(languageConfigSaveTimeout);
-			}
+		if (currentContents.length > 0 
+			&& !plugin.isProjectInitializing 
+			&& plugin.currentProjectName
+			&& !isSavingLanguageConfig) {  // Prevent infinite loop
 			
-			// Set new timeout to save configuration after a small delay
-			languageConfigSaveTimeout = setTimeout(() => {
-				saveLanguageConfiguration().catch(err => {
-					console.error('[Site] Failed to auto-save language configuration:', err);
-				});
-				languageConfigSaveTimeout = null;
-			}, 300);
+			// Build current configuration string for comparison
+			const currentConfig = JSON.stringify({
+				languages: currentContents.map(c => ({
+					code: c.languageCode,
+					contentDir: currentContents.indexOf(c) === 0 ? "content" : `content.${c.languageCode}`,
+					weight: c.weight || (currentContents.indexOf(c) + 1)
+				})),
+				defaultLang: currentContents[0]?.languageCode || 'en'
+			});
+			
+			// Only save if configuration actually changed
+			if (currentConfig !== lastSavedLanguageConfig) {
+				// Clear previous timeout to debounce rapid changes
+				if (languageConfigSaveTimeout) {
+					clearTimeout(languageConfigSaveTimeout);
+				}
+				
+				// Set new timeout to save configuration after a small delay
+				languageConfigSaveTimeout = setTimeout(() => {
+					saveLanguageConfiguration().catch(err => {
+						console.error('[Site] Failed to auto-save language configuration:', err);
+					});
+					languageConfigSaveTimeout = null;
+				}, 300);
+			}
 		}
 	}
 
@@ -1056,6 +1049,15 @@
 			return;
 		}
 		
+		// Prevent re-entry during save
+		if (isSavingLanguageConfig) {
+			console.log('[Site] Language config save already in progress, skipping');
+			return;
+		}
+		
+		// Set saving flag
+		isSavingLanguageConfig = true;
+		
 		try {
 			// Build languages configuration from current contents
 			const languages: Record<string, any> = {};
@@ -1073,6 +1075,16 @@
 				? currentContents[0].languageCode 
 				: 'en';
 			
+			// Build configuration string for tracking
+			const configString = JSON.stringify({
+				languages: currentContents.map(c => ({
+					code: c.languageCode,
+					contentDir: currentContents.indexOf(c) === 0 ? "content" : `content.${c.languageCode}`,
+					weight: c.weight || (currentContents.indexOf(c) + 1)
+				})),
+				defaultLang: defaultLang
+			});
+			
 			// Save both languages and defaultContentLanguage using event system
 			if (plugin.handleSiteEvent) {
 				await plugin.handleSiteEvent('configChanged', {
@@ -1086,12 +1098,18 @@
 				});
 			}
 			
+			// Update last saved config
+			lastSavedLanguageConfig = configString;
+			
 			console.log('[Site] Saved language configuration:', {
 				languages,
 				defaultContentLanguage: defaultLang
 			});
 		} catch (error) {
 			console.error('[Site] Error saving language configuration:', error);
+		} finally {
+			// Always clear the saving flag
+			isSavingLanguageConfig = false;
 		}
 	}
 
@@ -1877,18 +1895,6 @@
 				
 				// Note: Progress updates and completion will be handled by callbacks
 				// (updatePublishProgress, onPublishComplete, onPublishError)
-			} else {
-				// Fallback to old method
-				const publicDir = path.join(absPreviewDir, 'public');
-
-				if (selectedPublishOption === 'netlify') {
-					await publishToNetlify(publicDir);
-				} else if (selectedPublishOption === 'ftp') {
-					await publishToFTP(publicDir);
-				} else {
-					// Handle MDFriday publish options with old method
-					throw new Error('MDFriday publish requires event system');
-				}
 			}
 
 		} catch (error) {
@@ -1899,165 +1905,6 @@
 			publishSuccess = false;
 		}
 		// Note: isPublishing will be set to false by onPublishComplete/onPublishError callbacks
-	}
-
-	async function publishToNetlify(publicDir: string) {
-		// Validate configuration
-		if (!netlifyAccessToken || !netlifyProjectId) {
-			throw new Error(t('messages.netlify_settings_missing'));
-		}
-		
-		if (!plugin.currentProjectName) {
-			throw new Error('No project selected');
-		}
-		
-		try {
-			// Note: Configuration is auto-saved through reactive statements
-			// No need for explicit saveCurrentConfiguration() call
-			
-			// Use event system to request publish
-			if (plugin.handleSiteEvent) {
-				await plugin.handleSiteEvent('publishRequested', {
-					projectName: plugin.currentProjectName,
-					method: 'netlify',
-					config: {
-						type: 'netlify',
-						siteId: netlifyProjectId,
-						accessToken: netlifyAccessToken,
-					}
-				});
-				
-				// Note: Progress updates will come through updatePublishProgress()
-				// Success/error will be handled by onPublishComplete() / onPublishError()
-				
-				// Set publish URL if available (will be updated by onPublishComplete)
-				// publishUrl will be set by the callback
-				
-				// Send counter for netlify publish (don't wait for result)
-				plugin.hugoverse?.sendCounter('netlify').catch(error => {
-					console.warn('Counter request failed (non-critical):', error);
-				});
-			} else {
-				// Fallback to old method if event system not available
-				if (!plugin.foundryPublishService) {
-					throw new Error('Publish service not initialized');
-				}
-				
-				const result = await plugin.foundryPublishService.publish(
-					{
-						workspacePath: plugin.absWorkspacePath,
-						projectName: plugin.currentProjectName,
-						method: 'netlify',
-						config: {
-							type: 'netlify',
-							siteId: netlifyProjectId,
-							accessToken: netlifyAccessToken,
-						},
-					},
-					(progress) => {
-						if (progress.phase === 'scanning') {
-							publishProgress = Math.round(progress.percentage * 0.2);
-						} else if (progress.phase === 'uploading') {
-							publishProgress = 20 + Math.round(progress.percentage * 0.5);
-						} else if (progress.phase === 'deploying') {
-							publishProgress = 70 + Math.round(progress.percentage * 0.2);
-						} else if (progress.phase === 'complete') {
-							publishProgress = 90 + Math.round(progress.percentage * 0.1);
-						}
-					}
-				);
-				
-				if (!result.success) {
-					throw new Error(result.error || 'Publish failed');
-				}
-				
-				publishUrl = result.data?.url || '';
-				publishSuccess = true;
-				new Notice(t('messages.netlify_deploy_success'), 3000);
-			}
-		} catch (error) {
-			console.error('Netlify deployment failed:', error);
-			throw new Error(t('messages.netlify_deploy_failed', { error: error.message }));
-		}
-	}
-
-	async function publishToFTP(publicDir: string) {
-		// Validate configuration
-		if (!ftpServer || !ftpUsername || !ftpPassword) {
-			throw new Error(t('messages.ftp_settings_missing'));
-		}
-		
-		if (!plugin.currentProjectName) {
-			throw new Error('No project selected');
-		}
-		
-		try {
-			// Note: Configuration is auto-saved through reactive statements
-			// No need for explicit saveCurrentConfiguration() call
-			
-			// Prepare FTP configuration
-			const ftpConfig = {
-				type: 'ftp',
-				host: ftpServer,
-				port: 21, // Default FTP port
-				username: ftpUsername,
-				password: ftpPassword,
-				remotePath: ftpRemoteDir || '/',
-				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true, // Default to secure
-			};
-			
-			// Use event system to request publish
-			if (plugin.handleSiteEvent) {
-				await plugin.handleSiteEvent('publishRequested', {
-					projectName: plugin.currentProjectName,
-					method: 'ftp',
-					config: ftpConfig
-				});
-				
-				// Note: Progress updates will come through updatePublishProgress()
-				// Success/error will be handled by onPublishComplete() / onPublishError()
-				
-				// Send counter for FTP publish (don't wait for result)
-				plugin.hugoverse?.sendCounter('ftp').catch(error => {
-					console.warn('Counter request failed (non-critical):', error);
-				});
-			} else {
-				// Fallback to old method if event system not available
-				if (!plugin.foundryPublishService) {
-					throw new Error('Publish service not initialized');
-				}
-				
-				const result = await plugin.foundryPublishService.publish(
-					{
-						workspacePath: plugin.absWorkspacePath,
-						projectName: plugin.currentProjectName,
-						method: 'ftp',
-						force: false, // Allow incremental upload
-						config: ftpConfig,
-					},
-					(progress) => {
-						if (progress.phase === 'scanning') {
-							publishProgress = Math.round(progress.percentage * 0.2);
-						} else if (progress.phase === 'uploading') {
-							publishProgress = 20 + Math.round(progress.percentage * 0.7);
-						} else if (progress.phase === 'complete') {
-							publishProgress = 90 + Math.round(progress.percentage * 0.1);
-						}
-					}
-				);
-				
-				if (!result.success) {
-					throw new Error(result.error || 'FTP publish failed');
-				}
-				
-				publishSuccess = true;
-				publishUrl = '';
-				new Notice(t('messages.ftp_upload_success'), 3000);
-			}
-		} catch (error) {
-			console.error('FTP deployment failed:', error);
-			throw new Error(t('messages.ftp_upload_failed', { error: error.message }));
-		}
 	}
 
 	// Reactive: Check if FTP is configured
