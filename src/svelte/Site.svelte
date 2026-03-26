@@ -854,17 +854,19 @@
 	}
 
 	// Refresh license state from plugin settings (called after license activation)
-	function refreshLicenseState() {
+	export function refreshLicenseState() {
 		// Update userDir and isLicenseActivated by triggering reactive update
 		userDir = plugin.settings.licenseUser?.userDir || '';
 		isLicenseActivated = !!(plugin.settings.license && userDir);
 		
-		// Update publish options - MDFriday Share and MDFriday Subdomain are always shown
+		// Update publish options - keep all 6 options consistent with reactive statement
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
 			{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') },
 			{ value: 'mdf-app', label: t('ui.publish_option_mdfriday_app') },
+			{ value: 'mdf-custom', label: t('ui.publish_option_mdfriday_custom') },
+			{ value: 'mdf-enterprise', label: t('ui.publish_option_mdfriday_enterprise') },
 		];
 	}
 

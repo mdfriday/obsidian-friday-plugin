@@ -178,8 +178,8 @@ export class LicenseStateManager {
 	 * 获取用户目录
 	 */
 	getUserDir(): string | null {
-		const email = this.getEmail();
-		return email ? email.split('@')[0] : null;
+		if (!this.licenseInfo?.user) return null;
+		return this.licenseInfo.user.userDir
 	}
 
 	/**

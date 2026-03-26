@@ -116,12 +116,14 @@ export const zhCn: TranslationNamespace = {
 
 		// Publish settings
 		publish_settings: "发布设置",
-		publish_method: "发布方式",
-		publish_method_desc: "选择您想要发布网站的方式",
-		publish_method_mdfriday: "MDFriday 子域名",
-		publish_method_netlify: "Netlify",
-		publish_method_ftp: "FTP",
-		publish_method_mdfriday_custom: "MDFriday 自定义域名",
+	publish_method: "发布方式",
+	publish_method_desc: "选择您想要发布网站的方式",
+	publish_method_mdfriday_share: "MDFriday 分享",
+	publish_method_mdfriday: "MDFriday 子域名",
+	publish_method_mdfriday_custom: "MDFriday 自定义域名",
+	publish_method_mdfriday_enterprise: "MDFriday 企业版",
+	publish_method_netlify: "Netlify",
+	publish_method_ftp: "FTP",
 		license_required: "请升级您的套餐以使用此功能",
 		upgrade_for_mdfshare: "请升级您的套餐以使用 MDFriday 分享功能",
 		upgrade_for_subdomain: "请升级您的套餐以使用 MDFriday 子域名功能",
@@ -159,15 +161,24 @@ export const zhCn: TranslationNamespace = {
 		ftp_test_connection_success: "连接成功",
 		ftp_test_connection_failed: "连接失败",
 
-		// MDFriday 子域名设置
-		mdfriday_app: "MDFriday 子域名",
-		mdfriday_app_desc: "配置您的个人子域名，用于发布站点",
-		
-		// MDFriday 自定义域名设置
-		mdfriday_custom_domain: "MDFriday 自定义域名",
-		custom_domain_desc: "您的自定义域名",
-		custom_domain_placeholder: "输入您的自定义域名（例如 example.com）",
-		domain_check: "检查 DNS",
+	// MDFriday 子域名设置
+	mdfriday_app: "MDFriday 子域名",
+	mdfriday_app_desc: "配置您的个人子域名，用于发布站点",
+	
+	// MDFriday 分享设置
+	mdfriday_share: "MDFriday 分享",
+	mdfriday_share_desc: "快速分享您的站点。分享链接 24 小时内有效，过期后自动失效。适合临时分享和预览。",
+	
+	// MDFriday 自定义域名设置
+	mdfriday_custom_domain: "MDFriday 自定义域名",
+	custom_domain_desc: "您的自定义域名",
+	custom_domain_placeholder: "输入您的自定义域名（例如 example.com）",
+	
+	// MDFriday 企业版设置
+	mdfriday_enterprise: "MDFriday 企业版",
+	mdfriday_enterprise_desc: "直接发布到您的企业根域名。请确保已在通用设置中配置企业服务器地址。",
+	
+	domain_check: "检查 DNS",
 		domain_checking: "检查中...",
 		domain_check_success: "域名 DNS 配置正确",
 		domain_check_failed: "域名 DNS 检查失败",

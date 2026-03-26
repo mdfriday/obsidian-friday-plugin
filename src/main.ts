@@ -1810,7 +1810,7 @@ export default class FridayPlugin extends Plugin {
 	 * Sync license state from Foundry to Obsidian settings
 	 * (Settings are used for UI display only, not for logic decisions)
 	 */
-	private async syncLicenseToSettings(): Promise<void> {
+	async syncLicenseToSettings(): Promise<void> {
 		if (!this.licenseState) {
 			return;
 		}
@@ -1908,6 +1908,10 @@ export default class FridayPlugin extends Plugin {
 			
 			const foundryConfig = listResult.data.config;
 			console.log('[Friday] Loading default publish settings from Global Config');
+
+			if (!this.settings.publishMethod) {
+				this.settings.publishMethod = foundryConfig['publish']?.method || 'mdf-app';
+			}
 			
 			// ========================================
 			// Load FTP Settings (only if local setting is empty)
@@ -2238,59 +2242,92 @@ class FridaySettingTab extends PluginSettingTab {
 		// Publish Settings Section
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.publish_settings')});
 		
-		// Create containers for dynamic content
-		let mdfridaySettingsContainer: HTMLElement;
-		let mdfridayCustomDomainContainer: HTMLElement;
-		let netlifySettingsContainer: HTMLElement;
-		let ftpSettingsContainer: HTMLElement;
+	// Create containers for dynamic content
+	let mdfridayShareContainer: HTMLElement;
+	let mdfridaySettingsContainer: HTMLElement;
+	let mdfridayCustomDomainContainer: HTMLElement;
+	let mdfridayEnterpriseContainer: HTMLElement;
+	let netlifySettingsContainer: HTMLElement;
+	let ftpSettingsContainer: HTMLElement;
 		
-		// Publish Method Dropdown
-		new Setting(containerEl)
-			.setName(this.plugin.i18n.t('settings.publish_method'))
-			.setDesc(this.plugin.i18n.t('settings.publish_method_desc'))
-			.addDropdown((dropdown) => {
-				dropdown
-					.addOption('mdfriday', this.plugin.i18n.t('settings.publish_method_mdfriday'))
-					.addOption('mdf-custom', this.plugin.i18n.t('settings.publish_method_mdfriday_custom'))
-					.addOption('netlify', this.plugin.i18n.t('settings.publish_method_netlify'))
-					.addOption('ftp', this.plugin.i18n.t('settings.publish_method_ftp'))
-					.setValue(publishMethod || 'mdfriday')
-					.onChange(async (value) => {
-						this.plugin.settings.publishMethod = value as 'mdfriday' | 'mdf-custom' | 'netlify' | 'ftp' ;
-						await this.plugin.saveSettings();
-						showPublishSettings(value as 'mdfriday'| 'mdf-custom' | 'netlify' | 'ftp' );
-					});
-			});
+	// Publish Method Dropdown
+	new Setting(containerEl)
+		.setName(this.plugin.i18n.t('settings.publish_method'))
+		.setDesc(this.plugin.i18n.t('settings.publish_method_desc'))
+		.addDropdown((dropdown) => {
+			dropdown
+				.addOption('mdf-share', this.plugin.i18n.t('settings.publish_method_mdfriday_share'))
+				.addOption('mdf-app', this.plugin.i18n.t('settings.publish_method_mdfriday'))
+				.addOption('mdf-custom', this.plugin.i18n.t('settings.publish_method_mdfriday_custom'))
+				.addOption('mdf-enterprise', this.plugin.i18n.t('settings.publish_method_mdfriday_enterprise'))
+				.addOption('netlify', this.plugin.i18n.t('settings.publish_method_netlify'))
+				.addOption('ftp', this.plugin.i18n.t('settings.publish_method_ftp'))
+				.setValue(publishMethod || 'mdf-share')
+				.onChange(async (value) => {
+					this.plugin.settings.publishMethod = value as 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp';
+					await this.plugin.saveSettings();
+					showPublishSettings(value as 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp');
+				});
+		});
 
-		// Create containers for different publish methods
-		mdfridaySettingsContainer = containerEl.createDiv('mdfriday-settings-container');
-		mdfridayCustomDomainContainer = containerEl.createDiv('mdfriday-custom-domain-container');
-		netlifySettingsContainer = containerEl.createDiv('netlify-settings-container');
-		ftpSettingsContainer = containerEl.createDiv('ftp-settings-container');
+	// Create containers for different publish methods
+	mdfridayShareContainer = containerEl.createDiv('mdfriday-share-container');
+	mdfridaySettingsContainer = containerEl.createDiv('mdfriday-settings-container');
+	mdfridayCustomDomainContainer = containerEl.createDiv('mdfriday-custom-domain-container');
+	mdfridayEnterpriseContainer = containerEl.createDiv('mdfriday-enterprise-container');
+	netlifySettingsContainer = containerEl.createDiv('netlify-settings-container');
+	ftpSettingsContainer = containerEl.createDiv('ftp-settings-container');
 
-		// Function to show/hide publish settings based on selected method
-		// Note: 'mdf-share' and 'mdf-app' from Site.svelte map to 'mdfriday' settings container
-		// 'mdf-custom' maps to 'mdfridayCustomDomainContainer'
-		const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom') => {
-			const isMdfriday = method === 'mdfriday' || method === 'mdf-share' || method === 'mdf-app';
-			const isMdfridayCustom = method === 'mdf-custom';
-			mdfridaySettingsContainer.style.display = isMdfriday ? 'block' : 'none';
-			mdfridayCustomDomainContainer.style.display = isMdfridayCustom ? 'block' : 'none';
-			netlifySettingsContainer.style.display = method === 'netlify' ? 'block' : 'none';
-			ftpSettingsContainer.style.display = method === 'ftp' ? 'block' : 'none';
-		};
+	// Function to show/hide publish settings based on selected method
+	// Note: 'mdf-share' and 'mdf-app' from Site.svelte map to 'mdfriday' settings container
+	// 'mdf-custom' maps to 'mdfridayCustomDomainContainer'
+	// 'mdf-enterprise' maps to 'mdfridayEnterpriseContainer'
+	const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise') => {
+		const isMdfridayShare = method === 'mdf-share';
+		const isMdfriday = method === 'mdfriday' || method === 'mdf-app';
+		const isMdfridayCustom = method === 'mdf-custom';
+		const isMdfridayEnterprise = method === 'mdf-enterprise';
+		mdfridayShareContainer.style.display = isMdfridayShare ? 'block' : 'none';
+		mdfridaySettingsContainer.style.display = isMdfriday ? 'block' : 'none';
+		mdfridayCustomDomainContainer.style.display = isMdfridayCustom ? 'block' : 'none';
+		mdfridayEnterpriseContainer.style.display = isMdfridayEnterprise ? 'block' : 'none';
+		netlifySettingsContainer.style.display = method === 'netlify' ? 'block' : 'none';
+		ftpSettingsContainer.style.display = method === 'ftp' ? 'block' : 'none';
+	};
 
-		// =========================================
-		// MDFriday Subdomain Settings
-		// =========================================
-		mdfridaySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_app')});
-		
-		// Check if license is active and has customSubDomain permission (use licenseState)
-		const hasSubdomainPermission = this.plugin.licenseState?.isActivated() && 
-			!this.plugin.licenseState.isExpired() && 
-			this.plugin.licenseState.hasFeature('customSubDomain');
-		
-		if (hasSubdomainPermission) {
+	// =========================================
+	// MDFriday Share Settings
+	// =========================================
+	mdfridayShareContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_share')});
+	
+	// Check if license is active and has publish permission (use licenseState)
+	const hasSharePermission = this.plugin.licenseState?.isActivated() && 
+		!this.plugin.licenseState.isExpired() && 
+		this.plugin.licenseState.hasFeature('publishEnabled');
+	
+	if (hasSharePermission) {
+		// Show description for MDFriday Share
+		new Setting(mdfridayShareContainer)
+			.setName(this.plugin.i18n.t('settings.mdfriday_share'))
+			.setDesc(this.plugin.i18n.t('settings.mdfriday_share_desc'));
+	} else {
+		// Show message to activate license
+		new Setting(mdfridayShareContainer)
+			.setName(this.plugin.i18n.t('settings.mdfriday_share'))
+			.setDesc(this.plugin.i18n.t('settings.upgrade_for_mdfshare'));
+	}
+
+	// =========================================
+	// MDFriday Subdomain Settings
+	// =========================================
+	mdfridaySettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_app')});
+	
+	// Check if license is active and has customSubDomain permission (use licenseState)
+	const hasSubdomainPermission = this.plugin.licenseState?.isActivated() && 
+		!this.plugin.licenseState.isExpired() && 
+		this.plugin.licenseState.hasFeature('customSubDomain');
+	
+	if (hasSubdomainPermission) {
 			// Get effective subdomain from licenseState
 			const effectiveSubdomain = this.plugin.licenseState.getSubdomain() || '';
 			
@@ -2928,8 +2965,31 @@ class FridaySettingTab extends PluginSettingTab {
 			});
 		});
 
-		// Initialize the display based on current publish method
-		showPublishSettings(publishMethod || 'mdfriday');
+	// =========================================
+	// MDFriday Enterprise Settings
+	// =========================================
+	mdfridayEnterpriseContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_enterprise')});
+	
+	// Check if license is active and has enterprise permission (use licenseState)
+	const hasEnterprisePermissionSetting = this.plugin.licenseState?.isActivated() && 
+		!this.plugin.licenseState.isExpired() && 
+		this.plugin.licenseState.getPlan() === 'enterprise' &&
+		!!this.plugin.settings.enterpriseServerUrl;
+	
+	if (hasEnterprisePermissionSetting) {
+		// Show description for MDFriday Enterprise
+		new Setting(mdfridayEnterpriseContainer)
+			.setName(this.plugin.i18n.t('settings.mdfriday_enterprise'))
+			.setDesc(this.plugin.i18n.t('settings.mdfriday_enterprise_desc'));
+	} else {
+		// Show message to upgrade to enterprise
+		new Setting(mdfridayEnterpriseContainer)
+			.setName(this.plugin.i18n.t('settings.mdfriday_enterprise'))
+			.setDesc(this.plugin.i18n.t('settings.upgrade_for_enterprise'));
+	}
+
+	// Initialize the display based on current publish method
+	showPublishSettings(publishMethod || 'mdf-share');
 	}
 
 	/**

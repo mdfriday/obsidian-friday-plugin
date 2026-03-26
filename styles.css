@@ -750,8 +750,10 @@
 }
 
 /* src/styles/publish-settings.css */
+.mdfriday-share-container,
 .mdfriday-settings-container,
 .mdfriday-custom-domain-container,
+.mdfriday-enterprise-container,
 .netlify-settings-container,
 .ftp-settings-container {
   margin-top: 16px;
@@ -760,8 +762,10 @@
   border-radius: 8px;
   background-color: var(--background-secondary);
 }
+.mdfriday-share-container h3,
 .mdfriday-settings-container h3,
 .mdfriday-custom-domain-container h3,
+.mdfriday-enterprise-container h3,
 .netlify-settings-container h3,
 .ftp-settings-container h3 {
   margin-top: 0;

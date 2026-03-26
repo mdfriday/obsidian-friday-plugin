@@ -116,12 +116,14 @@ export const en: TranslationNamespace = {
 
 		// Publish settings
 		publish_settings: "Publish Settings",
-		publish_method: "Publish Method",
-		publish_method_desc: "Choose how you want to publish your site",
-		publish_method_mdfriday: "MDFriday Subdomain",
-		publish_method_netlify: "Netlify",
-		publish_method_ftp: "FTP",
-		publish_method_mdfriday_custom: "MDFriday Custom Domain",
+	publish_method: "Publish Method",
+	publish_method_desc: "Choose how you want to publish your site",
+	publish_method_mdfriday_share: "MDFriday Share",
+	publish_method_mdfriday: "MDFriday Subdomain",
+	publish_method_mdfriday_custom: "MDFriday Custom Domain",
+	publish_method_mdfriday_enterprise: "MDFriday Enterprise",
+	publish_method_netlify: "Netlify",
+	publish_method_ftp: "FTP",
 		license_required: "Please upgrade your plan to use this feature",
 		upgrade_for_mdfshare: "Please upgrade your plan to use MDFriday Share",
 		upgrade_for_subdomain: "Please upgrade your plan to use MDFriday Subdomain",
@@ -161,15 +163,24 @@ export const en: TranslationNamespace = {
 		ftp_test_connection_success: "Connection Successful",
 		ftp_test_connection_failed: "Connection Failed",
 
-		// MDFriday Subdomain Settings
-		mdfriday_app: "MDFriday Subdomain",
-		mdfriday_app_desc: "Configure your personal subdomain for publishing sites",
-		
-		// MDFriday Custom Domain Settings
-		mdfriday_custom_domain: "MDFriday Custom Domain",
-		custom_domain_desc: "Your custom domain",
-		custom_domain_placeholder: "Enter your custom domain (e.g. example.com)",
-		domain_check: "Check DNS",
+	// MDFriday Subdomain Settings
+	mdfriday_app: "MDFriday Subdomain",
+	mdfriday_app_desc: "Configure your personal subdomain for publishing sites",
+	
+	// MDFriday Share Settings
+	mdfriday_share: "MDFriday Share",
+	mdfriday_share_desc: "Quick sharing for your site. Share link is valid for 24 hours and automatically expires. Perfect for temporary sharing and preview.",
+	
+	// MDFriday Custom Domain Settings
+	mdfriday_custom_domain: "MDFriday Custom Domain",
+	custom_domain_desc: "Your custom domain",
+	custom_domain_placeholder: "Enter your custom domain (e.g. example.com)",
+	
+	// MDFriday Enterprise Settings
+	mdfriday_enterprise: "MDFriday Enterprise",
+	mdfriday_enterprise_desc: "Publish directly to your enterprise root domain. Make sure your enterprise server URL is configured in General Settings.",
+	
+	domain_check: "Check DNS",
 		domain_checking: "Checking...",
 		domain_check_success: "Domain DNS is configured correctly",
 		domain_check_failed: "Domain DNS check failed",
