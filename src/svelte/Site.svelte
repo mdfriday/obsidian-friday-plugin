@@ -14,6 +14,7 @@
 	import {createStyleRenderer, OBStyleRenderer} from "../markdown";
 	import {themeApiService} from "../theme/themeApiService";
 	import type { ProjectState, ProgressUpdate } from "../types/events";
+	import {nameToId} from "src/utils/hash.ts";
 
 	// Receive props
 	export let app: App;
@@ -48,7 +49,9 @@
 	$: currentAssets = $siteAssets || null;
 	$: isForSingleFile = site ? site.isForSingleFile() : false;
 	$: defaultContentLanguage = site ? site.getDefaultContentLanguage() : 'en';
-	
+
+	let projectName = '';
+
 	// 用户可编辑的站点名称
 	let siteName = '';
 	
@@ -307,9 +310,6 @@
 					key: actualKey,
 					value: actualValue
 				});
-			} else {
-				// Fallback to old method if event system not available
-				await plugin.saveFoundryProjectConfig(plugin.currentProjectName, actualKey, actualValue);
 			}
 			
 			console.log(`[Site] Saved config: ${key} = ${value}`);
@@ -318,16 +318,13 @@
 		}
 	}
 
-	// ==================== End Foundry Integration Functions ====================
-
-	// ==================== Public Interface Methods (called by Main.ts) ====================
-
 	/**
 	 * Initialize component with project state
 	 * Called by Main.ts after project creation or when loading existing project
 	 */
 	export async function initialize(state: ProjectState) {
 		console.log('[Site] Initializing with project state:', state.name);
+		projectName = state.name;
 
 		// Load configuration to UI
 		if (state.config) {
@@ -1238,76 +1235,6 @@
 		return projectId;
 	}
 
-	async function saveCurrentProjectConfiguration() {
-		if (currentContents.length === 0 || !siteName) {
-			// No content to save
-			return;
-		}
-
-		try {
-			// Get project ID using helper function
-			const projectId = getProjectId();
-			
-			if (!projectId) {
-				return;
-			}
-			
-			// Always use user's input site name
-			const projectName = siteName;
-
-			// Check if project already exists to preserve createdAt
-			const existingProject = plugin.projectService.getProject(projectId);
-			const now = Date.now();
-
-			// Build publish config (only if there's actual configuration)
-			const hasNetlifyConfig = !!(netlifyAccessToken || netlifyProjectId);
-			const hasFtpConfig = !!(ftpServer || ftpUsername || ftpPassword || ftpRemoteDir);
-			const hasPublishConfig = hasNetlifyConfig || hasFtpConfig;
-			
-			// Build project config
-			const projectConfig = {
-				id: projectId,
-				name: projectName,
-				contents: currentContents.map(content => ({
-					languageCode: content.languageCode,
-					contentPath: content.folder?.path || content.file?.path || '',
-					weight: content.weight
-				})),
-				defaultContentLanguage: defaultContentLanguage,
-				assetsPath: currentAssets?.folder?.path || undefined,
-				sitePath: sitePath,
-				themeUrl: selectedThemeDownloadUrl,
-				themeName: selectedThemeName,
-				themeId: selectedThemeId,
-				googleAnalyticsId: googleAnalyticsId || undefined,
-				disqusShortname: disqusShortname || undefined,
-				sitePassword: sitePassword || undefined,
-				publishConfig: hasPublishConfig ? {
-					method: selectedPublishOption,
-					netlify: hasNetlifyConfig ? {
-						accessToken: netlifyAccessToken || undefined,
-						projectId: netlifyProjectId || undefined
-					} : undefined,
-					ftp: hasFtpConfig ? {
-						server: ftpServer || undefined,
-						username: ftpUsername || undefined,
-						password: ftpPassword || undefined,
-						remoteDir: ftpRemoteDir || undefined,
-						ignoreCert: ftpIgnoreCert,
-						preferredSecure: ftpPreferredSecure
-					} : undefined
-				} : undefined,
-				createdAt: existingProject?.createdAt || now,
-				updatedAt: now
-			};
-
-			// Save to project service
-			await plugin.projectService.saveProject(projectConfig);
-		} catch (error) {
-			console.error('Failed to save project configuration:', error);
-		}
-	}
-
 	async function downloadThemeSample() {
 		if (!currentThemeWithSample || !currentThemeWithSample.demo_notes_url) {
 			return;
@@ -1391,6 +1318,8 @@
 
 	function handleSitePathChange() {
 		sitePath = normalizeSitePath(sitePath);
+
+		saveFoundryConfig('baseURL', sitePath)
 	}
 
 	/**
@@ -1566,13 +1495,6 @@
 					key: 'publish',
 					value: publishConfig
 				});
-			} else {
-				// Fallback to old method if event system not available
-				await plugin.saveFoundryProjectConfig(
-					plugin.currentProjectName,
-					'publish',
-					publishConfig
-				);
 			}
 			
 			console.log('[Site] Saved publish config to Foundry:', publishConfig);
@@ -1595,14 +1517,6 @@
 				await plugin.handleSiteEvent('stopPreview', {
 					projectName: plugin.currentProjectName
 				});
-				// Note: State will be updated by onPreviewStopped() callback
-			} else {
-				// Fallback to direct method
-				await plugin.stopFoundryPreviewServer();
-				// Manually update state for fallback path
-				hasPreview = false;
-				previewUrl = '';
-				serverRunning = false;
 			}
 			
 			new Notice('Preview server stopped', 2000);
@@ -1660,6 +1574,7 @@
 			publishConfig = {
 				type: 'mdfriday',
 				deploymentType: 'share',
+				path: nameToId(projectName),
 				enabled: true,
 				accessToken: plugin.licenseState?.getAccessToken() || '',
 				licenseKey: plugin.licenseState?.getLicenseKey() || '',
@@ -1669,6 +1584,7 @@
 			publishConfig = {
 				type: 'mdfriday',
 				deploymentType: 'sub',
+				path: sitePath,
 				enabled: true,
 				accessToken: plugin.licenseState?.getAccessToken() || '',
 				licenseKey: plugin.licenseState?.getLicenseKey() || '',
@@ -1678,6 +1594,7 @@
 			publishConfig = {
 				type: 'mdfriday',
 				deploymentType: 'custom',
+				path: sitePath,
 				enabled: true,
 				accessToken: plugin.licenseState?.getAccessToken() || '',
 				licenseKey: plugin.licenseState?.getLicenseKey() || '',
@@ -1687,6 +1604,7 @@
 			publishConfig = {
 				type: 'mdfriday',
 				deploymentType: 'enterprise',
+				path: sitePath,
 				enabled: true,
 				accessToken: plugin.licenseState?.getAccessToken() || '',
 				licenseKey: plugin.licenseState?.getLicenseKey() || '',
@@ -1739,9 +1657,6 @@
 		ftpTestMessage = '';
 		
 		try {
-			// Save configuration before testing (ensures config is available for test)
-			await savePublishConfig();
-			
 			// Prepare FTP configuration
 			const ftpConfig = {
 				type: 'ftp',
@@ -1761,13 +1676,7 @@
 			
 			if (result.success) {
 				ftpTestState = 'success';
-				ftpTestMessage = result.message || t('settings.ftp_test_connection_success');
-				
-				// If the result includes connection type info, remember it
-				if (result.data?.usedSecure !== undefined) {
-					ftpPreferredSecure = result.data.usedSecure;
-					console.log('[FTP Test] Connection type:', ftpPreferredSecure ? 'FTPS' : 'FTP');
-				}
+				ftpTestMessage = t('settings.ftp_test_connection_success');
 			} else {
 				ftpTestState = 'error';
 				ftpTestMessage = result.error || t('settings.ftp_test_connection_failed');
@@ -1790,8 +1699,6 @@
 		}
 		previousFtpConfig = currentFtpConfig;
 	}
-
-	// Note: generateRandomId is now imported from utils/common.ts
 
 	async function createThemesDirectory() {
 		if (!await app.vault.adapter.exists(themesDir)) {

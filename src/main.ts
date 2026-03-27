@@ -64,6 +64,7 @@ import type {ThemeSelectionModal} from "./theme/modal";
 import type {ProjectManagementModal} from "./projects/modal";
 import type ServerView from './server';
 import {validateSubdomainFormat, isReservedSubdomain} from "./domain";
+import {nameToId} from "src/utils/hash.ts";
 
 // Export view type for dynamic import
 export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
@@ -954,7 +955,7 @@ export default class FridayPlugin extends Plugin {
 		if (publishMethod === 'mdf-share') {
 			const userDir = this.settings.licenseUser?.userDir || '';
 			if (userDir) {
-				const previewId = generateRandomId();
+				const previewId = nameToId(projectName);
 				baseURL = `/s/${userDir}/${previewId}`;
 			}
 		}
@@ -1073,189 +1074,6 @@ export default class FridayPlugin extends Plugin {
 			console.error('[Friday] Error applying project to panel:', error);
 			// Fallback: at least initialize content
 			this.site.initializeContent(folder, file);
-		}
-	}
-
-	/**
-	 * 为新创建的项目应用初始配置
-	 * 收集所有初始配置，一次性写入（不包括动态 sitePath，由 UI reactive 处理）
-	 */
-	/**
-	 * Save project configuration from panel settings
-	 * Call this method when user modifies settings in the panel
-	 * 
-	 * Note: Skips saving during project initialization to prevent write conflicts
-	 */
-	async saveFoundryProjectConfig(projectName: string, configKey: string, configValue: any) {
-		if (!this.foundryProjectConfigService) {
-			console.error('[Friday] Project config service not initialized');
-			return;
-		}
-
-		// Skip saving during project initialization
-		if (this.isProjectInitializing) {
-			console.log('[Friday] Skipping save during project initialization');
-			return;
-		}
-
-		try {
-			const result = await this.foundryProjectConfigService.set(
-				this.absWorkspacePath,
-				projectName,
-				configKey,
-				configValue
-			);
-
-			if (result.success) {
-				console.log(`[Friday] Saved config: ${configKey} = ${configValue}`);
-			} else {
-				console.error('[Friday] Failed to save config:', result.error);
-			}
-		} catch (error) {
-			console.error('[Friday] Error saving project config:', error);
-		}
-	}
-
-	/**
-	 * Start preview server using Foundry serve service
-	 */
-	async startFoundryPreviewServer(
-		projectName?: string, 
-		port: number = 8080,
-		markdownRenderer?: any,
-		onProgress?: (progress: { phase: string; percentage: number; message: string }) => void
-	) {
-		if (!this.foundryServeService) {
-			new Notice('Serve service not initialized');
-			return null;
-		}
-
-		// Use provided project name or current project name
-		const targetProjectName = projectName || this.currentProjectName;
-		if (!targetProjectName) {
-			new Notice('No project selected');
-			return null;
-		}
-
-		try {
-			// Check if server is already running
-			if (this.foundryServeService.isRunning()) {
-				const confirmRestart = confirm('Preview server is already running. Restart it?');
-				if (!confirmRestart) {
-					return null;
-				}
-				await this.foundryServeService.stopServer();
-			}
-
-			new Notice(`Starting preview server for: ${targetProjectName}...`);
-			
-			const serverOptions: any = {
-				workspacePath: this.absWorkspacePath,
-				projectName: targetProjectName,
-				port: port,
-				host: 'localhost',
-				livereload: true,
-				livereloadPort: 35729,
-			};
-			
-			// Add custom markdown renderer if provided
-			if (markdownRenderer) {
-				serverOptions.markdown = markdownRenderer;
-				console.log('[Friday] Using custom Markdown renderer');
-			}
-			
-			const result = await this.foundryServeService.startServer(
-				serverOptions,
-				(progress) => {
-					console.log(`[Friday] Preview: ${progress.phase} - ${progress.percentage}%`);
-					console.log(`[Friday] ${progress.message}`);
-					
-					// Call user-provided progress callback
-					if (onProgress) {
-						onProgress(progress);
-					}
-				}
-			);
-
-			if (result.success && result.data) {
-				new Notice(`Preview server started at: ${result.data.url}`);
-				console.log('[Friday] Preview server:', {
-					url: result.data.url,
-					port: result.data.port,
-				});
-				
-				// Open preview URL in default browser
-				window.open(result.data.url, '_blank');
-				
-				return result.data.url;
-			} else {
-				new Notice(`Failed to start preview server: ${result.error}`);
-				console.error('[Friday] Serve error:', result.error);
-			}
-		} catch (error) {
-			console.error('[Friday] Error starting preview server:', error);
-			new Notice(`Preview server error: ${error}`);
-		}
-		return null;
-	}
-
-	/**
-	 * Stop preview server
-	 */
-	async stopFoundryPreviewServer() {
-		if (!this.foundryServeService) {
-			return;
-		}
-
-		try {
-			if (!this.foundryServeService.isRunning()) {
-				new Notice('Preview server is not running');
-				return;
-			}
-
-			const stopped = await this.foundryServeService.stopServer();
-			if (stopped) {
-				new Notice('Preview server stopped');
-				console.log('[Friday] Preview server stopped');
-			}
-		} catch (error) {
-			console.error('[Friday] Error stopping preview server:', error);
-			new Notice(`Error stopping server: ${error}`);
-		}
-	}
-
-	/**
-	 * Sync multiple config values at once
-	 * 
-	 * @deprecated 使用 setAllProjectConfig 替代（避免并发写入竞争）
-	 * 保留此方法仅用于向后兼容
-	 */
-	async syncFoundryProjectConfig(projectName: string, configMap: Record<string, any>) {
-		if (!this.foundryProjectConfigService) {
-			console.error('[Friday] Project config service not initialized');
-			return;
-		}
-
-		try {
-			const promises = Object.entries(configMap).map(([key, value]) =>
-				this.foundryProjectConfigService!.set(
-					this.absWorkspacePath,
-					projectName,
-					key,
-					value
-				)
-			);
-
-			const results = await Promise.all(promises);
-			const failed = results.filter(r => !r.success);
-
-			if (failed.length === 0) {
-				console.log('[Friday] All configs saved successfully');
-			} else {
-				console.error('[Friday] Some configs failed to save:', failed);
-			}
-		} catch (error) {
-			console.error('[Friday] Error syncing project config:', error);
 		}
 	}
 
