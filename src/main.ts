@@ -2142,10 +2142,36 @@ class FridaySettingTab extends PluginSettingTab {
 				return { valid: true };
 			};
 
+			// Helper to extract root domain from hostname
+			const extractRootDomain = (hostname: string): string => {
+				const parts = hostname.split('.');
+				// For standard domains, take last 2 parts (e.g., sunwei.xyz)
+				// For special TLDs like .co.uk, this simple approach might need adjustment
+				if (parts.length >= 2) {
+					return parts.slice(-2).join('.');
+				}
+				return hostname;
+			};
+
+			// Helper to get host for subdomain (from enterpriseServerUrl or default)
+			const getSubdomainHost = (): string => {
+				if (this.plugin.settings.enterpriseServerUrl) {
+					try {
+						const url = new URL(this.plugin.settings.enterpriseServerUrl);
+						// Extract root domain from hostname
+						// e.g., app.sunwei.xyz -> sunwei.xyz
+						return extractRootDomain(url.hostname);
+					} catch (error) {
+						console.error('[Friday Settings] Invalid enterpriseServerUrl:', error);
+					}
+				}
+				return 'mdfriday.com';
+			};
+
 			// Create subdomain setting - description shows full domain
 			const subdomainSetting = new Setting(mdfridaySettingsContainer)
 				.setName(this.plugin.i18n.t('settings.subdomain_desc'))
-				.setDesc(currentSubdomain ? `${currentSubdomain}.mdfriday.com` : '');
+				.setDesc(currentSubdomain ? `${currentSubdomain}.${getSubdomainHost()}` : '');
 
 			// Subdomain input
 			subdomainSetting.addText((text) => {
@@ -2163,7 +2189,7 @@ class FridaySettingTab extends PluginSettingTab {
 					updateButtonStates();
 					
 					// Update full domain preview in description
-					subdomainSetting.setDesc(inputSubdomain ? `${inputSubdomain}.mdfriday.com` : '');
+					subdomainSetting.setDesc(inputSubdomain ? `${inputSubdomain}.${getSubdomainHost()}` : '');
 				});
 			});
 
@@ -2227,7 +2253,7 @@ class FridaySettingTab extends PluginSettingTab {
 							currentSubdomain = result.data.newSubdomain;
 							inputSubdomain = currentSubdomain;
 							subdomainInput.value = currentSubdomain;
-							subdomainSetting.setDesc(`${currentSubdomain}.mdfriday.com`);
+							subdomainSetting.setDesc(`${currentSubdomain}.${getSubdomainHost()}`);
 							
 							// Save custom subdomain to settings
 							this.plugin.settings.customSubdomain = result.data.newSubdomain;

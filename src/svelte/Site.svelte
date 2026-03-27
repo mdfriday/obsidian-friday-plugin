@@ -514,22 +514,124 @@
 	}
 
 	/**
+	 * Extract root domain from hostname
+	 * e.g., app.sunwei.xyz -> sunwei.xyz
+	 */
+	function extractRootDomain(hostname: string): string {
+		const parts = hostname.split('.');
+		// For standard domains, take last 2 parts
+		// For special TLDs like .co.uk, this simple approach might need adjustment
+		if (parts.length >= 2) {
+			return parts.slice(-2).join('.');
+		}
+		return hostname;
+	}
+
+	/**
+	 * Build publish URL based on publish method and result
+	 * @param method - Publish method
+	 * @param resultUrl - URL returned from publish service (may be full URL or just path)
+	 * @returns Full publish URL or empty string
+	 */
+	function buildPublishUrl(method: ValidPublishMethod, resultUrl: string): string {
+		if (!resultUrl) {
+			return '';
+		}
+
+		switch (method) {
+			case 'netlify':
+			case 'mdf-share':
+				// Return full URL as-is
+				return resultUrl;
+
+			case 'ftp':
+				// FTP doesn't have a URL to display
+				return '';
+
+			case 'mdf-app': {
+				// result.url is path only, need to build: https://{customSubdomain}.{host}{path}
+				const customSubdomain = plugin.settings.customSubdomain;
+				if (!customSubdomain) {
+					console.warn('[Site] No custom subdomain configured for mdf-app');
+					return '';
+				}
+
+				// Get host from enterpriseServerUrl or default to mdfriday.com
+				let host = 'mdfriday.com';
+				if (plugin.settings.enterpriseServerUrl) {
+					try {
+						const url = new URL(plugin.settings.enterpriseServerUrl);
+						// Extract root domain from hostname
+						// e.g., app.sunwei.xyz -> sunwei.xyz
+						host = extractRootDomain(url.hostname);
+					} catch (error) {
+						console.error('[Site] Invalid enterpriseServerUrl:', error);
+					}
+				}
+
+				// Ensure path starts with /
+				const path = resultUrl.startsWith('/') ? resultUrl : `/${resultUrl}`;
+				return `https://${customSubdomain}.${host}${path}`;
+			}
+
+			case 'mdf-custom': {
+				// result.url is path only, need to build: https://{customDomain}{path}
+				const customDomain = plugin.settings.customDomain;
+				if (!customDomain) {
+					console.warn('[Site] No custom domain configured for mdf-custom');
+					return '';
+				}
+
+				// Ensure path starts with /
+				const path = resultUrl.startsWith('/') ? resultUrl : `/${resultUrl}`;
+				return `https://${customDomain}${path}`;
+			}
+
+			case 'mdf-enterprise': {
+				// result.url is path only, need to build: https://{enterpriseHost}{path}
+				const enterpriseServerUrl = plugin.settings.enterpriseServerUrl;
+				if (!enterpriseServerUrl) {
+					console.warn('[Site] No enterprise server URL configured for mdf-enterprise');
+					return '';
+				}
+
+				let host: string;
+				try {
+					const url = new URL(enterpriseServerUrl);
+					host = url.hostname;
+				} catch (error) {
+					console.error('[Site] Invalid enterpriseServerUrl:', error);
+					return '';
+				}
+
+				// Ensure path starts with /
+				const path = resultUrl.startsWith('/') ? resultUrl : `/${resultUrl}`;
+				return `https://${host}${path}`;
+			}
+
+			default:
+				console.warn('[Site] Unknown publish method:', method);
+				return resultUrl;
+		}
+	}
+
+	/**
 	 * Publish complete callback
 	 */
 	export function onPublishComplete(result: any) {
 		publishProgress = 100;
 		isPublishing = false;
 		publishSuccess = true;
+
+		// Build publish URL based on publish method
+		publishUrl = buildPublishUrl(selectedPublishOption, result.url || '');
 		
-		// Set publish URL if available
-		if (result.url) {
-			publishUrl = result.url;
-			console.log('[Site] Publish completed:', result.url);
+		if (publishUrl) {
+			console.log('[Site] Publish completed:', publishUrl);
 		} else {
-			publishUrl = '';
-			console.log('[Site] Publish completed (no URL returned)');
+			console.log('[Site] Publish completed (no URL to display)');
 		}
-		
+
 		// Reset after a delay
 		setTimeout(() => {
 			publishSuccess = false;
