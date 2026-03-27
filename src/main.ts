@@ -2398,16 +2398,20 @@ class FridaySettingTab extends PluginSettingTab {
 						updateButtonStates();
 
 						try {
-							const result = await this.plugin.hugoverse?.checkCustomDomain(
-								userToken, license.key, inputDomain
-							);
+							const result = await this.plugin.domainServiceManager?.checkCustomDomain(inputDomain);
 
-							if (result && result.dns_valid && result.ready) {
-								checkStatus = 'success';
-								statusMessage = result.message || this.plugin.i18n.t('settings.domain_check_success');
+							if (result && result.success && result.data) {
+								// Use correct field names: dnsValid and ready (camelCase, not snake_case)
+								if (result.data.dnsValid && result.data.ready) {
+									checkStatus = 'success';
+									statusMessage = result.data.message || this.plugin.i18n.t('settings.domain_check_success');
+								} else {
+									checkStatus = 'error';
+									statusMessage = result.data.message || this.plugin.i18n.t('settings.domain_check_failed');
+								}
 							} else {
 								checkStatus = 'error';
-								statusMessage = result?.message || this.plugin.i18n.t('settings.domain_check_failed');
+								statusMessage = result?.error || this.plugin.i18n.t('settings.domain_check_failed');
 							}
 						} catch (error) {
 							checkStatus = 'error';
@@ -2433,25 +2437,23 @@ class FridaySettingTab extends PluginSettingTab {
 						updateButtonStates();
 
 						try {
-							const result = await this.plugin.hugoverse?.addCustomDomain(
-								userToken, license.key, inputDomain
-							);
+							const result = await this.plugin.domainServiceManager?.addCustomDomain(inputDomain);
 
-							if (result && result.domain) {
-								currentDomain = result.domain;
+							if (result && result.success && result.data && result.data.domain) {
+								currentDomain = result.data.domain;
 								domainSetting.setDesc(currentDomain);
 								
 								// Save custom domain to settings
-								this.plugin.settings.customDomain = result.domain;
+								this.plugin.settings.customDomain = result.data.domain;
 								await this.plugin.saveSettings();
 								
 								checkStatus = null;
-								httpsStatus = result.status === 'active' ? 'active' : 'pending';
-								statusMessage = result.message || this.plugin.i18n.t('settings.domain_saved');
+								httpsStatus = result.data.status === 'active' ? 'active' : 'pending';
+								statusMessage = result.data.message || this.plugin.i18n.t('settings.domain_saved');
 								
 								new Notice(this.plugin.i18n.t('settings.domain_saved'));
 							} else {
-								statusMessage = this.plugin.i18n.t('settings.domain_save_failed');
+								statusMessage = result?.error || this.plugin.i18n.t('settings.domain_save_failed');
 							}
 						} catch (error) {
 							statusMessage = this.plugin.i18n.t('settings.domain_save_failed');
@@ -2478,24 +2480,23 @@ class FridaySettingTab extends PluginSettingTab {
 						updateButtonStates();
 
 						try {
-							const result = await this.plugin.hugoverse?.checkCustomDomainHttpsStatus(
-								userToken, license.key, currentDomain
-							);
+							const result = await this.plugin.domainServiceManager?.checkHttpsStatus(currentDomain);
 
-							if (result) {
-								if (result.status === 'active' && result.tls_ready) {
+							if (result && result.success && result.data) {
+								// Use correct field name: tlsReady (camelCase)
+								if (result.data.status === 'active' && result.data.tlsReady) {
 									httpsStatus = 'active';
-									statusMessage = result.message || this.plugin.i18n.t('settings.domain_https_ready');
-								} else if (result.status === 'cert_pending') {
+									statusMessage = result.data.message || this.plugin.i18n.t('settings.domain_https_ready');
+								} else if (result.data.status === 'cert_pending') {
 									httpsStatus = 'pending';
-									statusMessage = result.message || this.plugin.i18n.t('settings.domain_https_pending');
+									statusMessage = result.data.message || this.plugin.i18n.t('settings.domain_https_pending');
 								} else {
 									httpsStatus = 'error';
-									statusMessage = result.message || this.plugin.i18n.t('settings.domain_https_error');
+									statusMessage = result.data.message || this.plugin.i18n.t('settings.domain_https_error');
 								}
 							} else {
 								httpsStatus = 'error';
-								statusMessage = this.plugin.i18n.t('settings.domain_https_check_failed');
+								statusMessage = result?.error || this.plugin.i18n.t('settings.domain_https_check_failed');
 							}
 						} catch (error) {
 							httpsStatus = 'error';
