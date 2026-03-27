@@ -61,6 +61,7 @@ import type {ProjectService} from "./projects/service";
 import type {ProjectConfig} from "./projects/types";
 import type {ThemeSelectionModal} from "./theme/modal";
 import type {ProjectManagementModal} from "./projects/modal";
+import type {FoundryProjectManagementModal} from "./projects/foundryModal";
 import type ServerView from './server';
 import {validateSubdomainFormat, isReservedSubdomain} from "./domain";
 import {nameToId} from "src/utils/hash.ts";
@@ -215,6 +216,7 @@ export default class FridayPlugin extends Plugin {
 	// Dynamic module references for PC-only features
 	private ThemeSelectionModalClass?: typeof ThemeSelectionModal
 	private ProjectManagementModalClass?: typeof ProjectManagementModal
+	private FoundryProjectManagementModalClass?: typeof FoundryProjectManagementModal
 	private themeApiService?: typeof import("./theme/themeApiService").themeApiService
 
 	async onload() {
@@ -281,6 +283,7 @@ export default class FridayPlugin extends Plugin {
 			{ default: ServerView },
 			{ ThemeSelectionModal },
 			{ ProjectManagementModal },
+			{ FoundryProjectManagementModal },
 			{ ProjectService },
 			{ Site },
 			{ themeApiService }
@@ -288,6 +291,7 @@ export default class FridayPlugin extends Plugin {
 			import('./server'),
 			import('./theme/modal'),
 			import('./projects/modal'),
+			import('./projects/foundryModal'),
 			import('./projects/service'),
 			import('./site'),
 			import('./theme/themeApiService')
@@ -304,6 +308,7 @@ export default class FridayPlugin extends Plugin {
 		// Store dynamic module references
 		this.ThemeSelectionModalClass = ThemeSelectionModal;
 		this.ProjectManagementModalClass = ProjectManagementModal;
+		this.FoundryProjectManagementModalClass = FoundryProjectManagementModal;
 		this.themeApiService = themeApiService;
 		
 		// Initialize PC-only services (hugoverse already initialized in initCore)
@@ -324,12 +329,10 @@ export default class FridayPlugin extends Plugin {
 		
 		// Add ribbon icon for project management
 		this.addRibbonIcon(FRIDAY_ICON, this.i18n.t('projects.manage_projects'), async () => {
-			if (this.applyProjectConfigurationToPanel && this.exportHistoryBuild && this.clearPreviewHistory) {
-				this.showProjectManagementModal(
-					this.applyProjectConfigurationToPanel,
-					this.exportHistoryBuild,
-					this.clearPreviewHistory
-				);
+			// Use new Foundry-based project management modal
+			if (this.FoundryProjectManagementModalClass) {
+				const modal = new this.FoundryProjectManagementModalClass(this.app, this);
+				modal.open();
 			}
 		});
 		
