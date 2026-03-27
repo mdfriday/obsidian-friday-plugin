@@ -55,8 +55,6 @@ import { getDefaultTheme, shouldUseInternalRenderer } from './utils/theme';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
-import type {NetlifyAPI} from "./netlify";
-import type {FTPUploader} from "./ftp";
 import type {Site} from "./site";
 import type {ProjectService} from "./projects/service";
 import type {ProjectConfig} from "./projects/types";
@@ -174,8 +172,6 @@ export default class FridayPlugin extends Plugin {
 	
 	// PC-only services (optional, only loaded on desktop)
 	hugoverse?: Hugoverse
-	netlify?: NetlifyAPI
-	ftp?: FTPUploader | null
 	site?: Site
 	projectService?: ProjectService
 	workspaceService?: ObsidianWorkspaceService | null
@@ -286,8 +282,6 @@ export default class FridayPlugin extends Plugin {
 			{ ProjectManagementModal },
 			{ ProjectService },
 			{ Site },
-			{ NetlifyAPI },
-			{ FTPUploader },
 			{ themeApiService }
 		] = await Promise.all([
 			import('./server'),
@@ -295,8 +289,6 @@ export default class FridayPlugin extends Plugin {
 			import('./projects/modal'),
 			import('./projects/service'),
 			import('./site'),
-			import('./netlify'),
-			import('./ftp'),
 			import('./theme/themeApiService')
 		]);
 		
@@ -314,13 +306,9 @@ export default class FridayPlugin extends Plugin {
 		this.themeApiService = themeApiService;
 		
 		// Initialize PC-only services (hugoverse already initialized in initCore)
-		this.netlify = new NetlifyAPI(this);
 		this.site = new Site(this);
 		this.projectService = new ProjectService(this);
 		await this.projectService.initialize();
-		
-		// Initialize FTP uploader
-		this.initializeFTP();
 
 		// Initialize workspace service (PC-only)
 		await this.initializeWorkspace();
@@ -1522,11 +1510,6 @@ export default class FridayPlugin extends Plugin {
 			this.themeApiService.clearCache();
 			this.previousDownloadServer = this.settings.downloadServer;
 		}
-		
-		// Reinitialize FTP uploader when settings change (desktop only)
-		if (Platform.isDesktop) {
-			this.initializeFTP();
-		}
 	}
 	
 	/**
@@ -1784,32 +1767,6 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Initialize FTP uploader with current settings (desktop only)
-	 */
-	async initializeFTP(preferredSecure?: boolean) {
-		if (!Platform.isDesktop) {
-			return;
-		}
-		
-		const { ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert } = this.settings;
-		
-		if (ftpServer && ftpUsername && ftpPassword) {
-			// Dynamically import FTPUploader if not already loaded
-			const { FTPUploader } = await import('./ftp');
-			this.ftp = new FTPUploader({
-				server: ftpServer,
-				username: ftpUsername,
-				password: ftpPassword,
-				remoteDir: ftpRemoteDir || '/',
-				ignoreCert: ftpIgnoreCert,
-				preferredSecure: preferredSecure
-			});
-		} else {
-			this.ftp = null;
-		}
-	}
-
-	/**
 	 * Initialize Sync Service with current settings
 	 * 
 	 * Network monitoring will be started based on the scenario:
@@ -1946,46 +1903,6 @@ export default class FridayPlugin extends Plugin {
 			await this.syncService.initialize(this.settings.syncConfig);
 		}
 		return await this.syncService.testConnection();
-	}
-
-	/**
-	 * Test FTP connection (Desktop only)
-	 */
-	async testFTPConnection(): Promise<{ success: boolean; message: string }> {
-		if (!Platform.isDesktop) {
-			return {
-				success: false,
-				message: 'FTP is only available on desktop'
-			};
-		}
-		
-		if (!this.ftp) {
-			return {
-				success: false,
-				message: 'FTP not configured'
-			};
-		}
-
-		try {
-			const result = await this.ftp.testConnection();
-			if (result.success) {
-				const secureInfo = result.usedSecure ? 'FTPS' : 'FTP (Plain)';
-				return {
-					success: true,
-					message: `Connection successful using ${secureInfo}`
-				};
-			} else {
-				return {
-					success: false,
-					message: result.error || 'Connection failed'
-				};
-			}
-		} catch (error) {
-			return {
-				success: false,
-				message: error instanceof Error ? error.message : String(error)
-			};
-		}
 	}
 
 	async status(text: string) {
@@ -2608,9 +2525,6 @@ class FridaySettingTab extends PluginSettingTab {
 
 		// FTP Settings
 		ftpSettingsContainer.createEl("h3", {text: this.plugin.i18n.t('settings.ftp_settings')});
-		
-		// Declare resetButtonState function first (will be defined later)
-		let resetButtonState: (() => void) | undefined;
 
 		// FTP Server
 		new Setting(ftpSettingsContainer)
@@ -2623,7 +2537,6 @@ class FridaySettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.ftpServer = value;
 						await this.plugin.saveSettings();
-						if (resetButtonState) resetButtonState();
 					})
 			);
 
@@ -2638,7 +2551,6 @@ class FridaySettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.ftpUsername = value;
 						await this.plugin.saveSettings();
-						if (resetButtonState) resetButtonState();
 					})
 			);
 
@@ -2653,7 +2565,6 @@ class FridaySettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.ftpPassword = value;
 						await this.plugin.saveSettings();
-						if (resetButtonState) resetButtonState();
 					});
 				text.inputEl.type = "password";
 			});
@@ -2669,7 +2580,6 @@ class FridaySettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.ftpRemoteDir = value;
 						await this.plugin.saveSettings();
-						if (resetButtonState) resetButtonState();
 					})
 			);
 
@@ -2683,105 +2593,8 @@ class FridaySettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.ftpIgnoreCert = value;
 						await this.plugin.saveSettings();
-						if (resetButtonState) resetButtonState();
 					})
 			);
-
-		// FTP Test Connection Button
-		const testConnectionSetting = new Setting(ftpSettingsContainer)
-			.setName(this.plugin.i18n.t('settings.ftp_test_connection'))
-			.setDesc(this.plugin.i18n.t('settings.ftp_test_connection_desc'));
-
-		let testButton: HTMLButtonElement;
-		let testResultEl: HTMLElement | null = null;
-
-		// Function to check if all required FTP settings are filled
-		const isFTPConfigured = () => {
-			return !!(this.plugin.settings.ftpServer?.trim() && 
-					 this.plugin.settings.ftpUsername?.trim() && 
-					 this.plugin.settings.ftpPassword?.trim());
-		};
-
-		// Function to update button state
-		const updateButtonState = (state: 'idle' | 'testing' | 'success' | 'error', message?: string) => {
-			// Remove existing result element
-			if (testResultEl) {
-				testResultEl.remove();
-				testResultEl = null;
-			}
-
-			switch (state) {
-				case 'idle':
-					testButton.textContent = this.plugin.i18n.t('settings.ftp_test_connection');
-					testButton.disabled = !isFTPConfigured();
-					testButton.removeClass('ftp-test-success', 'ftp-test-error');
-					break;
-				case 'testing':
-					testButton.textContent = this.plugin.i18n.t('settings.ftp_test_connection_testing');
-					testButton.disabled = true;
-					testButton.removeClass('ftp-test-success', 'ftp-test-error');
-					break;
-				case 'success':
-					testButton.textContent = this.plugin.i18n.t('settings.ftp_test_connection_success');
-					testButton.disabled = false;
-					testButton.removeClass('ftp-test-error');
-					testButton.addClass('ftp-test-success');
-					if (message) {
-						// Insert after the setting element
-						testResultEl = ftpSettingsContainer.createEl('div', { 
-							text: `✅ ${message}`,
-							cls: 'ftp-test-result ftp-test-result-success'
-						});
-						// Insert the result element right after the test connection setting
-						testConnectionSetting.settingEl.insertAdjacentElement('afterend', testResultEl);
-					}
-					break;
-				case 'error':
-					testButton.textContent = this.plugin.i18n.t('settings.ftp_test_connection_failed');
-					testButton.disabled = false;
-					testButton.removeClass('ftp-test-success');
-					testButton.addClass('ftp-test-error');
-					if (message) {
-						// Insert after the setting element
-						testResultEl = ftpSettingsContainer.createEl('div', { 
-							text: `❌ ${message}`,
-							cls: 'ftp-test-result ftp-test-result-error'
-						});
-						// Insert the result element right after the test connection setting
-						testConnectionSetting.settingEl.insertAdjacentElement('afterend', testResultEl);
-					}
-					break;
-			}
-		};
-
-		// Function to reset button state when settings change
-		resetButtonState = () => {
-			updateButtonState('idle');
-		};
-
-		testConnectionSetting.addButton((button) => {
-			testButton = button.buttonEl;
-			updateButtonState('idle');
-			
-			button.onClick(async () => {
-				updateButtonState('testing');
-				
-				try {
-					// Refresh FTP configuration with latest settings
-					this.plugin.initializeFTP();
-					const result = await this.plugin.testFTPConnection();
-					
-					if (result.success) {
-						updateButtonState('success', result.message);
-					} else {
-						updateButtonState('error', result.message);
-					}
-				} catch (error) {
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					updateButtonState('error', errorMessage);
-				}
-			});
-		});
 
 	// =========================================
 	// MDFriday Enterprise Settings

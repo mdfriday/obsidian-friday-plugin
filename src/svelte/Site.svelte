@@ -1639,10 +1639,10 @@
 
 	// Test FTP connection
 	async function testFTPConnection() {
-		// Check if Foundry Publish Service is available
-		if (!plugin.foundryPublishService) {
+		// Check if Project Service Manager is available
+		if (!plugin.projectServiceManager) {
 			ftpTestState = 'error';
-			ftpTestMessage = 'Publish service not initialized';
+			ftpTestMessage = 'Project service manager not initialized';
 			return;
 		}
 		
@@ -1664,22 +1664,21 @@
 				username: ftpUsername,
 				password: ftpPassword,
 				remotePath: ftpRemoteDir || '/',
-				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true, // Default to secure
+				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true,
 			};
 			
-			// Use Foundry Publish Service to test connection
-			const result = await plugin.foundryPublishService.testConnection(
-				plugin.absWorkspacePath,
+			// Use Project Service Manager to test connection
+			const result = await plugin.projectServiceManager.testConnection(
 				plugin.currentProjectName,
 				ftpConfig
 			);
 			
 			if (result.success) {
 				ftpTestState = 'success';
-				ftpTestMessage = t('settings.ftp_test_connection_success');
+				ftpTestMessage = result.message || t('settings.ftp_test_connection_success');
 			} else {
 				ftpTestState = 'error';
-				ftpTestMessage = result.error || t('settings.ftp_test_connection_failed');
+				ftpTestMessage = result.error || result.message || t('settings.ftp_test_connection_failed');
 			}
 		} catch (error) {
 			console.error('FTP test error:', error);
