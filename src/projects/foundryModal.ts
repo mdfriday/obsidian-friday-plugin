@@ -1,6 +1,7 @@
-import { App, Modal, SuggestModal, Notice, setIcon, TFolder, TFile } from 'obsidian';
+import { App, Modal, SuggestModal, Notice, setIcon, TFolder, TFile, FileSystemAdapter } from 'obsidian';
 import type { ObsidianProjectInfo } from '@mdfriday/foundry';
 import type FridayPlugin from '../main';
+import { join, relative } from 'path';
 
 /**
  * Project Management Modal using Obsidian's native SuggestModal
@@ -174,62 +175,125 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 	}
 
 	/**
-	 * Load project contents from contentLinks
+	 * Convert absolute path to vault-relative path
+	 */
+	private getVaultRelativePath(absolutePath: string): string {
+		const adapter = this.app.vault.adapter;
+		if (adapter instanceof FileSystemAdapter) {
+			const vaultBasePath = adapter.getBasePath();
+			// Use path.relative to get the relative path
+			return relative(vaultBasePath, absolutePath);
+		}
+		// Fallback: return the path as-is if we can't determine the base path
+		return absolutePath;
+	}
+
+	/**
+	 * Load project contents from contentLinks or fileLink
 	 * This restores the content files/folders associated with the project
 	 */
 	private async loadProjectContents(project: ObsidianProjectInfo) {
 		// Clear existing contents first
 		this.plugin.site.languageContents.set([]);
 		
-		if (!project.contentLinks || project.contentLinks.length === 0) {
-			console.log('[Friday] No content links found in project, initializing with empty content');
-			this.plugin.site.initializeContent(null, null);
-			return;
+		let contentLoaded = false;
+		
+		// Handle folder-based projects (contentLinks)
+		if (project.contentLinks && project.contentLinks.length > 0) {
+			console.log('[Friday] Loading folder-based project contents:', project.contentLinks);
+			
+			// Load each content link
+			for (let i = 0; i < project.contentLinks.length; i++) {
+				const contentLink = project.contentLinks[i];
+				// Convert absolute path to vault-relative path
+				const relativePath = this.getVaultRelativePath(contentLink.sourcePath);
+				const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
+
+				if (!abstractFile) {
+					console.warn(`[Friday] Content path not found: ${contentLink.sourcePath} (relative: ${relativePath})`);
+					continue;
+				}
+
+				// Determine if it's a folder or file
+				let folder: TFolder | null = null;
+				let file: TFile | null = null;
+
+				if (abstractFile instanceof TFolder) {
+					folder = abstractFile;
+				} else if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+					file = abstractFile;
+				} else {
+					console.warn(`[Friday] Invalid content type: ${contentLink.sourcePath}`);
+					continue;
+				}
+
+				if (i === 0) {
+					// First content: initialize with language
+					this.plugin.site.initializeContentWithLanguage(
+						folder,
+						file,
+						contentLink.languageCode
+					);
+				} else {
+					// Additional contents: add with language
+					this.plugin.site.addLanguageContentWithCode(
+						folder,
+						file,
+						contentLink.languageCode
+					);
+				}
+			}
+			
+			console.log('[Friday] Folder-based project contents loaded successfully');
+			contentLoaded = true;
 		}
-
-		console.log('[Friday] Loading project contents:', project.contentLinks);
-
-		// Load each content link
-		for (let i = 0; i < project.contentLinks.length; i++) {
-			const contentLink = project.contentLinks[i];
-			const abstractFile = this.app.vault.getAbstractFileByPath(contentLink.sourcePath);
-
+		
+		// Handle file-based projects (fileLink)
+		if (project.fileLink) {
+			console.log('[Friday] Loading file-based project content:', project.fileLink);
+			
+			// Convert absolute path to vault-relative path
+			const relativePath = this.getVaultRelativePath(project.fileLink.sourcePath);
+			const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
+			
 			if (!abstractFile) {
-				console.warn(`[Friday] Content path not found: ${contentLink.sourcePath}`);
-				continue;
-			}
-
-			// Determine if it's a folder or file
-			let folder: TFolder | null = null;
-			let file: TFile | null = null;
-
-			if (abstractFile instanceof TFolder) {
-				folder = abstractFile;
+				console.warn(`[Friday] File path not found: ${project.fileLink.sourcePath} (relative: ${relativePath})`);
+				this.plugin.site.initializeContent(null, null);
 			} else if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
-				file = abstractFile;
-			} else {
-				console.warn(`[Friday] Invalid content type: ${contentLink.sourcePath}`);
-				continue;
-			}
-
-			if (i === 0) {
-				// First content: initialize with language
+				// Initialize with single file and language (use project.language as default)
 				this.plugin.site.initializeContentWithLanguage(
-					folder,
-					file,
-					contentLink.languageCode
+					null,
+					abstractFile,
+					project.language || 'en'
 				);
+				console.log('[Friday] File-based project content loaded successfully');
+				contentLoaded = true;
 			} else {
-				// Additional contents: add with language
-				this.plugin.site.addLanguageContentWithCode(
-					folder,
-					file,
-					contentLink.languageCode
-				);
+				console.warn(`[Friday] Invalid file type: ${project.fileLink.sourcePath}`);
+				this.plugin.site.initializeContent(null, null);
 			}
 		}
-
-		console.log('[Friday] Project contents loaded successfully');
+		
+		// If no content was loaded, initialize with empty content
+		if (!contentLoaded) {
+			console.log('[Friday] No content links or file link found in project, initializing with empty content');
+		}
+		
+		// Load static assets folder if specified
+		if (project.staticLink) {
+			console.log('[Friday] Loading static assets:', project.staticLink);
+			
+			// Convert absolute path to vault-relative path
+			const relativePath = this.getVaultRelativePath(project.staticLink.sourcePath);
+			const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
+			
+			if (abstractFile instanceof TFolder) {
+				this.plugin.site.setSiteAssets(abstractFile);
+				console.log('[Friday] Static assets loaded successfully');
+			} else {
+				console.warn(`[Friday] Static assets path not found or not a folder: ${project.staticLink.sourcePath} (relative: ${relativePath})`);
+			}
+		}
 	}
 
 	/**
