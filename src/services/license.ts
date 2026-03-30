@@ -35,8 +35,8 @@ export class LicenseServiceManager {
 				console.log('[Friday] Trial license requested successfully:', result.data);
 				
 				// Save license key to global config for MDFriday publishing
-				if (result.data.key) {
-					await this.saveLicenseKeyToConfig(result.data.key);
+				if (result.data.licenseKey) {
+					await this.saveLicenseKeyToConfig(result.data.licenseKey);
 					console.log('[Friday] Trial license key saved to global config');
 				}
 				

@@ -1058,43 +1058,59 @@ export class FridaySettingTab extends PluginSettingTab {
 							trialRequestBtn.disabled = true;
 							trialEmailEl.disabled = true;
 							
-							try {
-								// Use Foundry License Service
-								if (!this.plugin.licenseServiceManager) {
-									throw new Error('License service not available');
-								}
+						try {
+							// Use Foundry License Service
+							if (!this.plugin.licenseServiceManager) {
+								throw new Error('License service not available');
+							}
+							
+							// Step 1: Request trial license
+							const result = await this.plugin.licenseServiceManager.requestTrial(email);
+							
+							if (result.success && result.data?.licenseKey) {
+								const licenseKey = result.data.licenseKey;
 								
-								const result = await this.plugin.licenseServiceManager.requestTrial(email);
+								// Fill the license key in the input (for user reference)
+								inputEl.value = licenseKey;
 								
-								if (result.success && result.data?.key) {
-									// Success - fill the license key in the input above
-									inputEl.value = result.data.key;
+								// Show trial request success
+								trialStatusEl.setText(this.plugin.i18n.t('settings.trial_request_success'));
+								trialStatusEl.addClass('friday-license-success');
+								
+								// Step 2: Automatically activate the trial license
+								try {
+									await this.activateLicense(licenseKey);
 									
-									// Show success message
-									trialStatusEl.setText(this.plugin.i18n.t('settings.trial_request_success'));
-									trialStatusEl.addClass('friday-license-success');
-									
-									// Also show a notice
-									new Notice(this.plugin.i18n.t('settings.trial_request_success'));
+									// Show activation success
+									new Notice(this.plugin.i18n.t('settings.license_activated_success'));
 									
 									// Clear the email field
 									trialEmailEl.value = '';
 									
 									// Refresh display to show activated license
 									this.display();
-								} else {
-									throw new Error(result.error || 'Invalid trial response');
+								} catch (activationError) {
+									// If activation fails, still show trial request success
+									// User can manually click the activate button
+									console.error('Auto-activation failed:', activationError);
+									new Notice(this.plugin.i18n.t('settings.trial_request_success'));
+									
+									// Refresh display to show the activate button
+									this.display();
 								}
-							} catch (error) {
-								// Show error
-								trialStatusEl.setText(this.plugin.i18n.t('settings.trial_request_failed'));
-								trialStatusEl.addClass('friday-license-error');
-								console.error('Trial license request error:', error);
-							} finally {
-								trialRequestBtn.setText(this.plugin.i18n.t('settings.trial_request'));
-								trialRequestBtn.disabled = false;
-								trialEmailEl.disabled = false;
+							} else {
+								throw new Error(result.error || 'Invalid trial response');
 							}
+						} catch (error) {
+							// Show error
+							trialStatusEl.setText(this.plugin.i18n.t('settings.trial_request_failed'));
+							trialStatusEl.addClass('friday-license-error');
+							console.error('Trial license request error:', error);
+						} finally {
+							trialRequestBtn.setText(this.plugin.i18n.t('settings.trial_request'));
+							trialRequestBtn.disabled = false;
+							trialEmailEl.disabled = false;
+						}
 						});
 				});
 			
