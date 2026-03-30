@@ -5,10 +5,8 @@
 	import {onMount, onDestroy, tick} from "svelte";
 	import type { ValidPublishMethod } from "../types/publish";
 	import { normalizePublishMethod, VALID_PUBLISH_METHODS, DEFAULT_PUBLISH_METHOD } from "../types/publish";
-	import { generateRandomId } from "../utils/common";
 	import * as path from "path";
 	import * as fs from "fs";
-	import {startIncrementalBuild, IncrementalBuildConfig, IncrementalBuildCoordinator} from "@mdfriday/foundry";
 	import JSZip from "jszip";
 	import {GetBaseUrl} from "../main";
 	import {createStyleRenderer, OBStyleRenderer} from "../markdown";
@@ -668,9 +666,7 @@
 	// ==================== End Public Interface Methods ====================
 
 	// HTTP server related
-	let httpServer: IncrementalBuildCoordinator;
 	let serverRunning = false;
-	let serverHost = 'localhost';
 	let serverPort = 8090;
 
 	onMount(async () => {
@@ -708,13 +704,7 @@
 				selectMDFShare
 			});
 		}
-		
-		// ==================== OLD ARCHITECTURE: Register callbacks (for Project Management Modal only) ====================
-		// TODO: These will be removed when Project Management feature is refactored
-		plugin.applyProjectConfigurationToPanel = applyProjectConfiguration;
-		plugin.exportHistoryBuild = exportHistoryBuild;
-		plugin.clearPreviewHistory = clearPreviewHistory;
-		
+
 		// Notify Main.ts that component is ready
 		if (plugin.handleSiteEvent && plugin.currentProjectName) {
 			await plugin.handleSiteEvent('initialized', {
@@ -753,7 +743,7 @@
 		
 		// Clean up server
 		if (serverRunning) {
-			httpServer.stopWatching();
+			stopPreview();
 			serverRunning = false;
 		}
 	});
@@ -830,9 +820,6 @@
 			}
 			
 			siteName = defaultName;
-			
-			// Load default publish config from settings if project doesn't have one
-			loadDefaultPublishConfigIfNeeded();
 		}
 		previousContentLength = currentContents.length;
 	}
@@ -1000,72 +987,6 @@
 	function clearSiteAssets() {
 		site.clearSiteAssets();
 	}
-	
-	function getLanguageName(code: string): string {
-		const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
-		return lang ? lang.name : code;
-	}
-
-	function showAddLanguageDialog() {
-		// Show a simple notice asking user to right-click a folder/file
-		new Notice(t('messages.add_language_instruction'), 5000);
-	}
-
-	/**
-	 * Load publish config when content is added
-	 * - If project exists with config: apply project config
-	 * - If project doesn't have config: apply settings defaults
-	 */
-	function loadDefaultPublishConfigIfNeeded() {
-		// Get project ID to check if it exists
-		const projectId = getProjectId();
-		if (!projectId) {
-			return;
-		}
-
-		// Check if project already exists
-		const existingProject = plugin.projectService.getProject(projectId);
-		
-		if (existingProject && existingProject.publishConfig) {
-			selectedPublishOption = existingProject.publishConfig.method || 'netlify';
-			
-			// Apply Netlify config
-			netlifyAccessToken = existingProject.publishConfig.netlify?.accessToken || '';
-			netlifyProjectId = existingProject.publishConfig.netlify?.projectId || '';
-			
-			// Apply FTP config
-			ftpServer = existingProject.publishConfig.ftp?.server || '';
-			ftpUsername = existingProject.publishConfig.ftp?.username || '';
-			ftpPassword = existingProject.publishConfig.ftp?.password || '';
-			ftpRemoteDir = existingProject.publishConfig.ftp?.remoteDir || '';
-			ftpIgnoreCert = existingProject.publishConfig.ftp?.ignoreCert !== undefined 
-				? existingProject.publishConfig.ftp.ignoreCert 
-				: true;
-			ftpPreferredSecure = existingProject.publishConfig.ftp?.preferredSecure;
-		} else {
-			// Map 'mdfriday' from settings to 'netlify' as default
-			const settingsMethod = plugin.settings.publishMethod;
-			selectedPublishOption = (settingsMethod === 'mdfriday' ? 'netlify' : settingsMethod) || 'netlify';
-			
-			// Load Netlify defaults
-			netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
-			netlifyProjectId = plugin.settings.netlifyProjectId || '';
-			
-			// Load FTP defaults
-			ftpServer = plugin.settings.ftpServer || '';
-			ftpUsername = plugin.settings.ftpUsername || '';
-			ftpPassword = plugin.settings.ftpPassword || '';
-			ftpRemoteDir = plugin.settings.ftpRemoteDir || '';
-			ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined 
-				? plugin.settings.ftpIgnoreCert 
-				: true;
-			ftpPreferredSecure = undefined; // Default to plain FTP
-		}
-		
-		// Reset FTP test state
-		ftpTestState = 'idle';
-		ftpTestMessage = '';
-	}
 
 	function openThemeModal() {
 		// Call plugin method to show theme selection modal
@@ -1091,250 +1012,6 @@
 				}
 			}
 		}, isForSingleFile);
-	}
-
-	async function exportHistoryBuild(previewId: string) {
-		try {
-			// Construct path to the preview directory
-			const previewDir = path.join(plugin.pluginDir, 'preview', previewId);
-			const publicDir = path.join(previewDir, 'public');
-			
-			// Check if the directory exists
-			const adapter = app.vault.adapter;
-			if (!(await adapter.exists(publicDir))) {
-				new Notice(t('projects.preview_not_found'), 5000);
-				return;
-			}
-			
-			// Get absolute path
-			const absPublicDir = path.join(basePath, publicDir);
-			
-			// Create ZIP from public directory
-			const zipContent = await createZipFromDirectory(absPublicDir);
-
-			// Use Electron's dialog API to show save dialog
-			const { dialog } = require('@electron/remote') || require('electron').remote;
-			const { canceled, filePath } = await dialog.showSaveDialog({
-				title: t('ui.export_site_dialog_title'),
-				defaultPath: `mdfriday-site-${previewId}.zip`,
-				filters: [
-					{ name: 'ZIP Files', extensions: ['zip'] },
-					{ name: 'All Files', extensions: ['*'] }
-				]
-			});
-
-			if (!canceled && filePath) {
-				// Save the ZIP file to the selected path
-				await fs.promises.writeFile(filePath, zipContent);
-				new Notice(t('messages.site_exported_successfully', { path: filePath }), 3000);
-			}
-		} catch (error) {
-			console.error('Export history build failed:', error);
-			new Notice(t('messages.export_failed', { error: error.message }), 5000);
-		}
-	}
-
-	async function clearPreviewHistory(projectId: string) {
-		try {
-			// Show confirmation dialog
-			const confirmed = confirm(t('projects.confirm_clear_history'));
-			if (!confirmed) {
-				return;
-			}
-
-			// Get all build history for this project
-			const buildHistory = plugin.projectService.getBuildHistory(projectId, 1000);
-			
-			// Extract all previewIds
-			const previewIds = buildHistory
-				.filter(h => h.previewId)
-				.map(h => h.previewId!);
-			
-			if (previewIds.length === 0) {
-				new Notice(t('projects.no_preview_files'), 3000);
-				return;
-			}
-
-			// Get preview root directory
-			const previewRoot = path.join(plugin.pluginDir, 'preview');
-			const adapter = app.vault.adapter;
-			
-			// Check if preview directory exists
-			if (!(await adapter.exists(previewRoot))) {
-				new Notice(t('projects.no_preview_files'), 3000);
-				return;
-			}
-
-			// Get absolute path for file system operations
-			const absPreviewRoot = path.join(basePath, previewRoot);
-			let deletedCount = 0;
-
-			// Delete only the preview directories belonging to this project
-			for (const previewId of previewIds) {
-				const previewDirPath = path.join(absPreviewRoot, previewId);
-				try {
-					// Check if directory exists before deleting
-					if (await fs.promises.access(previewDirPath).then(() => true).catch(() => false)) {
-						await fs.promises.rm(previewDirPath, { recursive: true, force: true });
-						deletedCount++;
-					}
-				} catch (error) {
-					console.warn(`Failed to delete preview directory ${previewId}:`, error);
-				}
-			}
-
-			// Clear build history for this project
-			await plugin.projectService.clearProjectBuildHistory(projectId);
-
-			if (deletedCount > 0) {
-				new Notice(t('projects.preview_history_cleared', { count: deletedCount }), 3000);
-			} else {
-				new Notice(t('projects.no_preview_files'), 3000);
-			}
-		} catch (error) {
-			console.error('Clear preview history failed:', error);
-			new Notice(t('messages.export_failed', { error: error.message }), 5000);
-		}
-	}
-
-	async function applyProjectConfiguration(project: any) {
-		try {
-			// Clear existing content first
-			site.clearAllContent();
-			
-			// Apply site name
-			siteName = project.name;
-			
-			// Apply theme
-			selectedThemeDownloadUrl = project.themeUrl;
-			selectedThemeName = project.themeName;
-			selectedThemeId = project.themeId;
-			userHasSelectedTheme = true;
-			
-			// Apply site path
-			sitePath = project.sitePath;
-			
-			// Apply advanced settings
-			googleAnalyticsId = project.googleAnalyticsId || '';
-			disqusShortname = project.disqusShortname || '';
-			sitePassword = project.sitePassword || '';
-			
-			// Apply publish settings
-			if (project.publishConfig) {
-				// Project has config, use it
-				selectedPublishOption = project.publishConfig.method || 'netlify';
-				
-				// Apply Netlify config
-				netlifyAccessToken = project.publishConfig.netlify?.accessToken || '';
-				netlifyProjectId = project.publishConfig.netlify?.projectId || '';
-				
-				// Apply FTP config
-				ftpServer = project.publishConfig.ftp?.server || '';
-				ftpUsername = project.publishConfig.ftp?.username || '';
-				ftpPassword = project.publishConfig.ftp?.password || '';
-				ftpRemoteDir = project.publishConfig.ftp?.remoteDir || '';
-				ftpIgnoreCert = project.publishConfig.ftp?.ignoreCert !== undefined ? project.publishConfig.ftp.ignoreCert : true;
-				ftpPreferredSecure = project.publishConfig.ftp?.preferredSecure;
-			} else {
-				// Project doesn't have config, load defaults from settings
-				// Map 'mdfriday' from settings to 'netlify' as default
-				const settingsMethod = plugin.settings.publishMethod;
-				selectedPublishOption = (settingsMethod === 'mdfriday' ? 'netlify' : settingsMethod) || 'netlify';
-				
-				// Load Netlify defaults
-				netlifyAccessToken = plugin.settings.netlifyAccessToken || '';
-				netlifyProjectId = plugin.settings.netlifyProjectId || '';
-				
-				// Load FTP defaults
-				ftpServer = plugin.settings.ftpServer || '';
-				ftpUsername = plugin.settings.ftpUsername || '';
-				ftpPassword = plugin.settings.ftpPassword || '';
-				ftpRemoteDir = plugin.settings.ftpRemoteDir || '';
-				ftpIgnoreCert = plugin.settings.ftpIgnoreCert !== undefined ? plugin.settings.ftpIgnoreCert : true;
-				ftpPreferredSecure = undefined; // Default to plain FTP for new projects
-			}
-			
-			// Reset FTP test state
-			ftpTestState = 'idle';
-			ftpTestMessage = '';
-			
-			// Try to reload content paths
-			let contentLoadedCount = 0;
-			if (project.contents && project.contents.length > 0) {
-				for (let i = 0; i < project.contents.length; i++) {
-					const contentConfig = project.contents[i];
-					const abstractFile = app.vault.getAbstractFileByPath(contentConfig.contentPath);
-					
-					if (abstractFile) {
-						if (abstractFile instanceof TFolder) {
-							if (i === 0) {
-								site.initializeContentWithLanguage(abstractFile, null, contentConfig.languageCode);
-							} else {
-								site.addLanguageContentWithCode(abstractFile, null, contentConfig.languageCode);
-							}
-							contentLoadedCount++;
-						} else if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
-							if (i === 0) {
-								site.initializeContentWithLanguage(null, abstractFile, contentConfig.languageCode);
-							} else {
-								site.addLanguageContentWithCode(null, abstractFile, contentConfig.languageCode);
-							}
-							contentLoadedCount++;
-						}
-					} else {
-						console.warn(`Content path not found: ${contentConfig.contentPath}`);
-					}
-				}
-			}
-			
-			// Try to reload site assets
-			if (project.assetsPath) {
-				const assetsFile = app.vault.getAbstractFileByPath(project.assetsPath);
-				if (assetsFile instanceof TFolder) {
-					site.setSiteAssets(assetsFile);
-				} else {
-					console.warn(`Assets path not found: ${project.assetsPath}`);
-				}
-			}
-			
-			// Show appropriate message
-			if (contentLoadedCount > 0) {
-				const contentText = contentLoadedCount === 1 ? 'content' : 'contents';
-				new Notice(t('projects.project_applied') + `\n✅ ${contentLoadedCount} ${contentText} loaded`, 3000);
-			} else {
-				new Notice(t('projects.project_applied_no_content'), 5000);
-			}
-		} catch (error) {
-			console.error('Failed to apply project configuration:', error);
-			new Notice(t('messages.export_failed', { error: error.message }), 5000);
-		}
-	}
-
-	/**
-	 * Get project ID from current content
-	 * If content is in a content subfolder, returns parent folder path
-	 * Otherwise returns content path
-	 */
-	function getProjectId(): string {
-		if (currentContents.length === 0) {
-			return '';
-		}
-
-		const firstContent = currentContents[0];
-		let projectId = firstContent.folder?.path || firstContent.file?.path || '';
-		
-		// Try to get parent folder for better project identification
-		const contentFolder = firstContent.folder || (firstContent.file ? firstContent.file.parent : null);
-		if (contentFolder && contentFolder.parent) {
-			// Check if this looks like a content subfolder (content, content.en, etc.)
-			const folderName = contentFolder.name.toLowerCase();
-			if (folderName === 'content' || folderName.startsWith('content.')) {
-				// Use parent folder path as project ID
-				projectId = contentFolder.parent.path;
-			}
-		}
-		
-		return projectId;
 	}
 
 	async function downloadThemeSample() {

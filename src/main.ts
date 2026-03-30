@@ -57,13 +57,9 @@ import { getDefaultTheme, shouldUseInternalRenderer } from './utils/theme';
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
 import type {Site} from "./site";
-import type {ProjectService} from "./projects/service";
-import type {ProjectConfig} from "./projects/types";
 import type {ThemeSelectionModal} from "./theme/modal";
-import type {ProjectManagementModal} from "./projects/modal";
 import type {FoundryProjectManagementModal} from "./projects/foundryModal";
 import type ServerView from './server';
-import {validateSubdomainFormat, isReservedSubdomain} from "./domain";
 import {nameToId} from "src/utils/hash.ts";
 
 // Export view type for dynamic import
@@ -164,6 +160,7 @@ export default class FridayPlugin extends Plugin {
 
 	pluginDir: string
 	absWorkspacePath: string
+	vaultBasePath: string
 	apiUrl: string
 	
 	// Core services (always available)
@@ -175,7 +172,6 @@ export default class FridayPlugin extends Plugin {
 	// PC-only services (optional, only loaded on desktop)
 	hugoverse?: Hugoverse
 	site?: Site
-	projectService?: ProjectService
 	workspaceService?: ObsidianWorkspaceService | null
 	// Foundry services
 	foundryProjectService?: ObsidianProjectService | null
@@ -201,12 +197,6 @@ export default class FridayPlugin extends Plugin {
 	// Project initialization flag (prevents auto-save during new project creation)
 	isProjectInitializing: boolean = false
 	
-	// PC-only callbacks (optional)
-	// TODO: These are for Project Management Modal - will be removed when that feature is refactored
-	applyProjectConfigurationToPanel: ((project: ProjectConfig) => void) | null = null
-	exportHistoryBuild: ((previewId: string) => Promise<void>) | null = null
-	clearPreviewHistory: ((projectId: string) => Promise<void>) | null = null
-	
 	// PC-only state
 	private previousDownloadServer: 'global' | 'east' = 'global'
 	
@@ -215,7 +205,6 @@ export default class FridayPlugin extends Plugin {
 	
 	// Dynamic module references for PC-only features
 	private ThemeSelectionModalClass?: typeof ThemeSelectionModal
-	private ProjectManagementModalClass?: typeof ProjectManagementModal
 	private FoundryProjectManagementModalClass?: typeof FoundryProjectManagementModal
 	private themeApiService?: typeof import("./theme/themeApiService").themeApiService
 
@@ -232,6 +221,7 @@ export default class FridayPlugin extends Plugin {
 			const adapter = this.app.vault.adapter;
 			if (adapter instanceof FileSystemAdapter) {
 				const basePath = adapter.getBasePath();
+				this.vaultBasePath = basePath;
 				this.absWorkspacePath = `${basePath}/${this.pluginDir}/workspace`;
 			}
 
@@ -244,9 +234,6 @@ export default class FridayPlugin extends Plugin {
 		setTimeout(() => {
 			void this.initializeSyncService();
 		}, 0);
-		
-		// Register sync commands (common for both platforms)
-		this.registerSyncCommands();
 
 		this.statusBar = this.addStatusBarItem();
 		this.addSettingTab(new FridaySettingTab(this.app, this));
@@ -282,17 +269,13 @@ export default class FridayPlugin extends Plugin {
 		const [
 			{ default: ServerView },
 			{ ThemeSelectionModal },
-			{ ProjectManagementModal },
 			{ FoundryProjectManagementModal },
-			{ ProjectService },
 			{ Site },
 			{ themeApiService }
 		] = await Promise.all([
 			import('./server'),
 			import('./theme/modal'),
-			import('./projects/modal'),
 			import('./projects/foundryModal'),
-			import('./projects/service'),
 			import('./site'),
 			import('./theme/themeApiService')
 		]);
@@ -307,14 +290,11 @@ export default class FridayPlugin extends Plugin {
 		
 		// Store dynamic module references
 		this.ThemeSelectionModalClass = ThemeSelectionModal;
-		this.ProjectManagementModalClass = ProjectManagementModal;
 		this.FoundryProjectManagementModalClass = FoundryProjectManagementModal;
 		this.themeApiService = themeApiService;
 		
 		// Initialize PC-only services (hugoverse already initialized in initCore)
 		this.site = new Site(this);
-		this.projectService = new ProjectService(this);
-		await this.projectService.initialize();
 
 		// Initialize workspace service (PC-only)
 		await this.initializeWorkspace();
@@ -353,19 +333,15 @@ export default class FridayPlugin extends Plugin {
 			}
 		});
 		
-		// Register export HTML command (PC-only)
+		// Register open project management command (PC-only)
 		this.addCommand({
-			id: "export-current-note-with-css",
-			name: this.i18n.t('menu.publish_to_web'),
-			checkCallback: (checking) => {
-				const file = this.app.workspace.getActiveFile();
-				if (file && file.extension === 'md') {
-					if (!checking) {
-						this.openPublishPanel(null, file);
-					}
-					return true;
+			id: "open-project-management",
+			name: this.i18n.t('projects.manage_projects'),
+			callback: () => {
+				if (this.FoundryProjectManagementModalClass) {
+					const modal = new this.FoundryProjectManagementModalClass(this.app, this);
+					modal.open();
 				}
-				return false;
 			}
 		});
 		
@@ -544,66 +520,6 @@ export default class FridayPlugin extends Plugin {
 		// Mobile currently only needs sync functionality
 		// which is already handled by initializeSyncService()
 		// Additional mobile-specific UI can be added here in the future
-	}
-
-	/**
-	 * Register sync commands (common for both platforms)
-	 */
-	private registerSyncCommands(): void {
-		this.addCommand({
-			id: "sync-pull-from-server",
-			name: "Sync: Pull from Server",
-			callback: async () => {
-				if (!this.settings.syncEnabled) {
-					new Notice(this.i18n.t('messages.sync_not_enabled'));
-					return;
-				}
-				if (!this.syncService.isInitialized) {
-					await this.syncService.initialize(this.settings.syncConfig);
-				}
-				await this.syncService.pullFromServer();
-			}
-		});
-
-		this.addCommand({
-			id: "sync-push-to-server",
-			name: "Sync: Push to Server",
-			callback: async () => {
-				if (!this.settings.syncEnabled) {
-					new Notice(this.i18n.t('messages.sync_not_enabled'));
-					return;
-				}
-				if (!this.syncService.isInitialized) {
-					await this.syncService.initialize(this.settings.syncConfig);
-				}
-				await this.syncService.pushToServer();
-			}
-		});
-
-		this.addCommand({
-			id: "sync-start-live-sync",
-			name: "Sync: Start Live Sync",
-			callback: async () => {
-				if (!this.settings.syncEnabled) {
-					new Notice(this.i18n.t('messages.sync_not_enabled'));
-					return;
-				}
-				if (!this.syncService.isInitialized) {
-					await this.syncService.initialize(this.settings.syncConfig);
-				}
-				await this.syncService.startSync(true);
-			}
-		});
-
-		this.addCommand({
-			id: "sync-stop",
-			name: "Sync: Stop Synchronization",
-			callback: async () => {
-				if (this.syncService) {
-					await this.syncService.stopSync();
-				}
-			}
-		});
 	}
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
@@ -1126,18 +1042,6 @@ export default class FridayPlugin extends Plugin {
 		modal.open();
 	}
 
-	showProjectManagementModal(
-		onApply: (project: ProjectConfig) => void, 
-		onExport: (previewId: string) => Promise<void>,
-		onClearHistory: (projectId: string) => Promise<void>
-	) {
-		if (!Platform.isDesktop || !this.ProjectManagementModalClass || !this.projectService) {
-			new Notice(this.i18n.t('messages.project_management_desktop_only'));
-			return;
-		}
-		const modal = new this.ProjectManagementModalClass(this.app, this, this.projectService, onApply, onExport, onClearHistory);
-		modal.open();
-	}
 
 	/**
 	 * Add internet icon to markdown view header (left of the book icon)
