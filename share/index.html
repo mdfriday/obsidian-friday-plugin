@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDFriday 分享卡片</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            padding: 50px 40px 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 400px;
+            position: relative;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 25px 70px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 1;
+        }
+
+        .card-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1a202c;
+            margin-bottom: 24px;
+            line-height: 1.3;
+        }
+
+        .card-text {
+            font-size: 18px;
+            color: #4a5568;
+            line-height: 1.8;
+            margin-bottom: 30px;
+            flex: 1;
+        }
+
+        .card-source {
+            text-align: right;
+            font-size: 16px;
+            color: #718096;
+            font-style: italic;
+            margin-bottom: 30px;
+            padding-right: 10px;
+        }
+
+        .card-footer {
+            background: rgba(247, 250, 252, 0.95);
+            margin: 0 -40px;
+            padding: 20px 40px;
+            border-radius: 0 0 16px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(226, 232, 240, 0.5);
+            backdrop-filter: blur(10px);
+            position: relative;
+            z-index: 1;
+        }
+
+        .footer-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            color: #2d3748;
+        }
+
+        .footer-logo {
+            width: 28px;
+            height: 28px;
+        }
+
+        .footer-logo svg {
+            width: 100%;
+            height: 100%;
+            fill: #004ea2;
+        }
+
+        .footer-link {
+            color: #004ea2;
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .footer-link:hover {
+            color: #003d82;
+        }
+
+        /* 主题样式 - 渐变系列 */
+        .theme-warm-gradient { 
+            background: linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%); 
+        }
+        
+        .theme-cool-gradient { 
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); 
+        }
+        
+        .theme-sunset-gradient { 
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+        }
+        
+        .theme-ocean-gradient { 
+            background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); 
+        }
+        
+        .theme-sky-gradient { 
+            background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%); 
+        }
+        
+        .theme-peach-gradient { 
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
+        }
+        
+        .theme-purple-gradient { 
+            background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%); 
+        }
+        
+        .theme-pink-gradient { 
+            background: linear-gradient(135deg, #fdcbf1 0%, #e6dee9 100%); 
+        }
+        
+        .theme-mint-gradient { 
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+        }
+        
+        .theme-azure-gradient { 
+            background: linear-gradient(135deg, #fff1eb 0%, #ace0f9 100%); 
+        }
+
+        /* 主题样式 - 质感纹理系列 */
+        .theme-paper-texture {
+            background: linear-gradient(135deg, #f4f1ea 0%, #e8dcc8 100%);
+            position: relative;
+        }
+        .theme-paper-texture::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.03) 2px, rgba(0,0,0,.03) 4px),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,.03) 2px, rgba(0,0,0,.03) 4px);
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .theme-glass-morphism {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+
+        .theme-neumorphism {
+            background: #e0e5ec;
+            box-shadow: 
+                20px 20px 60px #bec3c9,
+                -20px -20px 60px #ffffff;
+        }
+        .theme-neumorphism:hover {
+            box-shadow: 
+                25px 25px 70px #bec3c9,
+                -25px -25px 70px #ffffff;
+        }
+
+        .theme-metal-sheen {
+            background: linear-gradient(145deg, #c9d6df 0%, #e8eef2 50%, #dfe6ea 100%);
+            position: relative;
+        }
+        .theme-metal-sheen::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.8) 50%, transparent 100%);
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        .theme-wood-grain {
+            background: linear-gradient(135deg, #d7c7b7 0%, #a39081 100%);
+            position: relative;
+        }
+        .theme-wood-grain::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                repeating-linear-gradient(
+                    90deg,
+                    transparent,
+                    transparent 10px,
+                    rgba(139, 90, 43, 0.1) 10px,
+                    rgba(139, 90, 43, 0.1) 20px
+                );
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .theme-fabric-weave {
+            background: linear-gradient(135deg, #f5f0e8 0%, #e5d9c8 100%);
+            position: relative;
+        }
+        .theme-fabric-weave::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,.02) 10px, rgba(0,0,0,.02) 20px),
+                repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(0,0,0,.02) 10px, rgba(0,0,0,.02) 20px);
+            pointer-events: none;
+        }
+
+        .theme-marble {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%);
+            position: relative;
+        }
+        .theme-marble::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                radial-gradient(ellipse at 20% 30%, rgba(0,0,0,0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 70%, rgba(0,0,0,0.03) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .theme-grainy-paper {
+            background: linear-gradient(135deg, #faf8f5 0%, #f0ebe3 100%);
+            position: relative;
+        }
+        .theme-grainy-paper::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.15;
+            pointer-events: none;
+        }
+
+        .theme-frosted-glass {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(240, 240, 255, 0.85) 100%);
+            backdrop-filter: blur(15px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+        }
+
+        .theme-gradient-shimmer {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 25%, #fd79a8 50%, #a29bfe 75%, #74b9ff 100%);
+            background-size: 200% 200%;
+            animation: shimmer 8s ease infinite;
+            position: relative;
+        }
+        .theme-gradient-shimmer::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        @keyframes shimmer {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        /* 主题样式 - 黑金色系列 */
+        .theme-black-gold-1 {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            position: relative;
+        }
+        .theme-black-gold-1::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 0%, rgba(212, 175, 55, 0.15) 50%, transparent 100%);
+            pointer-events: none;
+        }
+        .theme-black-gold-1 .card-title { color: #d4af37; }
+        .theme-black-gold-1 .card-text { color: #c0c0c0; }
+        .theme-black-gold-1 .card-source { color: #999; }
+
+        .theme-black-gold-2 {
+            background: linear-gradient(135deg, #0f0f0f 0%, #1c1c1c 50%, #0f0f0f 100%);
+            position: relative;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+        .theme-black-gold-2::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #d4af37, transparent);
+            pointer-events: none;
+        }
+        .theme-black-gold-2 .card-title { 
+            color: #f4e5c2;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+        }
+        .theme-black-gold-2 .card-text { color: #b8b8b8; }
+        .theme-black-gold-2 .card-source { color: #888; }
+
+        .theme-black-gold-3 {
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 215, 0, 0.08) 0%, transparent 50%),
+                linear-gradient(135deg, #161616 0%, #242424 100%);
+        }
+        .theme-black-gold-3 .card-title { 
+            background: linear-gradient(135deg, #f4e5c2 0%, #d4af37 50%, #f4e5c2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .theme-black-gold-3 .card-text { color: #c5c5c5; }
+        .theme-black-gold-3 .card-source { color: #9a9a9a; }
+
+        .theme-black-gold-4 {
+            background: linear-gradient(135deg, #1e1e1e 0%, #0a0a0a 100%);
+            position: relative;
+        }
+        .theme-black-gold-4::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(212, 175, 55, 0.05) 40px, rgba(212, 175, 55, 0.05) 41px);
+            pointer-events: none;
+        }
+        .theme-black-gold-4 .card-title { 
+            color: #ffd700;
+            letter-spacing: 1px;
+        }
+        .theme-black-gold-4 .card-text { color: #bebebe; }
+        .theme-black-gold-4 .card-source { color: #8a8a8a; }
+
+        .theme-black-gold-5 {
+            background: 
+                linear-gradient(135deg, #0d0d0d 0%, #1a1a1a 50%, #0d0d0d 100%);
+            position: relative;
+            box-shadow: 
+                inset 0 1px 0 rgba(212, 175, 55, 0.2),
+                0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        .theme-black-gold-5 .card-title { 
+            color: #e5c878;
+            font-weight: 800;
+        }
+        .theme-black-gold-5 .card-text { color: #c8c8c8; }
+        .theme-black-gold-5 .card-source { color: #969696; }
+
+        .theme-black-gold-6 {
+            background: 
+                repeating-linear-gradient(45deg, #1a1a1a 0px, #1a1a1a 20px, #1f1f1f 20px, #1f1f1f 40px),
+                linear-gradient(135deg, rgba(212, 175, 55, 0.03) 0%, transparent 100%);
+        }
+        .theme-black-gold-6 .card-title { 
+            color: #d4af37;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 24px;
+        }
+        .theme-black-gold-6 .card-text { color: #b5b5b5; }
+        .theme-black-gold-6 .card-source { color: #858585; }
+
+        .theme-black-gold-7 {
+            background: linear-gradient(135deg, #141414 0%, #2a2a2a 100%);
+            position: relative;
+            border: 2px solid transparent;
+            background-clip: padding-box;
+        }
+        .theme-black-gold-7::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            background: linear-gradient(135deg, #d4af37 0%, #ffd700 50%, #d4af37 100%);
+            border-radius: 16px;
+            z-index: -1;
+            opacity: 0.3;
+        }
+        .theme-black-gold-7 .card-title { 
+            color: #f0d882;
+        }
+        .theme-black-gold-7 .card-text { color: #bfbfbf; }
+        .theme-black-gold-7 .card-source { color: #909090; }
+
+        .theme-black-gold-8 {
+            background: 
+                radial-gradient(ellipse at top, rgba(212, 175, 55, 0.15) 0%, transparent 50%),
+                linear-gradient(to bottom, #1c1c1c 0%, #0a0a0a 100%);
+            position: relative;
+        }
+        .theme-black-gold-8::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            background: linear-gradient(to top, rgba(212, 175, 55, 0.1) 0%, transparent 100%);
+            pointer-events: none;
+        }
+        .theme-black-gold-8 .card-title { 
+            color: #ffdf80;
+            text-shadow: 0 2px 10px rgba(212, 175, 55, 0.3);
+        }
+        .theme-black-gold-8 .card-text { color: #c2c2c2; }
+        .theme-black-gold-8 .card-source { color: #939393; }
+
+        .theme-black-gold-9 {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 50%, #1a1a1a 100%);
+            position: relative;
+        }
+        .theme-black-gold-9::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                radial-gradient(circle, rgba(212, 175, 55, 0.1) 1px, transparent 1px);
+            background-size: 20px 20px;
+            pointer-events: none;
+        }
+        .theme-black-gold-9 .card-title { 
+            color: #daa520;
+            font-style: italic;
+        }
+        .theme-black-gold-9 .card-text { color: #afafaf; }
+        .theme-black-gold-9 .card-source { color: #7f7f7f; }
+
+        .theme-black-gold-10 {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1e1e1e 50%, #0a0a0a 100%);
+            position: relative;
+            box-shadow: 
+                inset 0 0 100px rgba(212, 175, 55, 0.05),
+                0 20px 60px rgba(0, 0, 0, 0.4);
+        }
+        .theme-black-gold-10::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(212, 175, 55, 0.2) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .theme-black-gold-10 .card-title { 
+            color: #f4e5c2;
+            font-weight: 900;
+            text-shadow: 0 0 30px rgba(212, 175, 55, 0.4);
+        }
+        .theme-black-gold-10 .card-text { color: #cdcdcd; }
+        .theme-black-gold-10 .card-source { color: #9d9d9d; }
+
+        /* 主题样式 - 名信片系列 */
+        .theme-postcard-1 {
+            background: linear-gradient(135deg, #f9f5eb 0%, #ece4d0 100%);
+            border: 3px solid #8b7355;
+            border-right-width: 5px;
+            border-bottom-width: 5px;
+            position: relative;
+        }
+        .theme-postcard-1::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 60px;
+            height: 80px;
+            border: 2px solid #c4a57b;
+            background: linear-gradient(135deg, #e8d5b7 0%, #d4af7e 100%);
+        }
+        .theme-postcard-1::after {
+            content: 'POSTCARD';
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 10px;
+            color: #8b7355;
+            letter-spacing: 3px;
+            font-weight: bold;
+        }
+
+        .theme-postcard-2 {
+            background: #faf8f3;
+            border: 2px solid #d4a574;
+            position: relative;
+        }
+        .theme-postcard-2::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 50px;
+            height: 50px;
+            border: 3px solid #c4956f;
+            border-radius: 50%;
+            background: 
+                radial-gradient(circle at 30% 30%, rgba(196, 149, 111, 0.5) 0%, transparent 50%),
+                #f4e8d8;
+        }
+        .theme-postcard-2::after {
+            content: '';
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            width: 100px;
+            height: 40px;
+            background: repeating-linear-gradient(
+                -45deg,
+                #c4956f,
+                #c4956f 5px,
+                #d4a574 5px,
+                #d4a574 10px
+            );
+            opacity: 0.3;
+        }
+
+        .theme-postcard-3 {
+            background: 
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 115, 85, 0.05) 2px, rgba(139, 115, 85, 0.05) 4px),
+                linear-gradient(135deg, #f5efe0 0%, #e8dcc8 100%);
+            border: 4px double #a8896d;
+        }
+
+        .theme-postcard-4 {
+            background: #fff9f0;
+            border: 2px solid #b8956f;
+            box-shadow: 3px 3px 0 rgba(139, 115, 85, 0.2);
+            position: relative;
+        }
+        .theme-postcard-4::before {
+            content: '✈';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 30px;
+            color: #c4a57b;
+            opacity: 0.6;
+        }
+
+        .theme-postcard-5 {
+            background: 
+                radial-gradient(circle at top right, rgba(196, 165, 123, 0.2) 0%, transparent 50%),
+                linear-gradient(135deg, #f8f4ec 0%, #ebe3d5 100%);
+            border: 3px solid #9d8366;
+            border-radius: 8px;
+        }
+
+        .theme-postcard-6 {
+            background: #fcf9f3;
+            border-left: 10px solid #c4a57b;
+            border-top: 2px dashed #c4a57b;
+            border-right: 2px dashed #c4a57b;
+            border-bottom: 2px dashed #c4a57b;
+        }
+
+        .theme-postcard-7 {
+            background: 
+                linear-gradient(to right, #f5efe0 0%, #f5efe0 50%, #ebe3d5 50%, #ebe3d5 100%);
+            border: 2px solid #a8896d;
+            position: relative;
+        }
+        .theme-postcard-7::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 1px;
+            height: 100%;
+            background: repeating-linear-gradient(
+                to bottom,
+                #a8896d,
+                #a8896d 10px,
+                transparent 10px,
+                transparent 20px
+            );
+        }
+
+        .theme-postcard-8 {
+            background: #f9f6ef;
+            border: 3px solid #b8956f;
+            position: relative;
+            transform: rotate(-0.5deg);
+        }
+        .theme-postcard-8:hover {
+            transform: rotate(0deg) translateY(-5px);
+        }
+
+        .theme-postcard-9 {
+            background: 
+                radial-gradient(circle at 80% 20%, rgba(212, 165, 123, 0.3) 0%, transparent 40%),
+                linear-gradient(135deg, #faf7f0 0%, #f0e8db 100%);
+            border: 2px solid #c4a57b;
+            box-shadow: inset 0 0 50px rgba(139, 115, 85, 0.1);
+        }
+
+        .theme-postcard-10 {
+            background: #fffcf5;
+            border: 4px solid #d4a574;
+            position: relative;
+        }
+        .theme-postcard-10::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 70px;
+            height: 50px;
+            border: 2px solid #b8956f;
+            background: 
+                repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(184, 149, 111, 0.1) 5px, rgba(184, 149, 111, 0.1) 10px);
+        }
+
+        /* 主题样式 - 信纸系列 */
+        .theme-letter-1 {
+            background: 
+                repeating-linear-gradient(transparent, transparent 29px, #e0d8c8 29px, #e0d8c8 30px),
+                linear-gradient(135deg, #fdfbf7 0%, #f8f4ed 100%);
+            border: 1px solid #d4cfc4;
+        }
+
+        .theme-letter-2 {
+            background: 
+                linear-gradient(to right, #f5f0e8 0%, #f5f0e8 40px, transparent 40px),
+                repeating-linear-gradient(transparent, transparent 34px, #ddd5c8 34px, #ddd5c8 35px),
+                #fffdfb;
+            border-left: 2px solid #c4b5a0;
+        }
+
+        .theme-letter-3 {
+            background: 
+                repeating-linear-gradient(transparent, transparent 31px, rgba(180, 160, 140, 0.3) 31px, rgba(180, 160, 140, 0.3) 32px),
+                linear-gradient(135deg, #fcfaf6 0%, #f5f1e8 100%);
+            border-top: 3px double #c4b5a0;
+            position: relative;
+        }
+        .theme-letter-3::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 40px;
+            right: 40px;
+            height: 2px;
+            background: linear-gradient(to right, transparent, #c4b5a0, transparent);
+        }
+
+        .theme-letter-4 {
+            background: 
+                linear-gradient(90deg, #f8f5ef 0%, #f8f5ef 50px, #fffdfb 50px),
+                repeating-linear-gradient(transparent, transparent 32px, #e5dfd5 32px, #e5dfd5 33px);
+            position: relative;
+        }
+        .theme-letter-4::before {
+            content: '';
+            position: absolute;
+            left: 50px;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: #ddd5c8;
+        }
+
+        .theme-letter-5 {
+            background: 
+                repeating-linear-gradient(transparent, transparent 30px, #d8d0c0 30px, #d8d0c0 31px),
+                #fffef9;
+            border: 2px solid #c4b5a0;
+            box-shadow: inset 0 0 100px rgba(196, 181, 160, 0.1);
+        }
+
+        .theme-letter-6 {
+            background: 
+                radial-gradient(circle at top center, rgba(196, 181, 160, 0.15) 0%, transparent 50%),
+                repeating-linear-gradient(transparent, transparent 33px, rgba(196, 181, 160, 0.4) 33px, rgba(196, 181, 160, 0.4) 34px),
+                #fdfcf8;
+            position: relative;
+        }
+        .theme-letter-6::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: linear-gradient(to bottom, rgba(196, 181, 160, 0.1) 0%, transparent 100%);
+        }
+
+        .theme-letter-7 {
+            background: 
+                repeating-linear-gradient(transparent, transparent 28px, #cfc5b5 28px, #cfc5b5 29px),
+                linear-gradient(to bottom, #fffef9 0%, #f8f5ed 100%);
+            border: 1px solid #d4cfc4;
+            border-left-width: 3px;
+        }
+
+        .theme-letter-8 {
+            background: 
+                linear-gradient(to right, transparent 0%, transparent calc(100% - 100px), rgba(196, 181, 160, 0.05) calc(100% - 100px)),
+                repeating-linear-gradient(transparent, transparent 31px, #ddd8cc 31px, #ddd8cc 32px),
+                #fffdfb;
+        }
+
+        .theme-letter-9 {
+            background: 
+                repeating-linear-gradient(transparent, transparent 30px, rgba(200, 185, 165, 0.5) 30px, rgba(200, 185, 165, 0.5) 31px),
+                linear-gradient(135deg, #fefefc 0%, #f9f6ef 100%);
+            border: 2px dashed #c4b5a0;
+            position: relative;
+        }
+        .theme-letter-9::after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 80px;
+            height: 3px;
+            background: #c4b5a0;
+        }
+
+        .theme-letter-10 {
+            background: 
+                linear-gradient(to bottom, rgba(196, 181, 160, 0.08) 0%, rgba(196, 181, 160, 0.08) 80px, transparent 80px),
+                repeating-linear-gradient(transparent, transparent 32px, #d8d0c0 32px, #d8d0c0 33px),
+                #fffefb;
+            border: 1px solid #d4cfc4;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            .card {
+                padding: 40px 30px 0;
+                min-height: 350px;
+            }
+
+            .card-title {
+                font-size: 24px;
+            }
+
+            .card-text {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Card 1 - 渐变主题 -->
+        <div class="card theme-warm-gradient">
+            <div class="card-content">
+                <h2 class="card-title">代码如诗歌</h2>
+                <p class="card-text">优秀的代码就像诗歌一样，不是因为它华丽，而是因为它精确地表达了意图。</p>
+                <div class="card-source">— Robert C. Martin</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 2 - 渐变主题 -->
+        <div class="card theme-cool-gradient">
+            <div class="card-content">
+                <h2 class="card-title">简单即美</h2>
+                <p class="card-text">简单是可靠的前提。简单的设计更容易理解、维护和扩展。</p>
+                <div class="card-source">— Bjarne Stroustrup</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 3 - 渐变主题 -->
+        <div class="card theme-sunset-gradient">
+            <div class="card-content">
+                <h2 class="card-title">持续学习</h2>
+                <p class="card-text">在技术领域，停止学习就意味着落后。保持好奇心，拥抱变化。</p>
+                <div class="card-source">— 《程序员修炼之道》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 4 - 渐变主题 -->
+        <div class="card theme-ocean-gradient">
+            <div class="card-content">
+                <h2 class="card-title">测试驱动开发</h2>
+                <p class="card-text">先写测试，再写代码。这不仅能保证质量，更能帮助你理清思路。</p>
+                <div class="card-source">— Kent Beck</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 5 - 渐变主题 -->
+        <div class="card theme-sky-gradient">
+            <div class="card-content">
+                <h2 class="card-title">重构的艺术</h2>
+                <p class="card-text">好的代码不是一次写成的，而是不断重构出来的。勇于改进，永不停歇。</p>
+                <div class="card-source">— Martin Fowler</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 6 - 渐变主题 -->
+        <div class="card theme-peach-gradient">
+            <div class="card-content">
+                <h2 class="card-title">协作的力量</h2>
+                <p class="card-text">伟大的软件不是由个人创造的，而是由团队共同打造的。沟通和协作至关重要。</p>
+                <div class="card-source">— Fred Brooks</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 7 - 渐变主题 -->
+        <div class="card theme-purple-gradient">
+            <div class="card-content">
+                <h2 class="card-title">失败是成功之母</h2>
+                <p class="card-text">每一个 bug 都是一次学习的机会，每一次失败都让你离成功更近一步。</p>
+                <div class="card-source">— Grace Hopper</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 8 - 渐变主题 -->
+        <div class="card theme-pink-gradient">
+            <div class="card-content">
+                <h2 class="card-title">用户至上</h2>
+                <p class="card-text">技术服务于用户，永远不要忘记我们为谁而构建。倾听用户的声音。</p>
+                <div class="card-source">— Steve Jobs</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 9 - 渐变主题 -->
+        <div class="card theme-mint-gradient">
+            <div class="card-content">
+                <h2 class="card-title">性能优化</h2>
+                <p class="card-text">过早的优化是万恶之源，但该优化的时候不要犹豫。平衡是关键。</p>
+                <div class="card-source">— Donald Knuth</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 10 - 渐变主题 -->
+        <div class="card theme-azure-gradient">
+            <div class="card-content">
+                <h2 class="card-title">保持热情</h2>
+                <p class="card-text">编程不仅是工作，更是一种创造的艺术。保持对技术的热爱和激情。</p>
+                <div class="card-source">— Linus Torvalds</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 11 - 纸质纹理 -->
+        <div class="card theme-paper-texture">
+            <div class="card-content">
+                <h2 class="card-title">代码的温度</h2>
+                <p class="card-text">技术本身是冰冷的，但我们用心写出的代码，应该带着温度。</p>
+                <div class="card-source">— 程序员的自我修养</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 12 - 玻璃拟态 -->
+        <div class="card theme-glass-morphism">
+            <div class="card-content">
+                <h2 class="card-title">透明即信任</h2>
+                <p class="card-text">代码的可读性和透明度，决定了团队对它的信任程度。</p>
+                <div class="card-source">— 《代码大全》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 13 - 新拟态 -->
+        <div class="card theme-neumorphism">
+            <div class="card-content">
+                <h2 class="card-title">细节决定成败</h2>
+                <p class="card-text">伟大和平庸的区别，往往就在于对细节的极致追求。</p>
+                <div class="card-source">— Leonardo da Vinci</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 14 - 金属光泽 -->
+        <div class="card theme-metal-sheen">
+            <div class="card-content">
+                <h2 class="card-title">坚韧如铁</h2>
+                <p class="card-text">优秀的架构就像精钢一样，既要有强度，也要有韧性。</p>
+                <div class="card-source">— 《架构之美》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 15 - 木纹质感 -->
+        <div class="card theme-wood-grain">
+            <div class="card-content">
+                <h2 class="card-title">时间的沉淀</h2>
+                <p class="card-text">经验就像年轮，需要时间的沉淀，才能形成独特的纹理。</p>
+                <div class="card-source">— 《匠人精神》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 16 - 织物纹理 -->
+        <div class="card theme-fabric-weave">
+            <div class="card-content">
+                <h2 class="card-title">编织梦想</h2>
+                <p class="card-text">代码就像织布，每一行都是一根线，交织成我们想要的图案。</p>
+                <div class="card-source">— Ada Lovelace</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 17 - 大理石纹理 -->
+        <div class="card theme-marble">
+            <div class="card-content">
+                <h2 class="card-title">自然之美</h2>
+                <p class="card-text">最好的设计源于自然，遵循自然规律的代码才是最优雅的。</p>
+                <div class="card-source">— Richard Buckminster Fuller</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 18 - 颗粒纸张 -->
+        <div class="card theme-grainy-paper">
+            <div class="card-content">
+                <h2 class="card-title">回归本质</h2>
+                <p class="card-text">去掉所有不必要的东西，剩下的就是本质。简约而不简单。</p>
+                <div class="card-source">— Antoine de Saint-Exupéry</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 19 - 磨砂玻璃 -->
+        <div class="card theme-frosted-glass">
+            <div class="card-content">
+                <h2 class="card-title">朦胧之美</h2>
+                <p class="card-text">有时候，适度的抽象比过度的具体更有价值。</p>
+                <div class="card-source">— Alan Kay</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 20 - 渐变闪光 -->
+        <div class="card theme-gradient-shimmer">
+            <div class="card-content">
+                <h2 class="card-title">创造未来</h2>
+                <p class="card-text">预测未来的最好方式，就是去创造它。</p>
+                <div class="card-source">— Alan Kay</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 21 - 黑金主题1 -->
+        <div class="card theme-black-gold-1">
+            <div class="card-content">
+                <h2 class="card-title">黄金法则</h2>
+                <p class="card-text">代码质量的黄金法则：别人能读懂的代码才是好代码。</p>
+                <div class="card-source">— Robert C. Martin</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 22 - 黑金主题2 -->
+        <div class="card theme-black-gold-2">
+            <div class="card-content">
+                <h2 class="card-title">极致追求</h2>
+                <p class="card-text">卓越不是行为，而是习惯。每一次提交都是品质的体现。</p>
+                <div class="card-source">— Aristotle</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 23 - 黑金主题3 -->
+        <div class="card theme-black-gold-3">
+            <div class="card-content">
+                <h2 class="card-title">架构之道</h2>
+                <p class="card-text">优秀的架构如同黄金般珍贵，需要时间打磨，经得起考验。</p>
+                <div class="card-source">— Martin Fowler</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 24 - 黑金主题4 -->
+        <div class="card theme-black-gold-4">
+            <div class="card-content">
+                <h2 class="card-title">沉默的力量</h2>
+                <p class="card-text">真正强大的系统，不在于它有多复杂，而在于它能保持多久的稳定。</p>
+                <div class="card-source">— 《Unix编程艺术》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 25 - 黑金主题5 -->
+        <div class="card theme-black-gold-5">
+            <div class="card-content">
+                <h2 class="card-title">精英思维</h2>
+                <p class="card-text">顶尖工程师和普通工程师的区别，不在于技术，而在于思维方式。</p>
+                <div class="card-source">— Jeff Atwood</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 26 - 黑金主题6 -->
+        <div class="card theme-black-gold-6">
+            <div class="card-content">
+                <h2 class="card-title">王者之路</h2>
+                <p class="card-text">成为领域专家的路上没有捷径，只有日复一日的深耕和积累。</p>
+                <div class="card-source">— Malcolm Gladwell</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 27 - 黑金主题7 -->
+        <div class="card theme-black-gold-7">
+            <div class="card-content">
+                <h2 class="card-title">奢华简约</h2>
+                <p class="card-text">真正的奢华是简约，真正的力量是克制。少即是多。</p>
+                <div class="card-source">— Dieter Rams</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 28 - 黑金主题8 -->
+        <div class="card theme-black-gold-8">
+            <div class="card-content">
+                <h2 class="card-title">暗夜骑士</h2>
+                <p class="card-text">在黑暗中编码的人，心中必有光明。每一行代码都是对未来的承诺。</p>
+                <div class="card-source">— 《黑客与画家》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 29 - 黑金主题9 -->
+        <div class="card theme-black-gold-9">
+            <div class="card-content">
+                <h2 class="card-title">锻造传奇</h2>
+                <p class="card-text">伟大的软件如同传世之作，需要匠心独运，千锤百炼。</p>
+                <div class="card-source">— Michelangelo</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 30 - 黑金主题10 -->
+        <div class="card theme-black-gold-10">
+            <div class="card-content">
+                <h2 class="card-title">至尊荣耀</h2>
+                <p class="card-text">代码是工程师的名片，用品质书写荣耀，用实力赢得尊重。</p>
+                <div class="card-source">— Elon Musk</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 31 - 名信片主题1 -->
+        <div class="card theme-postcard-1">
+            <div class="card-content">
+                <h2 class="card-title">远方的问候</h2>
+                <p class="card-text">每一行代码都是一封发往未来的明信片，承载着我们的思考与希望。</p>
+                <div class="card-source">— 致未来的自己</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 32 - 名信片主题2 -->
+        <div class="card theme-postcard-2">
+            <div class="card-content">
+                <h2 class="card-title">旅行者日志</h2>
+                <p class="card-text">编程之旅如同环游世界，每个项目都是一个新的目的地。</p>
+                <div class="card-source">— 《代码游记》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 33 - 名信片主题3 -->
+        <div class="card theme-postcard-3">
+            <div class="card-content">
+                <h2 class="card-title">跨越时空</h2>
+                <p class="card-text">好的代码能跨越时空，即使多年后依然清晰易懂。</p>
+                <div class="card-source">— 《时间的朋友》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 34 - 名信片主题4 -->
+        <div class="card theme-postcard-4">
+            <div class="card-content">
+                <h2 class="card-title">飞跃梦想</h2>
+                <p class="card-text">技术让梦想飞翔，创新让世界改变。永远相信美好的事情即将发生。</p>
+                <div class="card-source">— 追梦人</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 35 - 名信片主题5 -->
+        <div class="card theme-postcard-5">
+            <div class="card-content">
+                <h2 class="card-title">记忆碎片</h2>
+                <p class="card-text">每个bug都是一个故事，每次修复都是一段回忆。</p>
+                <div class="card-source">— 《程序人生》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 36 - 名信片主题6 -->
+        <div class="card theme-postcard-6">
+            <div class="card-content">
+                <h2 class="card-title">寄往明天</h2>
+                <p class="card-text">今天写下的代码，是寄给明天的礼物。用心编写，未来可期。</p>
+                <div class="card-source">— 明日之星</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 37 - 名信片主题7 -->
+        <div class="card theme-postcard-7">
+            <div class="card-content">
+                <h2 class="card-title">两面之间</h2>
+                <p class="card-text">前端与后端，设计与实现，梦想与现实，在平衡中寻找最优解。</p>
+                <div class="card-source">— 《全栈之道》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 38 - 名信片主题8 -->
+        <div class="card theme-postcard-8">
+            <div class="card-content">
+                <h2 class="card-title">岁月留痕</h2>
+                <p class="card-text">代码库里的每一次提交，都是岁月留下的痕迹和成长的见证。</p>
+                <div class="card-source">— Git日志</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 39 - 名信片主题9 -->
+        <div class="card theme-postcard-9">
+            <div class="card-content">
+                <h2 class="card-title">异乡人</h2>
+                <p class="card-text">在代码的世界里，我们都是异乡人，用键盘书写着属于自己的史诗。</p>
+                <div class="card-source">— 《代码诗人》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 40 - 名信片主题10 -->
+        <div class="card theme-postcard-10">
+            <div class="card-content">
+                <h2 class="card-title">归途</h2>
+                <p class="card-text">写代码如同旅行，最美的不是终点，而是沿途的风景和收获。</p>
+                <div class="card-source">— 《代码之旅》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 41 - 信纸主题1 -->
+        <div class="card theme-letter-1">
+            <div class="card-content">
+                <h2 class="card-title">致敬经典</h2>
+                <p class="card-text">经典的代码如同手写的信笺，字里行间流淌着工程师的智慧与用心。</p>
+                <div class="card-source">— 《代码遗产》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 42 - 信纸主题2 -->
+        <div class="card theme-letter-2">
+            <div class="card-content">
+                <h2 class="card-title">笔记本</h2>
+                <p class="card-text">好的代码注释就像笔记本上的批注，帮助我们理解过去的思考。</p>
+                <div class="card-source">— 《编程笔记》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 43 - 信纸主题3 -->
+        <div class="card theme-letter-3">
+            <div class="card-content">
+                <h2 class="card-title">正式函件</h2>
+                <p class="card-text">规范的代码如同正式的公文，严谨、清晰、一丝不苟。</p>
+                <div class="card-source">— 《代码规范》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 44 - 信纸主题4 -->
+        <div class="card theme-letter-4">
+            <div class="card-content">
+                <h2 class="card-title">页边笔记</h2>
+                <p class="card-text">边缘的灵感往往最珍贵，记录下来的随笔可能成为未来的突破口。</p>
+                <div class="card-source">— 《灵感笔记》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 45 - 信纸主题5 -->
+        <div class="card theme-letter-5">
+            <div class="card-content">
+                <h2 class="card-title">手写情书</h2>
+                <p class="card-text">用心写出的代码就像手写的情书，每个字符都饱含深情。</p>
+                <div class="card-source">— 《代码之恋》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 46 - 信纸主题6 -->
+        <div class="card theme-letter-6">
+            <div class="card-content">
+                <h2 class="card-title">信头装饰</h2>
+                <p class="card-text">优雅的代码结构如同精致的信头，第一眼就让人印象深刻。</p>
+                <div class="card-source">— 《代码美学》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 47 - 信纸主题7 -->
+        <div class="card theme-letter-7">
+            <div class="card-content">
+                <h2 class="card-title">竖线标记</h2>
+                <p class="card-text">清晰的界限让代码更易读，就像信纸上的竖线帮助我们写得更整齐。</p>
+                <div class="card-source">— 《格式之美》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 48 - 信纸主题8 -->
+        <div class="card theme-letter-8">
+            <div class="card-content">
+                <h2 class="card-title">书信往来</h2>
+                <p class="card-text">代码审查就像书信往来，在一来一往中提升彼此的水平。</p>
+                <div class="card-source">— 《Code Review》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 49 - 信纸主题9 -->
+        <div class="card theme-letter-9">
+            <div class="card-content">
+                <h2 class="card-title">草稿纸</h2>
+                <p class="card-text">原型和草稿同样重要，它们记录着思考的过程和创意的火花。</p>
+                <div class="card-source">— 《设计思维》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+
+        <!-- Card 50 - 信纸主题10 -->
+        <div class="card theme-letter-10">
+            <div class="card-content">
+                <h2 class="card-title">终章</h2>
+                <p class="card-text">每个项目都有终章，但优秀的代码会成为新故事的序章。</p>
+                <div class="card-source">— 《永恒的代码》</div>
+            </div>
+            <div class="card-footer">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 201.06 201.06" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M259.32,275.21c-37.47,0-49.64,20.5-53.59,50.89h13l35.62,54.28,35.38-54.28h43.42V426.75h17l-40.36,38.19-42.15-38.19H289V360.58l-42.72,66.17H242L203.83,369v6.78c0,55.52,0,100.53,55.49,100.53s145.57-45,145.57-100.53S314.84,275.21,259.32,275.21Z" transform="translate(-203.83 -275.21)"/>
+                        </svg>
+                    </div>
+                    <span>Built with MDFriday</span>
+                </div>
+                <a href="https://mdfriday.com" class="footer-link">mdfriday.com</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
