@@ -144,10 +144,11 @@
 
 	// Reactive block to update publish options
 	$: {
-		// Update publish options - always show all 6 options
+		// Update publish options - always show all 7 options
 		publishOptions = [
 			{ value: 'netlify', label: t('ui.publish_option_netlify') },
 			{ value: 'ftp', label: t('ui.publish_option_ftp') },
+			{ value: 'mdf-free', label: t('ui.publish_option_mdfriday_free') },
 			{ value: 'mdf-share', label: t('ui.publish_option_mdfriday_share') },
 			{ value: 'mdf-app', label: t('ui.publish_option_mdfriday_app') },
 			{ value: 'mdf-custom', label: t('ui.publish_option_mdfriday_custom') },
@@ -158,6 +159,13 @@
 	// Helper function to check if current publish option has required permission
 	function hasCurrentPublishPermission(): boolean {
 		const licenseState = plugin.licenseState;
+		
+		// mdf-free, netlify, and ftp don't require license
+		if (selectedPublishOption === 'mdf-free' || selectedPublishOption === 'netlify' || selectedPublishOption === 'ftp') {
+			return true;
+		}
+		
+		// Other options require valid license
 		if (!licenseState || !licenseState.isActivated() || licenseState.isExpired()) {
 			return false;
 		}
@@ -171,9 +179,6 @@
 				return licenseState.hasFeature('customDomain');
 			case 'mdf-enterprise':
 				return licenseState.getPlan() === 'enterprise' && !!plugin.settings.enterpriseServerUrl;
-			case 'netlify':
-			case 'ftp':
-				return true; // No license required for Netlify and FTP
 			default:
 				return false;
 		}
@@ -538,6 +543,7 @@
 
 		switch (method) {
 			case 'netlify':
+			case 'mdf-free':
 			case 'mdf-share':
 				// Return full URL as-is
 				return resultUrl;
@@ -1339,16 +1345,28 @@
 					accessToken: netlifyAccessToken,
 					siteId: netlifyProjectId
 				};
-			} else if (selectedPublishOption === 'ftp') {
-				publishConfig = {
-					type: 'ftp',
-					host: ftpServer,
-					port: 21, // Default FTP port
-					username: ftpUsername,
-					password: ftpPassword,
-					remotePath: ftpRemoteDir || '/',
-					secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true
-				};
+		} else if (selectedPublishOption === 'ftp') {
+			publishConfig = {
+				type: 'ftp',
+				host: ftpServer,
+				port: 21, // Default FTP port
+				username: ftpUsername,
+				password: ftpPassword,
+				remotePath: ftpRemoteDir || '/',
+				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true
+			};
+		} else if (selectedPublishOption === 'mdf-free') {
+			publishConfig = {
+				type: 'mdfriday',
+				deploymentType: 'free',
+				path: nameToId(projectName),
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			};
+
+			console.log("--990--", publishConfig);
 		} else if (selectedPublishOption === 'mdf-share') {
 			publishConfig = {
 				type: 'mdfriday',
@@ -2100,6 +2118,15 @@
 							</div>
 						{/if}
 					</div>
+				</div>
+			{/if}
+
+			<!-- MDFriday Free Info -->
+			{#if selectedPublishOption === 'mdf-free'}
+				<div class="publish-config">
+				<div class="field-hint">
+					{t('ui.mdfriday_free_hint')}
+				</div>
 				</div>
 			{/if}
 

@@ -860,10 +860,12 @@ export default class FridayPlugin extends Plugin {
 		
 		// Calculate baseURL
 		let baseURL = '/';
-		if (publishMethod === 'mdf-share') {
+		const previewId = nameToId(projectName);
+		if (publishMethod === 'mdf-free') {
+			baseURL = `/f/${previewId}`;
+		} else if (publishMethod === 'mdf-share') {
 			const userDir = this.settings.licenseUser?.userDir || '';
 			if (userDir) {
-				const previewId = nameToId(projectName);
 				baseURL = `/s/${userDir}/${previewId}`;
 			}
 		}

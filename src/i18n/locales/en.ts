@@ -118,6 +118,7 @@ export const en: TranslationNamespace = {
 		publish_settings: "Publish Settings",
 	publish_method: "Publish Method",
 	publish_method_desc: "Choose how you want to publish your site",
+	publish_method_mdfriday_free: "MDFriday Free",
 	publish_method_mdfriday_share: "MDFriday Share",
 	publish_method_mdfriday: "MDFriday Subdomain",
 	publish_method_mdfriday_custom: "MDFriday Custom Domain",
@@ -166,6 +167,10 @@ export const en: TranslationNamespace = {
 	// MDFriday Subdomain Settings
 	mdfriday_app: "MDFriday Subdomain",
 	mdfriday_app_desc: "Configure your personal subdomain for publishing sites",
+	
+	// MDFriday Free Settings
+	mdfriday_free: "MDFriday Free",
+	mdfriday_free_desc: "Free publishing for your site. Published content is valid for 24 hours and automatically expires. Perfect for temporary sharing and preview.",
 	
 	// MDFriday Share Settings
 	mdfriday_share: "MDFriday Share",
@@ -304,12 +309,14 @@ export const en: TranslationNamespace = {
 		// Publish section
 		publish: "Publish",
 		publish_method: "Publish Method",
+		publish_option_mdfriday_free: "MDFriday Free",
 		publish_option_mdfriday_share: "MDFriday Share",
 		publish_option_mdfriday_app: "MDFriday Subdomain",
 		publish_option_mdfriday_custom: "MDFriday Custom Domain",
 		publish_option_mdfriday_enterprise: "MDFriday Enterprise",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP Upload",
+		mdfriday_free_hint: "MDFriday Free allows you to publish your site for free. Published content is valid for 24 hours and automatically expires.",
 		mdfriday_share_hint: "MDFriday Share allows you to share your site instantly. Your site will be published to your personal MDFriday space.",
 		mdfriday_app_hint: "MDFriday Subdomain publishes your site to your personal subdomain. Your site will be available at your-subdomain.mdfriday.com.",
 		mdfriday_custom_hint: "MDFriday Custom Domain publishes your site to your custom domain. Make sure DNS is configured correctly.",

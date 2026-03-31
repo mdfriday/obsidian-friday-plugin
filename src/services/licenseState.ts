@@ -60,12 +60,7 @@ export class LicenseStateManager {
 			}
 			
 			this.authStatus = authResult.data;
-			console.log('[LicenseState] Auth status:', {
-				isAuthenticated: this.authStatus.isAuthenticated,
-				hasLicense: !!this.authStatus.license,
-				email: this.authStatus.email,
-				hasSyncConfig: this.authStatus.hasSyncConfig
-			});
+			console.log('[LicenseState] Auth status:', this.authStatus);
 			
 			// 2. 判断是否已激活
 			if (!this.authStatus.isAuthenticated || !this.authStatus.license) {

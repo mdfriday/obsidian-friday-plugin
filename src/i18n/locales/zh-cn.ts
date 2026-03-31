@@ -118,6 +118,7 @@ export const zhCn: TranslationNamespace = {
 		publish_settings: "发布设置",
 	publish_method: "发布方式",
 	publish_method_desc: "选择您想要发布网站的方式",
+	publish_method_mdfriday_free: "MDFriday 免费版",
 	publish_method_mdfriday_share: "MDFriday 分享",
 	publish_method_mdfriday: "MDFriday 子域名",
 	publish_method_mdfriday_custom: "MDFriday 自定义域名",
@@ -164,6 +165,10 @@ export const zhCn: TranslationNamespace = {
 	// MDFriday 子域名设置
 	mdfriday_app: "MDFriday 子域名",
 	mdfriday_app_desc: "配置您的个人子域名，用于发布站点",
+	
+	// MDFriday 免费版设置
+	mdfriday_free: "MDFriday 免费版",
+	mdfriday_free_desc: "免费发布您的站点。发布的站点内容有效期为 24 小时，过期后自动失效。适合临时分享和预览。",
 	
 	// MDFriday 分享设置
 	mdfriday_share: "MDFriday 分享",
@@ -295,12 +300,14 @@ export const zhCn: TranslationNamespace = {
 		// Publish section
 		publish: "发布",
 		publish_method: "发布方式",
+		publish_option_mdfriday_free: "MDFriday 免费版",
 		publish_option_mdfriday_share: "MDFriday 分享",
 		publish_option_mdfriday_app: "MDFriday 子域名",
 		publish_option_mdfriday_custom: "MDFriday 自定义域名",
 		publish_option_mdfriday_enterprise: "MDFriday 企业版",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP 上传",
+		mdfriday_free_hint: "MDFriday 免费版允许您免费发布站点。发布的站点内容有效期为 24 小时，过期后自动失效。",
 		mdfriday_share_hint: "MDFriday 分享允许您即时分享站点。您的站点将发布到您的个人 MDFriday 空间。",
 		mdfriday_app_hint: "MDFriday 子域名将您的站点发布到个人子域名。您的站点将可通过 your-subdomain.mdfriday.com 访问。",
 		mdfriday_custom_hint: "MDFriday 自定义域名将您的站点发布到您的自定义域名。请确保 DNS 已正确配置。",

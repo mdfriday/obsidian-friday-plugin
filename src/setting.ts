@@ -71,6 +71,7 @@ export class FridaySettingTab extends PluginSettingTab {
 		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.publish_settings')});
 		
 	// Create containers for dynamic content
+	let mdfridayFreeContainer: HTMLElement;
 	let mdfridayShareContainer: HTMLElement;
 	let mdfridaySettingsContainer: HTMLElement;
 	let mdfridayCustomDomainContainer: HTMLElement;
@@ -84,6 +85,7 @@ export class FridaySettingTab extends PluginSettingTab {
 		.setDesc(this.plugin.i18n.t('settings.publish_method_desc'))
 		.addDropdown((dropdown) => {
 			dropdown
+				.addOption('mdf-free', this.plugin.i18n.t('settings.publish_method_mdfriday_free'))
 				.addOption('mdf-share', this.plugin.i18n.t('settings.publish_method_mdfriday_share'))
 				.addOption('mdf-app', this.plugin.i18n.t('settings.publish_method_mdfriday'))
 				.addOption('mdf-custom', this.plugin.i18n.t('settings.publish_method_mdfriday_custom'))
@@ -92,13 +94,14 @@ export class FridaySettingTab extends PluginSettingTab {
 				.addOption('ftp', this.plugin.i18n.t('settings.publish_method_ftp'))
 				.setValue(publishMethod || 'mdf-share')
 				.onChange(async (value) => {
-					this.plugin.settings.publishMethod = value as 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp';
+					this.plugin.settings.publishMethod = value as 'mdf-free' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp';
 					await this.plugin.saveSettings();
-					showPublishSettings(value as 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp');
+					showPublishSettings(value as 'mdf-free' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp');
 				});
 		});
 
 	// Create containers for different publish methods
+	mdfridayFreeContainer = containerEl.createDiv('mdfriday-free-container');
 	mdfridayShareContainer = containerEl.createDiv('mdfriday-share-container');
 	mdfridaySettingsContainer = containerEl.createDiv('mdfriday-settings-container');
 	mdfridayCustomDomainContainer = containerEl.createDiv('mdfriday-custom-domain-container');
@@ -110,11 +113,14 @@ export class FridaySettingTab extends PluginSettingTab {
 	// Note: 'mdf-share' and 'mdf-app' from Site.svelte map to 'mdfriday' settings container
 	// 'mdf-custom' maps to 'mdfridayCustomDomainContainer'
 	// 'mdf-enterprise' maps to 'mdfridayEnterpriseContainer'
-	const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise') => {
+	// 'mdf-free' maps to 'mdfridayFreeContainer'
+	const showPublishSettings = (method: 'mdfriday' | 'netlify' | 'ftp' | 'mdf-free' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise') => {
+		const isMdfridayFree = method === 'mdf-free';
 		const isMdfridayShare = method === 'mdf-share';
 		const isMdfriday = method === 'mdfriday' || method === 'mdf-app';
 		const isMdfridayCustom = method === 'mdf-custom';
 		const isMdfridayEnterprise = method === 'mdf-enterprise';
+		mdfridayFreeContainer.style.display = isMdfridayFree ? 'block' : 'none';
 		mdfridayShareContainer.style.display = isMdfridayShare ? 'block' : 'none';
 		mdfridaySettingsContainer.style.display = isMdfriday ? 'block' : 'none';
 		mdfridayCustomDomainContainer.style.display = isMdfridayCustom ? 'block' : 'none';
@@ -122,6 +128,17 @@ export class FridaySettingTab extends PluginSettingTab {
 		netlifySettingsContainer.style.display = method === 'netlify' ? 'block' : 'none';
 		ftpSettingsContainer.style.display = method === 'ftp' ? 'block' : 'none';
 	};
+
+	// =========================================
+	// MDFriday Free Settings
+	// =========================================
+	mdfridayFreeContainer.createEl("h3", {text: this.plugin.i18n.t('settings.mdfriday_free')});
+	
+	// MDFriday Free is available to everyone (no license check needed)
+	// Show description for MDFriday Free
+	new Setting(mdfridayFreeContainer)
+		.setName(this.plugin.i18n.t('settings.mdfriday_free'))
+		.setDesc(this.plugin.i18n.t('settings.mdfriday_free_desc'));
 
 	// =========================================
 	// MDFriday Share Settings

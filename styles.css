@@ -750,6 +750,7 @@
 }
 
 /* src/styles/publish-settings.css */
+.mdfriday-free-container,
 .mdfriday-share-container,
 .mdfriday-settings-container,
 .mdfriday-custom-domain-container,
@@ -762,6 +763,7 @@
   border-radius: 8px;
   background-color: var(--background-secondary);
 }
+.mdfriday-free-container h3,
 .mdfriday-share-container h3,
 .mdfriday-settings-container h3,
 .mdfriday-custom-domain-container h3,

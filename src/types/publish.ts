@@ -9,6 +9,7 @@
 export type PublishMethod = 
 	| 'netlify'           // Netlify 发布
 	| 'ftp'               // FTP 发布
+	| 'mdf-free'          // MDFriday Free（免费版，24小时有效期）
 	| 'mdf-share'         // MDFriday Share（快速分享）
 	| 'mdf-app'           // MDFriday App（子域名发布）
 	| 'mdf-custom'        // MDFriday 自定义域名
@@ -21,6 +22,7 @@ export type PublishMethod =
 export type ValidPublishMethod = 
 	| 'netlify'
 	| 'ftp'
+	| 'mdf-free'
 	| 'mdf-share'
 	| 'mdf-app'
 	| 'mdf-custom'
@@ -32,6 +34,7 @@ export type ValidPublishMethod =
 export const VALID_PUBLISH_METHODS: readonly ValidPublishMethod[] = [
 	'netlify',
 	'ftp',
+	'mdf-free',
 	'mdf-share',
 	'mdf-app',
 	'mdf-custom',
@@ -77,6 +80,7 @@ export function normalizePublishMethod(method: PublishMethod | string): ValidPub
 export const PUBLISH_METHOD_LABELS: Record<ValidPublishMethod, string> = {
 	'netlify': 'Netlify',
 	'ftp': 'FTP',
+	'mdf-free': 'MDFriday Free',
 	'mdf-share': 'MDFriday Share',
 	'mdf-app': 'MDFriday App',
 	'mdf-custom': 'MDFriday Custom Domain',
