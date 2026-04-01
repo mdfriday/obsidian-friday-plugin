@@ -9,17 +9,25 @@
 </script>
 
 <div class="mdf-info">
-	{t('info.service_description')}
-	<br />
-	<br />
-	<a href="https://mdfriday.com" target="_blank">
-		<img src="https://gohugo.net/mdfriday.svg" alt="MDFriday" width="20" height="20" />
-	</a>
+	<span class="info-text">{t('info.tagline')}</span>
+	<p style="margin-top: 5px;">
+		<a href="https://mdfriday.com" target="_blank">
+			<img src="https://gohugo.net/mdfriday.svg" alt="MDFriday" width="15" height="15" />
+		</a>
+	</p>
 </div>
 
 <style>
 	.mdf-info {
-		font-size: 0.9em;
+		padding: 20px 0;
 		text-align: center;
+	}
+
+	.info-text {
+		font-size: 11px;
+		color: var(--text-muted);
+		line-height: 1.4;
+		opacity: 0.7;
+		letter-spacing: 0.02em;
 	}
 </style>

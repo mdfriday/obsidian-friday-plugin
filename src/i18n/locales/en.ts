@@ -306,6 +306,17 @@ export const en: TranslationNamespace = {
 		exporting: "Exporting...",
 		export_site_dialog_title: "Save Site Archive",
 
+		// Quick publish panel
+		current_content: "Current Content",
+		open_in_browser: "Open in browser",
+		open: "Open",
+		copy_url: "Copy URL",
+		copy: "Copy",
+		realtime_publishing: "Realtime Publishing...",
+		auto_publish: "Auto Publish",
+		settings: "Settings",
+		publish_config: "Publish Configuration",
+
 		// Publish section
 		publish: "Publish",
 		publish_method: "Publish Method",
@@ -410,6 +421,7 @@ export const en: TranslationNamespace = {
 		quick_share_desktop_only: "Quick share is only available on desktop",
 		preview_url_copied: "Preview URL copied to clipboard",
 		publish_url_copied: "Publish URL copied to clipboard",
+		url_copied_to_clipboard: "URL copied to clipboard!",
 		build_started: "Build started",
 		build_completed: "Build completed successfully",
 		build_failed: "Build failed",
@@ -492,6 +504,7 @@ export const en: TranslationNamespace = {
 		service_description:
 			"You own it — your notes, your themes, your cloud.\n" +
 			"MDFriday lets you build and publish with full control.",
+		tagline: "专注创作，一键发布，本地优先尽在掌控",
 		learn_more: "Learn more",
 	},
 

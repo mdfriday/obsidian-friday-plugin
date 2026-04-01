@@ -285,6 +285,17 @@ export const zhCn: TranslationNamespace = {
 		download_sample: "下载样例",
 		downloading_sample: "下载中...",
 
+		// Quick publish panel
+		current_content: "当前内容",
+		open_in_browser: "在浏览器中打开",
+		open: "打开",
+		copy_url: "拷贝地址",
+		copy: "拷贝",
+		realtime_publishing: "实时发布中...",
+		auto_publish: "自动发布",
+		settings: "设置",
+		publish_config: "发布配置",
+
 		// Preview section
 		preview: "预览",
 		preview_building: "正在构建预览...",
@@ -401,6 +412,7 @@ export const zhCn: TranslationNamespace = {
 		quick_share_desktop_only: "快速分享仅在桌面版本可用",
 		preview_url_copied: "预览链接已复制到剪贴板",
 		publish_url_copied: "发布链接已复制到剪贴板",
+		url_copied_to_clipboard: "链接已复制到剪贴板！",
 		build_started: "开始构建",
 		build_completed: "构建成功完成",
 		build_failed: "构建失败",
@@ -480,6 +492,7 @@ export const zhCn: TranslationNamespace = {
 		service_description:
 			"你的数据，你掌控 —— 你的笔记、你的主题、你的云端。\n" +
 			"MDFriday 让你自由构建与发布，完全掌握全流程。",
+		tagline: "专注创作，一键发布，本地优先尽在掌控",
 		learn_more: "了解更多",
 	},
 

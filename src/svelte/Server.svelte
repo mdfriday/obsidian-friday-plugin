@@ -37,7 +37,6 @@
 				>
 					<Site {app} {plugin} />
 					
-					<hr class="centered-line">
 					<Info {plugin}/>
 				</div>
 		</div>
@@ -52,15 +51,6 @@
 		position: initial;
 		overflow-y: initial;
 		overflow-wrap: initial;
-	}
-
-	.centered-line {
-		width: 80%; /* 分隔线宽度占父容器的 80% */
-		margin: 20px auto; /* 水平居中对齐 */
-		border: none; /* 去掉默认的边框样式 */
-		border-top: 1px solid rgb(64 64 64); /* 顶部边框作为分隔线 */
-		height: 1px; /* 分隔线高度 */
-		background-color: transparent; /* 确保背景透明 */
 	}
 
 	.friday-tab-content {

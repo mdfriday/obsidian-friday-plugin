@@ -88,6 +88,11 @@
 	let googleAnalyticsId = '';
 	let disqusShortname = '';
 	let sitePassword = '';
+	
+	// UI state for new layout
+	let autoPublishEnabled = false;
+	let showSettingsPanel = false; // Settings panel collapsed by default
+	let showAdvancedInSettings = false; // Advanced settings in settings panel collapsed
 
 	let themesDir = ''; // Directory for themes
 
@@ -359,13 +364,13 @@
 						if (themeUrl.includes('book')) {
 							selectedThemeName = BOOK_THEME_NAME;
 							selectedThemeId = BOOK_THEME_ID;
-						} else if (themeUrl.includes('note')) {
-							selectedThemeName = NOTE_THEME_NAME;
-							selectedThemeId = NOTE_THEME_ID;
-						} else if (themeUrl.includes('quartz')) {
-							selectedThemeName = 'Quartz';
-							selectedThemeId = 17;
-						}
+					} else if (themeUrl.includes('note')) {
+						selectedThemeName = NOTE_THEME_NAME;
+						selectedThemeId = NOTE_THEME_ID;
+					} else if (themeUrl.includes('quartz')) {
+						selectedThemeName = 'Quartz';
+						selectedThemeId = "17";
+					}
 						console.warn('[Site] Theme not found by URL, used fallback:', themeUrl);
 					}
 				} catch (error) {
@@ -1730,7 +1735,7 @@
 					}
 				} else if (item.isFile()) {
 					const fileContent = await fs.promises.readFile(itemPath);
-					zipFolder.file(item.name, fileContent);
+					zipFolder.file(item.name, new Uint8Array(fileContent));
 				}
 			}
 		};
@@ -1740,624 +1745,774 @@
 		// Generate ZIP file
 		return await zip.generateAsync({ type: 'uint8array' });
 	}
+
+	// Open publish URL in browser
+	function openPublishUrl() {
+		if (publishUrl) {
+			window.open(publishUrl, '_blank');
+		}
+	}
+
+	// Copy publish URL to clipboard
+	async function copyPublishUrl() {
+		if (publishUrl) {
+			try {
+				await navigator.clipboard.writeText(publishUrl);
+				new Notice(t('messages.url_copied_to_clipboard') || 'URL copied to clipboard!');
+			} catch (error) {
+				console.error('Failed to copy URL:', error);
+				new Notice('Failed to copy URL');
+			}
+		}
+	}
+
+	// Get display content path (relative to vault root)
+	function getDisplayContentPath(): string {
+		if (currentContents.length === 0) {
+			return t('ui.no_content_selected') || 'No content selected';
+		}
+		const content = currentContents[0];
+		if (content.folder) {
+			return content.folder.path;
+		} else if (content.file) {
+			return content.file.path;
+		}
+		return '';
+	}
+
+	// Get content icon type
+	function getContentIconType(): 'file' | 'folder' | null {
+		if (currentContents.length === 0) return null;
+		const content = currentContents[0];
+		if (content.folder) return 'folder';
+		if (content.file) return 'file';
+		return null;
+	}
 </script>
 
 <div class="site-builder">
-	<!-- Multi-language Content Section -->
-	<div class="section">
-		<div class="section-label">{t('ui.multilingual_content')}</div>
-		<div class="multilang-table">
-			<div class="multilang-header">
-				<div class="multilang-header-cell">{t('ui.content_path')}</div>
-				<div class="multilang-header-cell">
-					<span>{t('ui.language')}</span>
-					{#if currentContents.length > 0}
-						<button 
-							class="add-language-btn"
-							on:click={clearAllContent}
-							title={t('ui.clear_all_content')}
-						>
-							{t('ui.clear')}
-						</button>
-					{/if}
-				</div>
-			</div>
-			{#each currentContents as content (content.id)}
-				<div class="multilang-row" class:removable={currentContents.length > 1}>
-					<div class="multilang-cell content-path-cell">
-						<span class="content-path">
-							{content.folder ? content.folder.name : content.file ? content.file.name : t('ui.no_content_selected')}
-						</span>
-						{#if content.weight === 1}
-							<span class="default-badge">{t('ui.default')}</span>
-						{/if}
-					</div>
-					<div class="multilang-cell language-cell">
-						<select 
-							class="language-select"
-							value={content.languageCode}
-							on:change={(e) => updateLanguageCode(content.id, e.currentTarget.value)}
-						>
-							{#each SUPPORTED_LANGUAGES as lang}
-								<option value={lang.code}>{lang.name} ({lang.englishName})</option>
-							{/each}
-						</select>
-						{#if currentContents.length > 1}
-							<button 
-								class="remove-btn"
-								on:click={() => removeLanguageContent(content.id)}
-								title={t('ui.remove_language')}
-							>
-								<span class="remove-icon">×</span>
-							</button>
-						{/if}
-					</div>
-				</div>
-			{/each}
-			{#if currentContents.length === 0}
-				<div class="multilang-empty">
-					<span class="empty-message">{t('ui.no_content_selected_hint')}</span>
-				</div>
-			{/if}
+	<!-- Quick Publish Panel -->
+	<div class="quick-publish-panel">
+		<!-- Header with Logo -->
+		<div class="panel-header">
+			<img src="https://gohugo.net/mdfriday.svg" alt="MDFriday" class="mdfriday-logo" width="20" height="20" />
+			<span class="panel-title">MDFriday</span>
 		</div>
-	</div>
 
-
-	<!-- Site Name -->
-	<div class="section">
-		<label class="section-label" for="site-name">{t('ui.site_name')}</label>
-		<input
-			type="text"
-			class="form-input"
-		bind:value={siteName}
-		on:blur={() => saveFoundryConfig('title', siteName)}
-		placeholder={t('ui.site_name_placeholder')}
-		/>
-	</div>
-
-	<!-- Site Assets -->
-	<div class="section">
-		<div class="section-label">{t('ui.site_assets')}</div>
-		<div class="site-assets-container">
-			<div class="assets-display">
-				{#if currentAssets}
-					<span class="assets-path">{currentAssets.folder?.name || currentAssets.path}</span>
-					<button 
-						class="clear-assets-btn"
-						on:click={clearSiteAssets}
-						title={t('ui.clear_assets')}
-					>
-						{t('ui.clear_assets')}
-					</button>
+		<!-- Current Content Display -->
+		<div class="current-content">
+			<div class="content-label">{t('ui.current_content') || 'Current Content'}</div>
+			<div class="content-display">
+				{#if currentContents.length > 0}
+					{@const iconType = getContentIconType()}
+					{#if iconType === 'folder'}
+						<svg class="content-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+						</svg>
+					{:else if iconType === 'file'}
+						<svg class="content-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+							<polyline points="14 2 14 8 20 8"></polyline>
+						</svg>
+					{/if}
+					<span class="content-path">{getDisplayContentPath()}</span>
 				{:else}
-					<span class="assets-placeholder">{t('ui.site_assets_placeholder')}</span>
+					<span class="content-empty">{t('ui.no_content_selected_hint')}</span>
 				{/if}
 			</div>
-			<div class="assets-hint">
-				{t('ui.site_assets_hint')}
-			</div>
 		</div>
-	</div>
 
-	<!-- Advanced Settings -->
-	<div class="section">
-		<div class="advanced-settings">
-			<button 
-				class="advanced-toggle" 
-				on:click={toggleAdvancedSettings}
-				aria-expanded={showAdvancedSettings}
-			>
-				<span class="toggle-icon" class:expanded={showAdvancedSettings}>▶</span>
-{t('ui.advanced_settings')}
-			</button>
-			
-			{#if showAdvancedSettings}
-				<div class="advanced-content">
-					<div class="advanced-field">
-						<label class="section-label" for="site-path">{t('ui.site_path')}</label>
-						<input
-							type="text"
-							class="form-input"
-							bind:value={sitePath}
-							on:blur={handleSitePathChange}
-							placeholder={t('ui.site_path_placeholder')}
-							title={t('ui.site_path_hint')}
-						/>
-						<div class="field-hint">
-							{t('ui.site_path_hint')}
-						</div>
+		<!-- Publish Status Area -->
+		<div class="publish-status-area">
+			{#if isPublishing}
+				<!-- Publishing in progress -->
+				<div class="status-publishing">
+					<div class="status-text">{t('ui.publish_building')}</div>
+					<ProgressBar progress={publishProgress} />
+				</div>
+			{:else if publishSuccess && publishUrl}
+				<!-- Published successfully with URL -->
+				<div class="status-success">
+					<div class="status-text success">✓ {t('ui.published_successfully')}</div>
+					<a href={publishUrl} target="_blank" class="publish-url-display">{publishUrl}</a>
+					<div class="url-actions">
+						<button class="url-action-btn" on:click={openPublishUrl} title={t('ui.open_in_browser') || 'Open in browser'}>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+								<polyline points="15 3 21 3 21 9"></polyline>
+								<line x1="10" y1="14" x2="21" y2="3"></line>
+							</svg>
+							<span>{t('ui.open') || 'Open'}</span>
+						</button>
+						<button class="url-action-btn" on:click={copyPublishUrl} title={t('ui.copy_url') || 'Copy URL'}>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+								<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+							</svg>
+							<span>{t('ui.copy') || 'Copy'}</span>
+						</button>
 					</div>
-
-					<div class="advanced-field">
-						<label class="section-label" for="site-password">{t('ui.site_password')}</label>
-						<input
-							type="password"
-							class="form-input"
-						bind:value={sitePassword}
-						on:blur={() => saveFoundryConfig('params.password', sitePassword)}
-						placeholder={t('ui.site_password_placeholder')}
-						title={t('ui.site_password_hint')}
-						/>
-						<div class="field-hint">
-							{t('ui.site_password_hint')}
-						</div>
-					</div>
-
-					<div class="advanced-field">
-						<label class="section-label" for="google-analytics">{t('ui.google_analytics_id')}</label>
-						<input
-							type="text"
-							class="form-input"
-						bind:value={googleAnalyticsId}
-						on:blur={() => saveFoundryConfig('services.googleAnalytics.id', googleAnalyticsId)}
-						placeholder={t('ui.google_analytics_placeholder')}
-						title={t('ui.google_analytics_hint')}
-						/>
-						<div class="field-hint">
-							{t('ui.google_analytics_hint')}
-						</div>
-					</div>
-
-					<div class="advanced-field">
-						<label class="section-label" for="disqus-shortname">{t('ui.disqus_shortname')}</label>
-						<input
-							type="text"
-							class="form-input"
-						bind:value={disqusShortname}
-						on:blur={() => saveFoundryConfig('params.disqusShortname', disqusShortname)}
-						placeholder={t('ui.disqus_placeholder')}
-						title={t('ui.disqus_hint')}
-						/>
-						<div class="field-hint">
-							{t('ui.disqus_hint')}
-						</div>
-					</div>
+				</div>
+			{:else if publishSuccess && selectedPublishOption === 'ftp'}
+				<!-- FTP success (no URL) -->
+				<div class="status-success">
+					<div class="status-text success">✓ {t('messages.ftp_upload_success')}</div>
 				</div>
 			{/if}
 		</div>
+
+		<!-- Publish Actions -->
+		<div class="publish-actions-row">
+			<button
+				class="quick-publish-btn"
+				on:click={startPublish}
+				disabled={!hasPreview || isPublishDisabled || isPublishing}
+			>
+				{#if autoPublishEnabled && isPublishing}
+					{t('ui.realtime_publishing') || 'Publishing...'}
+				{:else}
+					{t('ui.publish')}
+				{/if}
+			</button>
+			<label class="auto-publish-toggle">
+				<input
+					type="checkbox"
+					class="toggle-checkbox"
+					bind:checked={autoPublishEnabled}
+				/>
+				<span class="toggle-label">{t('ui.auto_publish') || 'Auto Publish'}</span>
+			</label>
+		</div>
 	</div>
 
-	<!-- Theme Selection -->
-	<div class="section">
-		<label class="section-label" for="themes">{t('ui.theme')}</label>
-		<div class="theme-selector">
-			<div class="current-theme">
-				<span class="theme-name">{displayThemeName}</span>
-				<div class="theme-actions">
-					<button class="change-theme-btn" on:click={openThemeModal}>
-						{t('ui.change_theme')}
-					</button>
-					{#if currentThemeWithSample && currentThemeWithSample.demo_notes_url}
-						{#if isDownloadingSample}
-							<div class="sample-download-progress">
-								<span class="progress-text">{t('ui.downloading_sample')}</span>
-								<ProgressBar progress={sampleDownloadProgress} />
+	<!-- Settings Panel (Collapsible) -->
+	<div class="settings-panel">
+		<button 
+			class="panel-toggle setting-item-control" 
+			on:click={() => showSettingsPanel = !showSettingsPanel}
+			aria-expanded={showSettingsPanel}
+		>
+			<svg class="collapse-icon" class:is-collapsed={!showSettingsPanel} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<polyline points="6 9 12 15 18 9"></polyline>
+			</svg>
+			<span class="setting-item-name">{t('ui.settings') || 'Settings'}</span>
+		</button>
+		
+		{#if showSettingsPanel}
+			<div class="panel-content">
+				<!-- Multi-language Content -->
+				<div class="settings-section">
+					<div class="section-label">{t('ui.multilingual_content')}</div>
+					<div class="multilang-table">
+						<div class="multilang-header">
+							<div class="multilang-header-cell">{t('ui.content_path')}</div>
+							<div class="multilang-header-cell">
+								<span>{t('ui.language')}</span>
+								{#if currentContents.length > 0}
+									<button 
+										class="add-language-btn"
+										on:click={clearAllContent}
+										title={t('ui.clear_all_content')}
+									>
+										{t('ui.clear')}
+									</button>
+								{/if}
+							</div>
+						</div>
+						{#each currentContents as content (content.id)}
+							<div class="multilang-row" class:removable={currentContents.length > 1}>
+								<div class="multilang-cell content-path-cell">
+									<span class="content-path">
+										{content.folder ? content.folder.name : content.file ? content.file.name : t('ui.no_content_selected')}
+									</span>
+									{#if content.weight === 1}
+										<span class="default-badge">{t('ui.default')}</span>
+									{/if}
+								</div>
+								<div class="multilang-cell language-cell">
+									<select 
+										class="language-select"
+										value={content.languageCode}
+										on:change={(e) => updateLanguageCode(content.id, e.currentTarget.value)}
+									>
+										{#each SUPPORTED_LANGUAGES as lang}
+											<option value={lang.code}>{lang.name} ({lang.englishName})</option>
+										{/each}
+									</select>
+									{#if currentContents.length > 1}
+										<button 
+											class="remove-btn"
+											on:click={() => removeLanguageContent(content.id)}
+											title={t('ui.remove_language')}
+										>
+											<span class="remove-icon">×</span>
+										</button>
+									{/if}
+								</div>
+							</div>
+						{/each}
+						{#if currentContents.length === 0}
+							<div class="multilang-empty">
+								<span class="empty-message">{t('ui.no_content_selected_hint')}</span>
+							</div>
+						{/if}
+					</div>
+				</div>
+
+				<!-- Site Name -->
+				<div class="settings-section">
+					<label class="section-label" for="site-name">{t('ui.site_name')}</label>
+					<input
+						type="text"
+						class="form-input"
+						bind:value={siteName}
+						on:blur={() => saveFoundryConfig('title', siteName)}
+						placeholder={t('ui.site_name_placeholder')}
+					/>
+				</div>
+
+				<!-- Theme Selection -->
+				<div class="settings-section">
+					<label class="section-label" for="themes">{t('ui.theme')}</label>
+					<div class="theme-selector">
+						<div class="current-theme">
+							<span class="theme-name">{displayThemeName}</span>
+							<div class="theme-actions">
+								<button class="change-theme-btn" on:click={openThemeModal}>
+									{t('ui.change_theme')}
+								</button>
+								{#if currentThemeWithSample && currentThemeWithSample.demo_notes_url}
+									{#if isDownloadingSample}
+										<div class="sample-download-progress">
+											<span class="progress-text">{t('ui.downloading_sample')}</span>
+											<ProgressBar progress={sampleDownloadProgress} />
+										</div>
+									{:else}
+										<button class="download-sample-btn" on:click={downloadThemeSample}>
+											{t('ui.download_sample')}
+										</button>
+									{/if}
+								{/if}
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Preview Section -->
+				<div class="settings-section">
+					<h3 class="section-title">{t('ui.preview')}</h3>
+					<div class="preview-section">
+						{#if isBuilding}
+							<div class="progress-container">
+								<p>{t('ui.preview_building')}</p>
+								<ProgressBar progress={buildProgress} />
 							</div>
 						{:else}
-							<button class="download-sample-btn" on:click={downloadThemeSample}>
-								{t('ui.download_sample')}
+							<button
+								class="action-button preview-button"
+								on:click={startPreview}
+								disabled={currentContents.length === 0}
+							>
+								{hasPreview ? t('ui.regenerate_preview') : t('ui.generate_preview')}
 							</button>
 						{/if}
-					{/if}
-				</div>
-			</div>
-		</div>
-	</div>
 
-	<!-- Preview Section -->
-	<div class="section">
-		<h3 class="section-title">{t('ui.preview')}</h3>
-		<div class="preview-section">
-			{#if isBuilding}
-				<div class="progress-container">
-					<p>{t('ui.preview_building')}</p>
-					<ProgressBar progress={buildProgress} />
-				</div>
-			{:else}
-				<button
-					class="action-button preview-button"
-					on:click={startPreview}
-					disabled={currentContents.length === 0}
-				>
-{hasPreview ? t('ui.regenerate_preview') : t('ui.generate_preview')}
-				</button>
-			{/if}
-
-			{#if hasPreview && previewUrl}
-				<div class="preview-link">
-					<p>{t('ui.preview_link')}</p>
-					<a href={previewUrl} target="_blank" class="preview-url">{previewUrl}</a>
-					<div class="preview-actions">
-						<button
-							class="action-button export-button"
-							on:click={exportSite}
-							disabled={isExporting}
-						>
-							{isExporting ? t('ui.exporting') : t('ui.export_site')}
-						</button>
-					</div>
-				</div>
-			{/if}
-		</div>
-	</div>
-
-	<!-- Publish Section -->
-	<div class="section">
-		<h3 class="section-title">{t('ui.publish')}</h3>
-		<div class="publish-section">
-			<div class="publish-select-wrapper">
-				<label class="section-label" for="publish-method">{t('ui.publish_method')}</label>
-				<select id="publish-method" class="form-select" bind:value={selectedPublishOption} on:change={() => savePublishConfig()}>
-					{#each publishOptions as option}
-						<option value={option.value}>{option.label}</option>
-					{/each}
-				</select>
-			</div>
-
-			<!-- Netlify Configuration -->
-			{#if selectedPublishOption === 'netlify'}
-				<div class="publish-config">
-					<div class="config-field">
-						<label class="section-label" for="netlify-token">{t('settings.netlify_access_token')}</label>
-						<input
-							type="password"
-							class="form-input"
-							bind:value={netlifyAccessToken}
-							on:blur={() => savePublishConfig()}
-							placeholder={t('settings.netlify_access_token_placeholder')}
-						/>
-						<div class="field-hint">
-							{t('settings.netlify_access_token_desc')}
-						</div>
-					</div>
-					<div class="config-field">
-						<label class="section-label" for="netlify-project">{t('settings.netlify_project_id')}</label>
-						<input
-							type="text"
-							class="form-input"
-							bind:value={netlifyProjectId}
-							on:blur={() => savePublishConfig()}
-							placeholder={t('settings.netlify_project_id_placeholder')}
-						/>
-						<div class="field-hint">
-							{t('settings.netlify_project_id_desc')}
-						</div>
-					</div>
-				</div>
-			{/if}
-
-			<!-- FTP Configuration -->
-			{#if selectedPublishOption === 'ftp'}
-				<div class="publish-config">
-					<div class="config-field">
-						<label class="section-label" for="ftp-server">{t('settings.ftp_server')}</label>
-						<input
-							type="text"
-							class="form-input"
-							bind:value={ftpServer}
-							on:blur={() => savePublishConfig()}
-							placeholder={t('settings.ftp_server_placeholder')}
-						/>
-					</div>
-					<div class="config-field">
-						<label class="section-label" for="ftp-username">{t('settings.ftp_username')}</label>
-						<input
-							type="text"
-							class="form-input"
-							bind:value={ftpUsername}
-							on:blur={() => savePublishConfig()}
-							placeholder={t('settings.ftp_username_placeholder')}
-						/>
-					</div>
-					<div class="config-field">
-						<label class="section-label" for="ftp-password">{t('settings.ftp_password')}</label>
-						<input
-							type="password"
-							class="form-input"
-							bind:value={ftpPassword}
-							on:blur={() => savePublishConfig()}
-							placeholder={t('settings.ftp_password_placeholder')}
-						/>
-					</div>
-					<div class="config-field">
-						<label class="section-label" for="ftp-remote-dir">{t('settings.ftp_remote_dir')}</label>
-						<input
-							type="text"
-							class="form-input"
-							bind:value={ftpRemoteDir}
-							on:blur={() => savePublishConfig()}
-							placeholder={t('settings.ftp_remote_dir_placeholder')}
-						/>
-						<div class="field-hint">
-							{t('settings.ftp_remote_dir_desc')}
-						</div>
-					</div>
-					<div class="config-field">
-						<label class="checkbox-label">
-							<input
-								type="checkbox"
-								bind:checked={ftpIgnoreCert}
-								on:change={() => savePublishConfig()}
-							/>
-							<span>{t('settings.ftp_ignore_cert')}</span>
-						</label>
-						<div class="field-hint">
-							{t('settings.ftp_ignore_cert_desc')}
-						</div>
-					</div>
-					
-					<!-- FTP Test Connection -->
-					<div class="config-field">
-						<button
-							class="ftp-test-btn"
-							class:ftp-test-success={ftpTestState === 'success'}
-							class:ftp-test-error={ftpTestState === 'error'}
-							on:click={testFTPConnection}
-							disabled={!isFTPConfigured || ftpTestState === 'testing'}
-						>
-							{#if ftpTestState === 'testing'}
-								{t('settings.ftp_test_connection_testing')}
-							{:else if ftpTestState === 'success'}
-								{t('settings.ftp_test_connection_success')}
-							{:else if ftpTestState === 'error'}
-								{t('settings.ftp_test_connection_failed')}
-							{:else}
-								{t('settings.ftp_test_connection')}
-							{/if}
-						</button>
-						<div class="field-hint">
-							{t('settings.ftp_test_connection_desc')}
-						</div>
-						{#if ftpTestMessage}
-							<div 
-								class="ftp-test-result"
-								class:ftp-test-result-success={ftpTestState === 'success'}
-								class:ftp-test-result-error={ftpTestState === 'error'}
-							>
-								{ftpTestState === 'success' ? '✅' : '❌'} {ftpTestMessage}
+						{#if hasPreview && previewUrl}
+							<div class="preview-link">
+								<p>{t('ui.preview_link')}</p>
+								<a href={previewUrl} target="_blank" class="preview-url">{previewUrl}</a>
+								<div class="preview-actions">
+									<button
+										class="action-button export-button"
+										on:click={exportSite}
+										disabled={isExporting}
+									>
+										{isExporting ? t('ui.exporting') : t('ui.export_site')}
+									</button>
+								</div>
 							</div>
 						{/if}
 					</div>
 				</div>
-			{/if}
 
-			<!-- MDFriday Free Info -->
-			{#if selectedPublishOption === 'mdf-free'}
-				<div class="publish-config">
-				<div class="field-hint">
-					{t('ui.mdfriday_free_hint')}
-				</div>
-				</div>
-			{/if}
+				<!-- Publish Configuration -->
+				<div class="settings-section">
+					<h3 class="section-title">{t('ui.publish_config') || 'Publish Configuration'}</h3>
+					<div class="publish-section">
+						<div class="publish-select-wrapper">
+							<label class="section-label" for="publish-method">{t('ui.publish_method')}</label>
+							<select id="publish-method" class="form-select" bind:value={selectedPublishOption} on:change={() => savePublishConfig()}>
+								{#each publishOptions as option}
+									<option value={option.value}>{option.label}</option>
+								{/each}
+							</select>
+						</div>
 
-			<!-- MDFriday Share Info -->
-			{#if selectedPublishOption === 'mdf-share'}
-				<div class="publish-config">
-				<div class="field-hint">
-					{t('ui.mdfriday_share_hint')}
-				</div>
-				{#if !(plugin.licenseState?.hasPublishPermission())}
-					<div class="license-warning">
-						⚠️ {t('settings.upgrade_for_mdfshare')}
+						<!-- Netlify Configuration -->
+						{#if selectedPublishOption === 'netlify'}
+							<div class="publish-config">
+								<div class="config-field">
+									<label class="section-label" for="netlify-token">{t('settings.netlify_access_token')}</label>
+									<input
+										type="password"
+										class="form-input"
+										bind:value={netlifyAccessToken}
+										on:blur={() => savePublishConfig()}
+										placeholder={t('settings.netlify_access_token_placeholder')}
+									/>
+									<div class="field-hint">
+										{t('settings.netlify_access_token_desc')}
+									</div>
+								</div>
+								<div class="config-field">
+									<label class="section-label" for="netlify-project">{t('settings.netlify_project_id')}</label>
+									<input
+										type="text"
+										class="form-input"
+										bind:value={netlifyProjectId}
+										on:blur={() => savePublishConfig()}
+										placeholder={t('settings.netlify_project_id_placeholder')}
+									/>
+									<div class="field-hint">
+										{t('settings.netlify_project_id_desc')}
+									</div>
+								</div>
+							</div>
+						{/if}
+
+						<!-- FTP Configuration -->
+						{#if selectedPublishOption === 'ftp'}
+							<div class="publish-config">
+								<div class="config-field">
+									<label class="section-label" for="ftp-server">{t('settings.ftp_server')}</label>
+									<input
+										type="text"
+										class="form-input"
+										bind:value={ftpServer}
+										on:blur={() => savePublishConfig()}
+										placeholder={t('settings.ftp_server_placeholder')}
+									/>
+								</div>
+								<div class="config-field">
+									<label class="section-label" for="ftp-username">{t('settings.ftp_username')}</label>
+									<input
+										type="text"
+										class="form-input"
+										bind:value={ftpUsername}
+										on:blur={() => savePublishConfig()}
+										placeholder={t('settings.ftp_username_placeholder')}
+									/>
+								</div>
+								<div class="config-field">
+									<label class="section-label" for="ftp-password">{t('settings.ftp_password')}</label>
+									<input
+										type="password"
+										class="form-input"
+										bind:value={ftpPassword}
+										on:blur={() => savePublishConfig()}
+										placeholder={t('settings.ftp_password_placeholder')}
+									/>
+								</div>
+								<div class="config-field">
+									<label class="section-label" for="ftp-remote-dir">{t('settings.ftp_remote_dir')}</label>
+									<input
+										type="text"
+										class="form-input"
+										bind:value={ftpRemoteDir}
+										on:blur={() => savePublishConfig()}
+										placeholder={t('settings.ftp_remote_dir_placeholder')}
+									/>
+									<div class="field-hint">
+										{t('settings.ftp_remote_dir_desc')}
+									</div>
+								</div>
+								<div class="config-field">
+									<label class="checkbox-label">
+										<input
+											type="checkbox"
+											bind:checked={ftpIgnoreCert}
+											on:change={() => savePublishConfig()}
+										/>
+										<span>{t('settings.ftp_ignore_cert')}</span>
+									</label>
+									<div class="field-hint">
+										{t('settings.ftp_ignore_cert_desc')}
+									</div>
+								</div>
+								
+								<!-- FTP Test Connection -->
+								<div class="config-field">
+									<button
+										class="ftp-test-btn"
+										class:ftp-test-success={ftpTestState === 'success'}
+										class:ftp-test-error={ftpTestState === 'error'}
+										on:click={testFTPConnection}
+										disabled={!isFTPConfigured || ftpTestState === 'testing'}
+									>
+										{#if ftpTestState === 'testing'}
+											{t('settings.ftp_test_connection_testing')}
+										{:else if ftpTestState === 'success'}
+											{t('settings.ftp_test_connection_success')}
+										{:else if ftpTestState === 'error'}
+											{t('settings.ftp_test_connection_failed')}
+										{:else}
+											{t('settings.ftp_test_connection')}
+										{/if}
+									</button>
+									<div class="field-hint">
+										{t('settings.ftp_test_connection_desc')}
+									</div>
+									{#if ftpTestMessage}
+										<div 
+											class="ftp-test-result"
+											class:ftp-test-result-success={ftpTestState === 'success'}
+											class:ftp-test-result-error={ftpTestState === 'error'}
+										>
+											{ftpTestState === 'success' ? '✅' : '❌'} {ftpTestMessage}
+										</div>
+									{/if}
+								</div>
+							</div>
+						{/if}
+
+						<!-- MDFriday Free Info -->
+						{#if selectedPublishOption === 'mdf-free'}
+							<div class="publish-config">
+								<div class="field-hint">
+									{t('ui.mdfriday_free_hint')}
+								</div>
+							</div>
+						{/if}
+
+						<!-- MDFriday Share Info -->
+						{#if selectedPublishOption === 'mdf-share'}
+							<div class="publish-config">
+								<div class="field-hint">
+									{t('ui.mdfriday_share_hint')}
+								</div>
+								{#if !(plugin.licenseState?.hasPublishPermission())}
+									<div class="license-warning">
+										⚠️ {t('settings.upgrade_for_mdfshare')}
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- MDFriday Subdomain Info -->
+						{#if selectedPublishOption === 'mdf-app'}
+							<div class="publish-config">
+								<div class="field-hint">
+									{t('ui.mdfriday_app_hint')}
+								</div>
+								{#if !(plugin.licenseState?.hasFeature('customSubDomain'))}
+									<div class="license-warning">
+										⚠️ {t('settings.upgrade_for_subdomain')}
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- MDFriday Custom Domain Info -->
+						{#if selectedPublishOption === 'mdf-custom'}
+							<div class="publish-config">
+								<div class="field-hint">
+									{t('ui.mdfriday_custom_hint')}
+								</div>
+								{#if !(plugin.licenseState?.hasFeature('customDomain'))}
+									<div class="license-warning">
+										⚠️ {t('settings.upgrade_for_custom_domain')}
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- MDFriday Enterprise Info -->
+						{#if selectedPublishOption === 'mdf-enterprise'}
+							<div class="publish-config">
+								<div class="field-hint">
+									{t('ui.mdfriday_enterprise_hint')}
+								</div>
+								{#if !(plugin.licenseState?.isActivated() && !plugin.licenseState?.isExpired() && plugin.licenseState?.getPlan() === 'enterprise' && plugin.settings.enterpriseServerUrl)}
+									<div class="license-warning">
+										⚠️ {t('settings.upgrade_for_enterprise')}
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
-				{/if}
 				</div>
-			{/if}
 
-			<!-- MDFriday Subdomain Info -->
-			{#if selectedPublishOption === 'mdf-app'}
-				<div class="publish-config">
-				<div class="field-hint">
-					{t('ui.mdfriday_app_hint')}
-				</div>
-				{#if !(plugin.licenseState?.hasFeature('customSubDomain'))}
-					<div class="license-warning">
-						⚠️ {t('settings.upgrade_for_subdomain')}
-					</div>
-				{/if}
-				</div>
-			{/if}
+				<!-- Advanced Settings (Collapsible with Obsidian style) -->
+				<div class="settings-section">
+					<div class="collapsible-section">
+						<button 
+							class="subsection-toggle setting-item-control" 
+							on:click={() => showAdvancedInSettings = !showAdvancedInSettings}
+							aria-expanded={showAdvancedInSettings}
+						>
+							<svg class="collapse-icon" class:is-collapsed={!showAdvancedInSettings} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<polyline points="6 9 12 15 18 9"></polyline>
+							</svg>
+							<span class="setting-item-name">{t('ui.advanced_settings')}</span>
+						</button>
+						
+						{#if showAdvancedInSettings}
+							<div class="subsection-content">
+								<!-- Site Assets -->
+								<div class="advanced-field">
+									<div class="section-label">{t('ui.site_assets')}</div>
+									<div class="site-assets-container">
+										<div class="assets-display">
+											{#if currentAssets}
+												<span class="assets-path">{currentAssets.folder?.name || currentAssets.path}</span>
+												<button 
+													class="clear-assets-btn"
+													on:click={clearSiteAssets}
+													title={t('ui.clear_assets')}
+												>
+													{t('ui.clear_assets')}
+												</button>
+											{:else}
+												<span class="assets-placeholder">{t('ui.site_assets_placeholder')}</span>
+											{/if}
+										</div>
+										<div class="assets-hint">
+											{t('ui.site_assets_hint')}
+										</div>
+									</div>
+								</div>
 
-			<!-- MDFriday Custom Domain Info -->
-			{#if selectedPublishOption === 'mdf-custom'}
-				<div class="publish-config">
-				<div class="field-hint">
-					{t('ui.mdfriday_custom_hint')}
-				</div>
-				{#if !(plugin.licenseState?.hasFeature('customDomain'))}
-					<div class="license-warning">
-						⚠️ {t('settings.upgrade_for_custom_domain')}
-					</div>
-				{/if}
-				</div>
-			{/if}
+								<div class="advanced-field">
+									<label class="section-label" for="site-path">{t('ui.site_path')}</label>
+									<input
+										type="text"
+										class="form-input"
+										bind:value={sitePath}
+										on:blur={handleSitePathChange}
+										placeholder={t('ui.site_path_placeholder')}
+										title={t('ui.site_path_hint')}
+									/>
+									<div class="field-hint">
+										{t('ui.site_path_hint')}
+									</div>
+								</div>
 
-			<!-- MDFriday Enterprise Info -->
-			{#if selectedPublishOption === 'mdf-enterprise'}
-				<div class="publish-config">
-				<div class="field-hint">
-					{t('ui.mdfriday_enterprise_hint')}
-				</div>
-				{#if !(plugin.licenseState?.isActivated() && !plugin.licenseState?.isExpired() && plugin.licenseState?.getPlan() === 'enterprise' && plugin.settings.enterpriseServerUrl)}
-					<div class="license-warning">
-						⚠️ {t('settings.upgrade_for_enterprise')}
-					</div>
-				{/if}
-				</div>
-			{/if}
+								<div class="advanced-field">
+									<label class="section-label" for="site-password">{t('ui.site_password')}</label>
+									<input
+										type="password"
+										class="form-input"
+										bind:value={sitePassword}
+										on:blur={() => saveFoundryConfig('params.password', sitePassword)}
+										placeholder={t('ui.site_password_placeholder')}
+										title={t('ui.site_password_hint')}
+									/>
+									<div class="field-hint">
+										{t('ui.site_password_hint')}
+									</div>
+								</div>
 
-			<!-- Publish Button -->
-			<div class="publish-actions">
-				{#if isPublishing}
-					<div class="progress-container">
-						<p>{t('ui.publish_building')}</p>
-						<ProgressBar progress={publishProgress} />
+								<div class="advanced-field">
+									<label class="section-label" for="google-analytics">{t('ui.google_analytics_id')}</label>
+									<input
+										type="text"
+										class="form-input"
+										bind:value={googleAnalyticsId}
+										on:blur={() => saveFoundryConfig('services.googleAnalytics.id', googleAnalyticsId)}
+										placeholder={t('ui.google_analytics_placeholder')}
+										title={t('ui.google_analytics_hint')}
+									/>
+									<div class="field-hint">
+										{t('ui.google_analytics_hint')}
+									</div>
+								</div>
+
+								<div class="advanced-field">
+									<label class="section-label" for="disqus-shortname">{t('ui.disqus_shortname')}</label>
+									<input
+										type="text"
+										class="form-input"
+										bind:value={disqusShortname}
+										on:blur={() => saveFoundryConfig('params.disqusShortname', disqusShortname)}
+										placeholder={t('ui.disqus_placeholder')}
+										title={t('ui.disqus_hint')}
+									/>
+									<div class="field-hint">
+										{t('ui.disqus_hint')}
+									</div>
+								</div>
+							</div>
+						{/if}
 					</div>
-				{:else}
-					<button
-						class="action-button publish-button"
-						on:click={startPublish}
-						disabled={!hasPreview || isPublishDisabled}
-					>
-						{t('ui.publish')}
-					</button>
-				{/if}
+				</div>
 			</div>
-
-			{#if publishSuccess}
-				<div class="publish-success">
-					<p class="success-message">{t('ui.published_successfully')}</p>
-					{#if publishUrl}
-						<a href={publishUrl} target="_blank" class="publish-url">{publishUrl}</a>
-					{:else if selectedPublishOption === 'ftp'}
-						<p class="ftp-success-info">{t('messages.ftp_upload_success')}</p>
-					{/if}
-				</div>
-			{/if}
-		</div>
+		{/if}
 	</div>
 </div>
 
 <style>
+	/* ========== Main Container ========== */
 	.site-builder {
-		padding: 20px;
+		padding: 16px;
 		max-width: 100%;
-	}
-
-	.section {
-		margin-bottom: 20px;
-	}
-
-	.section-label {
-		display: block;
-		margin-bottom: 8px;
-		font-weight: 500;
-		color: var(--text-normal);
-		font-size: 14px;
-	}
-
-	.form-input {
-		width: 100%;
-		padding: 10px 12px;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 4px;
-		background: var(--background-primary);
-		color: var(--text-normal);
-		font-size: 14px;
-		line-height: 1.4;
-		box-sizing: border-box;
-		min-height: 38px;
-	}
-
-	.form-select {
-		width: 100%;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 4px;
-		background: var(--background-primary);
-		color: var(--text-normal);
-		font-size: 14px;
-		line-height: 1.4;
-		box-sizing: border-box;
-		min-height: 38px;
-		appearance: none;
-		background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
-		background-repeat: no-repeat;
-		background-position: right 12px center;
-		background-size: 16px;
-		padding-right: 40px;
-	}
-
-	.theme-selector {
-		width: 100%;
-	}
-
-	.current-theme {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 10px 12px;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 4px;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	/* ========== Quick Publish Panel ========== */
+	.quick-publish-panel {
 		background: var(--background-primary);
-		min-height: 38px;
-		box-sizing: border-box;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 6px;
+		padding: 16px;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 	}
 
-	.theme-name {
-		color: var(--text-normal);
-		font-size: 14px;
-		flex: 1;
-	}
-
-	.theme-actions {
+	.panel-header {
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		margin-bottom: 16px;
+		padding-bottom: 12px;
+		border-bottom: 1px solid var(--background-modifier-border);
 	}
 
-	.change-theme-btn {
-		padding: 6px 12px;
-		border: 1px solid var(--interactive-accent);
-		border-radius: 3px;
-		background: transparent;
-		color: var(--interactive-accent);
-		font-size: 12px;
-		cursor: pointer;
-		transition: all 0.2s;
-		white-space: nowrap;
+	.mdfriday-logo {
+		flex-shrink: 0;
+		display: block;
 	}
 
-	.change-theme-btn:hover {
-		background: var(--interactive-accent);
-		color: var(--text-on-accent);
-	}
-
-	.download-sample-btn {
-		padding: 6px 12px;
-		border: 1px solid var(--text-accent);
-		border-radius: 3px;
-		background: transparent;
-		color: var(--text-accent);
-		font-size: 12px;
-		cursor: pointer;
-		transition: all 0.2s;
-		white-space: nowrap;
-	}
-
-	.download-sample-btn:hover {
-		background: var(--text-accent);
-		color: var(--text-on-accent);
-	}
-
-	.sample-download-progress {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		min-width: 120px;
-	}
-
-	.progress-text {
-		font-size: 11px;
-		color: var(--text-muted);
-		text-align: center;
-	}
-
-	.section-title {
-		margin: 0 0 10px 0;
+	.panel-title {
 		font-size: 16px;
 		font-weight: 600;
 		color: var(--text-normal);
 	}
 
-	.preview-section, .publish-section {
-		padding: 15px;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-secondary);
+	/* Current Content Display */
+	.current-content {
+		margin-bottom: 16px;
 	}
 
-	.action-button {
-		padding: 10px 20px;
+	.content-label {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--text-muted);
+		margin-bottom: 6px;
+	}
+
+	.content-display {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		background: var(--background-secondary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		min-height: 36px;
+	}
+
+	.content-icon {
+		color: var(--text-muted);
+		flex-shrink: 0;
+	}
+
+	.content-display .content-path {
+		color: var(--text-normal);
+		font-size: 13px;
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.content-empty {
+		color: var(--text-muted);
+		font-size: 13px;
+		font-style: italic;
+	}
+
+	/* Publish Status Area */
+	.publish-status-area {
+		margin-bottom: 16px;
+		min-height: 60px;
+	}
+
+	.status-publishing,
+	.status-success {
+		padding: 12px;
+		background: var(--background-secondary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+	}
+
+	.status-text {
+		font-size: 13px;
+		color: var(--text-muted);
+		margin-bottom: 8px;
+	}
+
+	.status-text.success {
+		color: var(--text-success);
+		font-weight: 500;
+	}
+
+	.publish-url-display {
+		display: block;
+		color: var(--interactive-accent);
+		text-decoration: none;
+		font-size: 12px;
+		word-break: break-all;
+		margin-bottom: 12px;
+		padding: 6px 8px;
+		background: var(--background-primary);
+		border-radius: 3px;
+	}
+
+	.publish-url-display:hover {
+		text-decoration: underline;
+	}
+
+	.url-actions {
+		display: flex;
+		justify-content: center;
+		gap: 8px;
+	}
+
+	.url-action-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-primary);
+		color: var(--text-normal);
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.url-action-btn:hover {
+		background: var(--interactive-hover);
+		border-color: var(--interactive-accent);
+	}
+
+	.url-action-btn svg {
+		color: var(--text-muted);
+	}
+
+	/* Publish Actions Row */
+	.publish-actions-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.quick-publish-btn {
+		flex: 0 0 140px;
+		padding: 10px 16px;
 		border: none;
 		border-radius: 4px;
 		background: var(--interactive-accent);
@@ -2366,135 +2521,48 @@
 		font-weight: 500;
 		cursor: pointer;
 		transition: background-color 0.2s;
-		min-height: 38px;
+		min-height: 36px;
 	}
 
-	.action-button:hover:not(:disabled) {
+	.quick-publish-btn:hover:not(:disabled) {
 		background: var(--interactive-accent-hover);
 	}
 
-	.action-button:disabled {
+	.quick-publish-btn:disabled {
 		background: var(--background-modifier-border);
 		color: var(--text-muted);
 		cursor: not-allowed;
+		opacity: 0.6;
 	}
 
-	.preview-button {
-		margin-bottom: 10px;
-	}
-
-	.publish-button {
-		margin-left: 10px;
-	}
-
-	.preview-link, .publish-success {
-		margin-top: 15px;
-		padding: 10px;
-		background: var(--background-primary);
-		border-radius: 4px;
-		border: 1px solid var(--background-modifier-border);
-	}
-
-	.preview-url, .publish-url {
-		display: block;
-		color: var(--interactive-accent);
-		text-decoration: none;
-		word-break: break-all;
-		margin-top: 5px;
-	}
-
-	.preview-url:hover, .publish-url:hover {
-		text-decoration: underline;
-	}
-
-	.progress-container {
-		margin: 10px 0;
-	}
-
-	.progress-container p {
-		margin: 0 0 10px 0;
-		color: var(--text-muted);
-		font-size: 14px;
-	}
-
-	.publish-select-wrapper {
-		margin-bottom: 16px;
-	}
-
-	.publish-config {
-		background: var(--background-secondary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 4px;
-		padding: 16px;
-		margin-bottom: 16px;
-	}
-
-	.config-field {
-		margin-bottom: 16px;
-	}
-
-	.config-field:last-child {
-		margin-bottom: 0;
-	}
-
-	.checkbox-label {
+	.auto-publish-toggle {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 		cursor: pointer;
-		font-size: 14px;
-		color: var(--text-normal);
+		user-select: none;
 	}
 
-	.checkbox-label input[type="checkbox"] {
+	.toggle-checkbox {
 		width: 16px;
 		height: 16px;
 		cursor: pointer;
 	}
 
-	.publish-actions {
-		margin-top: 16px;
-	}
-
-	.success-message {
-		margin: 0 0 5px 0;
-		color: var(--text-success);
-		font-weight: 500;
-	}
-
-	.ftp-success-info {
-		margin: 5px 0 0 0;
-		color: var(--text-muted);
-		font-size: 14px;
-	}
-
-	.preview-actions {
-		margin-top: 10px;
-		display: flex;
-		gap: 10px;
-	}
-
-	.export-button {
-		background: var(--interactive-normal);
+	.toggle-label {
+		font-size: 13px;
 		color: var(--text-normal);
+	}
+
+	/* ========== Settings Panel ========== */
+	.settings-panel {
+		background: var(--background-primary);
 		border: 1px solid var(--background-modifier-border);
-	}
-
-	.export-button:hover:not(:disabled) {
-		background: var(--interactive-hover);
-	}
-
-	.export-button:disabled {
-		opacity: 0.6;
-	}
-
-	.advanced-settings {
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 4px;
+		border-radius: 6px;
 		overflow: hidden;
 	}
 
-	.advanced-toggle {
+	.panel-toggle {
 		width: 100%;
 		padding: 12px 16px;
 		border: none;
@@ -2507,29 +2575,365 @@
 		align-items: center;
 		gap: 8px;
 		transition: background-color 0.2s;
-		box-shadow: none;
+		text-align: left;
 	}
 
-	.advanced-toggle:hover {
+	.panel-toggle:hover {
 		background: var(--background-modifier-hover);
 	}
 
-	.toggle-icon {
-		transition: transform 0.2s;
-		font-size: 12px;
+	/* Obsidian-style collapse icon */
+	.collapse-icon {
 		color: var(--text-muted);
+		flex-shrink: 0;
+		transition: transform 0.2s ease;
 	}
 
-	.toggle-icon.expanded {
-		transform: rotate(90deg);
+	.collapse-icon.is-collapsed {
+		transform: rotate(-90deg);
 	}
 
-	.advanced-content {
+	.setting-item-name {
+		flex: 1;
+	}
+
+	.setting-item-control {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 12px;
+		border: none;
+		background: transparent;
+		color: var(--text-normal);
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.2s;
+		text-align: left;
+	}
+
+	.setting-item-control:hover {
+		background: var(--background-modifier-hover);
+	}
+
+	.panel-content {
 		background: var(--background-secondary);
 		padding: 16px;
 		border-top: 1px solid var(--background-modifier-border);
 	}
 
+	/* Settings Sections */
+	.settings-section {
+		margin-bottom: 20px;
+	}
+
+	.settings-section:last-child {
+		margin-bottom: 0;
+	}
+
+	.section-label {
+		display: block;
+		margin-bottom: 8px;
+		font-weight: 500;
+		color: var(--text-normal);
+		font-size: 13px;
+	}
+
+	.section-title {
+		margin: 0 0 10px 0;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--text-normal);
+	}
+
+	/* Collapsible Subsections */
+	.collapsible-section {
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		overflow: hidden;
+		background: var(--background-primary);
+	}
+
+	.subsection-toggle {
+		width: 100%;
+		padding: 10px 12px;
+		border: none;
+		background: transparent;
+		color: var(--text-normal);
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		transition: background-color 0.2s;
+		text-align: left;
+	}
+
+	.subsection-toggle:hover {
+		background: var(--background-modifier-hover);
+	}
+
+	.subsection-content {
+		padding: 12px;
+		background: var(--background-secondary);
+		border-top: 1px solid var(--background-modifier-border);
+	}
+
+	/* Preview and Publish Sections */
+	.preview-section,
+	.publish-section {
+		padding: 12px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-secondary);
+		margin-top: 8px;
+	}
+
+	/* Form Inputs */
+	.form-input {
+		width: 100%;
+		padding: 8px 12px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-primary);
+		color: var(--text-normal);
+		font-size: 13px;
+		line-height: 1.4;
+		box-sizing: border-box;
+		min-height: 34px;
+	}
+
+	.form-input:focus {
+		outline: none;
+		border-color: var(--interactive-accent);
+	}
+
+	.form-select {
+		width: 100%;
+		padding: 8px 12px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-primary);
+		color: var(--text-normal);
+		font-size: 13px;
+		line-height: 1.4;
+		box-sizing: border-box;
+		min-height: 34px;
+		appearance: none;
+		background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+		background-repeat: no-repeat;
+		background-position: right 10px center;
+		background-size: 14px;
+		padding-right: 36px;
+		cursor: pointer;
+	}
+
+	.form-select:focus {
+		outline: none;
+		border-color: var(--interactive-accent);
+	}
+
+	/* Theme Selector */
+	.theme-selector {
+		width: 100%;
+	}
+
+	.current-theme {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 12px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-primary);
+		min-height: 34px;
+		box-sizing: border-box;
+	}
+
+	.theme-name {
+		color: var(--text-normal);
+		font-size: 13px;
+		flex: 1;
+	}
+
+	.theme-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.change-theme-btn,
+	.download-sample-btn {
+		padding: 4px 10px;
+		border: 1px solid var(--interactive-accent);
+		border-radius: 3px;
+		background: transparent;
+		color: var(--interactive-accent);
+		font-size: 11px;
+		cursor: pointer;
+		transition: all 0.2s;
+		white-space: nowrap;
+	}
+
+	.change-theme-btn:hover,
+	.download-sample-btn:hover {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+	}
+
+	.sample-download-progress {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 100px;
+	}
+
+	.progress-text {
+		font-size: 10px;
+		color: var(--text-muted);
+		text-align: center;
+	}
+
+	/* Publish Configuration */
+	.publish-select-wrapper {
+		margin-bottom: 12px;
+	}
+
+	.publish-config {
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		padding: 12px;
+		margin-top: 12px;
+	}
+
+	.config-field {
+		margin-bottom: 12px;
+	}
+
+	.config-field:last-child {
+		margin-bottom: 0;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		cursor: pointer;
+		font-size: 13px;
+		color: var(--text-normal);
+	}
+
+	.checkbox-label input[type="checkbox"] {
+		width: 16px;
+		height: 16px;
+		cursor: pointer;
+	}
+
+	.field-hint {
+		font-size: 11px;
+		color: var(--text-muted);
+		margin-top: 4px;
+		line-height: 1.4;
+	}
+
+	.license-warning {
+		font-size: 11px;
+		color: var(--text-accent);
+		background: var(--background-modifier-error-hover);
+		border: 1px solid var(--background-modifier-error);
+		padding: 6px 10px;
+		border-radius: 3px;
+		margin-top: 8px;
+		line-height: 1.4;
+	}
+
+	/* Preview Section */
+	.action-button {
+		width: 100%;
+		padding: 8px 16px;
+		border: none;
+		border-radius: 4px;
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.2s;
+		min-height: 34px;
+	}
+
+	.action-button:hover:not(:disabled) {
+		background: var(--interactive-accent-hover);
+	}
+
+	.action-button:disabled {
+		background: var(--background-modifier-border);
+		color: var(--text-muted);
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
+	.preview-button {
+		margin-bottom: 12px;
+	}
+
+	.preview-link {
+		margin-top: 12px;
+		padding: 10px;
+		background: var(--background-primary);
+		border-radius: 4px;
+		border: 1px solid var(--background-modifier-border);
+	}
+
+	.preview-link p {
+		margin: 0 0 6px 0;
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+
+	.preview-url {
+		display: block;
+		color: var(--interactive-accent);
+		text-decoration: none;
+		font-size: 12px;
+		word-break: break-all;
+		margin-bottom: 8px;
+	}
+
+	.preview-url:hover {
+		text-decoration: underline;
+	}
+
+	.preview-actions {
+		margin-top: 8px;
+		display: flex;
+		gap: 8px;
+	}
+
+	.export-button {
+		background: var(--interactive-normal);
+		color: var(--text-normal);
+		border: 1px solid var(--background-modifier-border);
+	}
+
+	.export-button:hover:not(:disabled) {
+		background: var(--interactive-hover);
+	}
+
+	.progress-container {
+		margin: 8px 0;
+	}
+
+	.progress-container p {
+		margin: 0 0 8px 0;
+		color: var(--text-muted);
+		font-size: 12px;
+	}
+
+	/* Advanced Settings */
 	.advanced-field {
 		margin-bottom: 16px;
 	}
@@ -2538,25 +2942,7 @@
 		margin-bottom: 0;
 	}
 
-	.field-hint {
-		font-size: 12px;
-		color: var(--text-muted);
-		margin-top: 4px;
-		line-height: 1.4;
-	}
-
-	.license-warning {
-		font-size: 12px;
-		color: var(--text-accent);
-		background: var(--background-secondary);
-		border: 1px solid var(--background-modifier-border);
-		padding: 8px 12px;
-		border-radius: 4px;
-		margin-top: 8px;
-		line-height: 1.4;
-	}
-
-	/* Multi-language table styles */
+	/* Multi-language Table */
 	.multilang-table {
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 4px;
@@ -2572,9 +2958,9 @@
 	}
 
 	.multilang-header-cell {
-		padding: 10px 12px;
+		padding: 8px 10px;
 		font-weight: 500;
-		font-size: 14px;
+		font-size: 12px;
 		color: var(--text-normal);
 		border-right: 1px solid var(--background-modifier-border);
 		display: flex;
@@ -2584,26 +2970,26 @@
 		min-width: 0;
 	}
 
+	.multilang-header-cell:last-child {
+		border-right: none;
+	}
+
 	.add-language-btn {
-		padding: 4px 8px;
+		padding: 3px 6px;
 		border: 1px solid var(--interactive-accent);
 		border-radius: 3px;
 		background: transparent;
 		color: var(--interactive-accent);
-		font-size: 11px;
+		font-size: 10px;
 		cursor: pointer;
 		transition: all 0.2s;
 		white-space: nowrap;
-		margin-left: 8px;
+		margin-left: 6px;
 	}
 
 	.add-language-btn:hover {
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
-	}
-
-	.multilang-header-cell:last-child {
-		border-right: none;
 	}
 
 	.multilang-row {
@@ -2622,11 +3008,11 @@
 	}
 
 	.multilang-cell {
-		padding: 10px 12px;
+		padding: 8px 10px;
 		display: flex;
 		align-items: center;
 		border-right: 1px solid var(--background-modifier-border);
-		min-height: 38px;
+		min-height: 34px;
 		box-sizing: border-box;
 		overflow: hidden;
 		min-width: 0;
@@ -2637,12 +3023,12 @@
 	}
 
 	.content-path-cell {
-		gap: 8px;
+		gap: 6px;
 	}
 
-	.content-path {
+	.multilang-cell .content-path {
 		color: var(--text-normal);
-		font-size: 14px;
+		font-size: 12px;
 		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -2653,9 +3039,9 @@
 	.default-badge {
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
-		padding: 2px 6px;
+		padding: 2px 5px;
 		border-radius: 3px;
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 500;
 		white-space: nowrap;
 	}
@@ -2663,29 +3049,30 @@
 	.language-cell {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 	}
 
 	.language-select {
 		flex: 1;
-		max-width: 180px;
+		max-width: 160px;
 		padding: 4px 8px;
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 3px;
 		background: var(--background-primary);
 		color: var(--text-normal);
-		font-size: 13px;
+		font-size: 12px;
 		appearance: none;
 		background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
 		background-repeat: no-repeat;
-		background-position: right 6px center;
-		background-size: 12px;
-		padding-right: 24px;
+		background-position: right 5px center;
+		background-size: 10px;
+		padding-right: 20px;
+		cursor: pointer;
 	}
 
 	.remove-btn {
-		width: 20px;
-		height: 20px;
+		width: 18px;
+		height: 18px;
 		border: none;
 		border-radius: 50%;
 		background: transparent;
@@ -2716,17 +3103,17 @@
 	}
 
 	.multilang-empty {
-		padding: 20px;
+		padding: 16px;
 		text-align: center;
 		color: var(--text-muted);
 		font-style: italic;
 	}
 
 	.empty-message {
-		font-size: 14px;
+		font-size: 12px;
 	}
 
-	/* Site Assets styles */
+	/* Site Assets */
 	.site-assets-container {
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 4px;
@@ -2734,17 +3121,17 @@
 	}
 
 	.assets-display {
-		padding: 10px 12px;
+		padding: 8px 10px;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		min-height: 38px;
+		min-height: 34px;
 		box-sizing: border-box;
 	}
 
 	.assets-path {
 		color: var(--text-normal);
-		font-size: 14px;
+		font-size: 12px;
 		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -2754,22 +3141,22 @@
 
 	.assets-placeholder {
 		color: var(--text-muted);
-		font-size: 14px;
+		font-size: 12px;
 		font-style: italic;
 		flex: 1;
 	}
 
 	.clear-assets-btn {
-		padding: 4px 8px;
+		padding: 3px 6px;
 		border: 1px solid var(--interactive-accent);
 		border-radius: 3px;
 		background: transparent;
 		color: var(--interactive-accent);
-		font-size: 11px;
+		font-size: 10px;
 		cursor: pointer;
 		transition: all 0.2s;
 		white-space: nowrap;
-		margin-left: 8px;
+		margin-left: 6px;
 	}
 
 	.clear-assets-btn:hover {
@@ -2778,26 +3165,27 @@
 	}
 
 	.assets-hint {
-		padding: 8px 12px;
+		padding: 6px 10px;
 		background: var(--background-secondary);
 		border-top: 1px solid var(--background-modifier-border);
-		font-size: 12px;
+		font-size: 11px;
 		color: var(--text-muted);
 		line-height: 1.4;
 	}
 
-	/* FTP Test Connection Styles */
+	/* FTP Test Connection */
 	.ftp-test-btn {
-		padding: 10px 20px;
+		width: 100%;
+		padding: 8px 16px;
 		border: 1px solid var(--interactive-accent);
 		border-radius: 4px;
 		background: transparent;
 		color: var(--interactive-accent);
-		font-size: 14px;
+		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.2s;
-		min-height: 38px;
+		min-height: 34px;
 	}
 
 	.ftp-test-btn:hover:not(:disabled) {
@@ -2806,7 +3194,7 @@
 	}
 
 	.ftp-test-btn:disabled {
-		opacity: 0.6;
+		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
@@ -2823,10 +3211,10 @@
 	}
 
 	.ftp-test-result {
-		margin-top: 8px;
-		padding: 8px 12px;
-		border-radius: 4px;
-		font-size: 13px;
+		margin-top: 6px;
+		padding: 6px 10px;
+		border-radius: 3px;
+		font-size: 11px;
 		line-height: 1.4;
 		display: block;
 		width: 100%;
