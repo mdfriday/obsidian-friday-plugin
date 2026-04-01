@@ -264,10 +264,14 @@ export class ProjectServiceManager {
 		);
 
 			if (result.success && result.data) {
+				// Get project info to retrieve the path
+				const projectInfo = await this.getProjectInfo(projectName);
+				
 				return {
 					success: true,
 					url: result.data.url,
-					port: result.data.port
+					port: result.data.port,
+					path: projectInfo?.path // Add preview directory path
 				};
 			}
 
@@ -404,6 +408,7 @@ export interface PreviewResult {
 	error?: string;
 	url?: string;
 	port?: number;
+	path?: string; // Preview directory absolute path
 }
 
 export interface PublishResult {

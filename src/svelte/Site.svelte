@@ -498,7 +498,8 @@
 		buildProgress = 100;
 		isBuilding = false;
 		previewUrl = result.url || '';
-		console.log('[Site] Preview started:', result.url);
+		absPreviewDir = result.path || ''; // Set preview directory path
+		console.log('[Site] Preview started:', result.url, 'Path:', result.path);
 	}
 
 	/**
@@ -509,6 +510,7 @@
 		hasPreview = false;
 		buildProgress = 0;
 		isBuilding = false;
+		absPreviewDir = ''; // Clear preview directory path on error
 		console.error('[Site] Preview error:', error);
 	}
 
@@ -518,6 +520,7 @@
 	export function onPreviewStopped() {
 		serverRunning = false;
 		hasPreview = false;
+		absPreviewDir = ''; // Clear preview directory path when stopped
 		console.log('[Site] Preview stopped');
 	}
 
