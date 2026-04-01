@@ -11,7 +11,7 @@
 	import {GetBaseUrl} from "../main";
 	import {createStyleRenderer, OBStyleRenderer} from "../markdown";
 	import {themeApiService} from "../theme/themeApiService";
-	import type { ProjectState, ProgressUpdate } from "../types/events";
+	import type { ProjectState, ProgressUpdate, PublishProgressUpdate } from "../types/events";
 	import {nameToId} from "src/utils/hash.ts";
 
 	// Receive props
@@ -446,28 +446,62 @@
 	}
 
 	/**
-	 * Update build progress
+	 * Update build progress (for preview/serve)
 	 */
 	export function updateBuildProgress(progress: ProgressUpdate) {
-		if (progress.phase === 'initializing') {
-			buildProgress = Math.min(10, progress.percentage * 0.1);
-		} else if (progress.phase === 'building') {
-			buildProgress = 10 + Math.min(80, progress.percentage * 0.8);
-		} else if (progress.phase === 'ready') {
-			buildProgress = 100;
+		// Map Foundry service phases to progress percentage
+		// Phases: 'initializing' | 'building' | 'watching' | 'publishing' | 'ready'
+		switch (progress.phase) {
+			case 'initializing':
+				// 0-10%: Initializing project
+				buildProgress = Math.min(10, progress.percentage * 0.1);
+				break;
+			case 'building':
+				// 10-70%: Building content
+				buildProgress = 10 + Math.min(60, progress.percentage * 0.6);
+				break;
+			case 'watching':
+				// 70-80%: Setting up file watcher
+				buildProgress = 70 + Math.min(10, progress.percentage * 0.1);
+				break;
+			case 'publishing':
+				// 80-95%: Auto-publishing (if enabled)
+				buildProgress = 80 + Math.min(15, progress.percentage * 0.15);
+				break;
+			case 'ready':
+				// 100%: Server ready
+				buildProgress = 100;
+				break;
+			default:
+				buildProgress = progress.percentage;
 		}
 	}
 
 	/**
 	 * Update publish progress
 	 */
-	export function updatePublishProgress(progress: ProgressUpdate) {
-		if (progress.phase === 'building') {
-			publishProgress = Math.min(50, progress.percentage * 0.5);
-		} else if (progress.phase === 'publishing') {
-			publishProgress = 50 + Math.min(50, progress.percentage * 0.5);
-		} else if (progress.phase === 'ready') {
-			publishProgress = 100;
+	export function updatePublishProgress(progress: PublishProgressUpdate) {
+		// Map Foundry service phases to progress percentage
+		// Phases: 'scanning' | 'uploading' | 'deploying' | 'complete'
+		switch (progress.phase) {
+			case 'scanning':
+				// 0-20%: Scanning files to upload
+				publishProgress = Math.min(20, progress.percentage * 0.2);
+				break;
+			case 'uploading':
+				// 20-80%: Uploading files
+				publishProgress = 20 + Math.min(60, progress.percentage * 0.6);
+				break;
+			case 'deploying':
+				// 80-95%: Deploying on server
+				publishProgress = 80 + Math.min(15, progress.percentage * 0.15);
+				break;
+			case 'complete':
+				// 100%: Publish complete
+				publishProgress = 100;
+				break;
+			default:
+				publishProgress = progress.percentage;
 		}
 	}
 
@@ -1374,7 +1408,6 @@
 				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
 			};
 
-			console.log("--990--", publishConfig);
 		} else if (selectedPublishOption === 'mdf-share') {
 			publishConfig = {
 				type: 'mdfriday',

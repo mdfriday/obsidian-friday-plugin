@@ -311,20 +311,21 @@ export class ProjectServiceManager {
 		options: {
 			method: string;
 			config: any;
-			onProgress?: (progress: ProgressUpdate) => void;
+			onProgress?: (progress: any) => void;
 		}
 	): Promise<PublishResult> {
 		try {
 			const { method, config, onProgress } = options;
 
+			// Foundry service expects onProgress as a separate second parameter
 			const result = await this.plugin.foundryPublishService.publish(
 				{
 					workspacePath: this.plugin.absWorkspacePath,
 					projectName,
-					method,
-					config,
-					onProgress
-				}
+					method: method as 'ftp' | 'netlify' | 'mdfriday',
+					config
+				},
+				onProgress // Pass onProgress as second parameter, not in options
 			);
 
 			if (result.success && result.data) {

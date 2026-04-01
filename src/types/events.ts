@@ -46,12 +46,26 @@ export interface SiteEventData {
 }
 
 /**
- * 进度更新
+ * 进度更新 - Preview/Serve
  */
 export interface ProgressUpdate {
 	phase: 'initializing' | 'building' | 'watching' | 'publishing' | 'ready';
 	percentage: number;
 	message?: string;
+	currentFile?: string;
+}
+
+/**
+ * 进度更新 - Publish
+ */
+export interface PublishProgressUpdate {
+	phase: 'scanning' | 'uploading' | 'deploying' | 'complete';
+	percentage: number;
+	message?: string;
+	currentFile?: string;
+	filesCompleted?: number;
+	filesTotal?: number;
+	bytesTransferred?: number;
 }
 
 /**
