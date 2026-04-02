@@ -1177,6 +1177,138 @@
 	 * If theme has "Book" tag, use OBStyleRenderer (full-featured with plugin rendering)
 	 * Otherwise, use lightweight StyleRenderer
 	 */
+	/**
+	 * Reset publish UI state
+	 */
+	function resetPublishState() {
+		isPublishing = true;
+		publishProgress = 0;
+		publishSuccess = false;
+		publishUrl = '';
+	}
+	
+	/**
+	 * Build publish config for MDFriday Free
+	 */
+	function buildMDFFreePublishConfig(projectName: string) {
+		return {
+			method: 'mdfriday' as const,
+			config: {
+				type: 'mdfriday',
+				deploymentType: 'free',
+				path: nameToId(projectName),
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			}
+		};
+	}
+	
+	/**
+	 * Build publish config for MDFriday Share
+	 */
+	function buildMDFSharePublishConfig(projectName: string) {
+		return {
+			method: 'mdfriday' as const,
+			config: {
+				type: 'mdfriday',
+				deploymentType: 'share',
+				path: nameToId(projectName),
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			}
+		};
+	}
+	
+	/**
+	 * Build publish config for MDFriday App (custom subdomain)
+	 */
+	function buildMDFAppPublishConfig() {
+		return {
+			method: 'mdfriday' as const,
+			config: {
+				type: 'mdfriday',
+				deploymentType: 'sub',
+				path: sitePath,
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			}
+		};
+	}
+	
+	/**
+	 * Build publish config for MDFriday Custom Domain
+	 */
+	function buildMDFCustomPublishConfig() {
+		return {
+			method: 'mdfriday' as const,
+			config: {
+				type: 'mdfriday',
+				deploymentType: 'custom',
+				path: sitePath,
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			}
+		};
+	}
+	
+	/**
+	 * Build publish config for MDFriday Enterprise
+	 */
+	function buildMDFEnterprisePublishConfig() {
+		return {
+			method: 'mdfriday' as const,
+			config: {
+				type: 'mdfriday',
+				deploymentType: 'enterprise',
+				path: sitePath,
+				enabled: true,
+				accessToken: plugin.licenseState?.getAccessToken() || '',
+				licenseKey: plugin.licenseState?.getLicenseKey() || '',
+				apiUrl: plugin.settings.enterpriseServerUrl || plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+			}
+		};
+	}
+	
+	/**
+	 * Build publish config for Netlify
+	 */
+	function buildNetlifyPublishConfig() {
+		return {
+			method: 'netlify' as const,
+			config: {
+				type: 'netlify',
+				accessToken: netlifyAccessToken,
+				siteId: netlifyProjectId
+			}
+		};
+	}
+	
+	/**
+	 * Build publish config for FTP
+	 */
+	function buildFTPPublishConfig() {
+		return {
+			method: 'ftp' as const,
+			config: {
+				type: 'ftp',
+				host: ftpServer,
+				port: 21,
+				username: ftpUsername,
+				password: ftpPassword,
+				remotePath: ftpRemoteDir || '/',
+				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true
+			}
+		};
+	}
+
 	async function createRendererBasedOnTheme() {
 		try {
 			// Get theme information by ID
@@ -1278,37 +1410,12 @@
 			const projectName = plugin.currentProjectName;
 			if (projectName) {
 				// Initialize publish state
-				isPublishing = true;
-				publishProgress = 0;
-				publishSuccess = false;
-				publishUrl = '';
+				resetPublishState();
 				
 				if (selectedPublishOption === 'mdf-free') {
-					publishConfig = {
-						method: 'mdfriday' as const,
-						config: {
-							type: 'mdfriday',
-							deploymentType: 'free',
-							path: nameToId(projectName),
-							enabled: true,
-							accessToken: plugin.licenseState?.getAccessToken() || '',
-							licenseKey: plugin.licenseState?.getLicenseKey() || '',
-							apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-						}
-					};
+					publishConfig = buildMDFFreePublishConfig(projectName);
 				} else if (selectedPublishOption === 'mdf-share') {
-					publishConfig = {
-						method: 'mdfriday' as const,
-						config: {
-							type: 'mdfriday',
-							deploymentType: 'share',
-							path: nameToId(projectName),
-							enabled: true,
-							accessToken: plugin.licenseState?.getAccessToken() || '',
-							licenseKey: plugin.licenseState?.getLicenseKey() || '',
-							apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-						}
-					};
+					publishConfig = buildMDFSharePublishConfig(projectName);
 				}
 			}
 		}
@@ -1446,84 +1553,40 @@
 
 		try {
 			// Prepare publish configuration based on selected option
-			// Note: Must match Foundry's AnyPublishConfig type definitions
 			let publishConfig: any = {};
+			const projectName = plugin.currentProjectName!;
 
-			if (selectedPublishOption === 'netlify') {
-				publishConfig = {
-					type: 'netlify',
-					accessToken: netlifyAccessToken,
-					siteId: netlifyProjectId
-				};
-		} else if (selectedPublishOption === 'ftp') {
-			publishConfig = {
-				type: 'ftp',
-				host: ftpServer,
-				port: 21, // Default FTP port
-				username: ftpUsername,
-				password: ftpPassword,
-				remotePath: ftpRemoteDir || '/',
-				secure: ftpPreferredSecure !== undefined ? ftpPreferredSecure : true
-			};
-		} else if (selectedPublishOption === 'mdf-free') {
-			publishConfig = {
-				type: 'mdfriday',
-				deploymentType: 'free',
-				path: nameToId(projectName),
-				enabled: true,
-				accessToken: plugin.licenseState?.getAccessToken() || '',
-				licenseKey: plugin.licenseState?.getLicenseKey() || '',
-				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-			};
-
-		} else if (selectedPublishOption === 'mdf-share') {
-			publishConfig = {
-				type: 'mdfriday',
-				deploymentType: 'share',
-				path: nameToId(projectName),
-				enabled: true,
-				accessToken: plugin.licenseState?.getAccessToken() || '',
-				licenseKey: plugin.licenseState?.getLicenseKey() || '',
-				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-			};
-		} else if (selectedPublishOption === 'mdf-app') {
-			publishConfig = {
-				type: 'mdfriday',
-				deploymentType: 'sub',
-				path: sitePath,
-				enabled: true,
-				accessToken: plugin.licenseState?.getAccessToken() || '',
-				licenseKey: plugin.licenseState?.getLicenseKey() || '',
-				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-			};
-		} else if (selectedPublishOption === 'mdf-custom') {
-			publishConfig = {
-				type: 'mdfriday',
-				deploymentType: 'custom',
-				path: sitePath,
-				enabled: true,
-				accessToken: plugin.licenseState?.getAccessToken() || '',
-				licenseKey: plugin.licenseState?.getLicenseKey() || '',
-				apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-			};
-		} else if (selectedPublishOption === 'mdf-enterprise') {
-			publishConfig = {
-				type: 'mdfriday',
-				deploymentType: 'enterprise',
-				path: sitePath,
-				enabled: true,
-				accessToken: plugin.licenseState?.getAccessToken() || '',
-				licenseKey: plugin.licenseState?.getLicenseKey() || '',
-				apiUrl: plugin.settings.enterpriseServerUrl || plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-			};
-		}
+			// Use helper functions to build publish config
+			switch (selectedPublishOption) {
+				case 'netlify':
+					publishConfig = buildNetlifyPublishConfig();
+					break;
+				case 'ftp':
+					publishConfig = buildFTPPublishConfig();
+					break;
+				case 'mdf-free':
+					publishConfig = buildMDFFreePublishConfig(projectName);
+					break;
+				case 'mdf-share':
+					publishConfig = buildMDFSharePublishConfig(projectName);
+					break;
+				case 'mdf-app':
+					publishConfig = buildMDFAppPublishConfig();
+					break;
+				case 'mdf-custom':
+					publishConfig = buildMDFCustomPublishConfig();
+					break;
+				case 'mdf-enterprise':
+					publishConfig = buildMDFEnterprisePublishConfig();
+					break;
+			}
 
 			// Use event system to request publish from Main.ts
 			if (plugin.handleSiteEvent) {
 				await plugin.handleSiteEvent('publishRequested', {
-					projectName: plugin.currentProjectName!,
+					projectName,
 					method: selectedPublishOption,
-					config: publishConfig
+					config: publishConfig.config
 				});
 				
 				// Note: Progress updates and completion will be handled by callbacks
