@@ -716,7 +716,7 @@ export default class FridayPlugin extends Plugin {
 			return;
 		}
 
-		const { projectName, port, renderer } = data;
+		const { projectName, port, renderer, publishConfig } = data;
 
 		// Create progress callback
 		const onProgress = (progress: any) => {
@@ -724,10 +724,10 @@ export default class FridayPlugin extends Plugin {
 			this.siteComponent?.updateBuildProgress?.(progress);
 		};
 
-		// Start preview
+		// Start preview with optional publishConfig for auto-publish
 		const result = await this.projectServiceManager.startPreview(
 			projectName,
-			{ port, renderer, onProgress }
+			{ port, renderer, onProgress, publishConfig }
 		);
 
 		if (result.success) {
@@ -1072,7 +1072,7 @@ export default class FridayPlugin extends Plugin {
 		// Add click handler for quick share
 		iconEl.addEventListener('click', async (e) => {
 			e.preventDefault();
-			await this.quickShareCurrentFile(view);
+			await this.quickPublishToFree(view);
 		});
 
 		// Insert at the beginning of view-actions (left side)
@@ -1145,6 +1145,68 @@ export default class FridayPlugin extends Plugin {
 
 		} catch (error) {
 			console.error('Quick share failed:', error);
+			new Notice(this.i18n.t('messages.quick_share_failed', { error: (error as Error).message }), 5000);
+		}
+	}
+
+	/**
+	 * Quick publish to MDFriday Free - One-click full automated workflow (Desktop only)
+	 * 1. Open publish panel with current file
+	 * 2. Select MDFriday Free publish option
+	 * 3. Auto-fill or create project
+	 * 4. Build and auto-publish in one step
+	 * 5. Show unified progress for build + publish
+	 */
+	private async quickPublishToFree(view: MarkdownView) {
+		if (!Platform.isDesktop) {
+			new Notice(this.i18n.t('messages.quick_share_desktop_only'));
+			return;
+		}
+		
+		const file = view.file;
+		if (!file || file.extension !== 'md') {
+			new Notice(this.i18n.t('messages.no_markdown_file'), 3000);
+			return;
+		}
+
+		try {
+			// Show starting notice
+			new Notice(this.i18n.t('messages.quick_share_starting'), 2000);
+
+			// Step 1: Open publish panel with current file
+			await this.openPublishPanel(null, file);
+
+			// Wait a bit for the panel to initialize
+			await new Promise(resolve => setTimeout(resolve, 500));
+
+			// Step 2: Select MDFriday Free publish option
+			if (this.siteComponent?.selectMDFFree) {
+				this.siteComponent.selectMDFFree();
+			} else {
+				console.error('[Friday] Site component not available for selectMDFFree');
+				new Notice('Site component not ready', 3000);
+				return;
+			}
+
+			// Wait a bit for the publish option to be set
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			// Step 3: Use Site.svelte's existing preview+publish workflow
+			// The Site.svelte component will handle the full build and publish process
+			// by triggering previewRequested event with publishConfig
+			if (this.siteComponent?.startPreviewAndWait) {
+				const success = await this.siteComponent.startPreviewAndWait();
+				if (!success) {
+					new Notice(this.i18n.t('messages.preview_failed_generic'), 5000);
+					return;
+				}
+			}
+
+			// Show completion notice
+			new Notice(this.i18n.t('messages.quick_publish_success'), 3000);
+
+		} catch (error) {
+			console.error('Quick publish failed:', error);
 			new Notice(this.i18n.t('messages.quick_share_failed', { error: (error as Error).message }), 5000);
 		}
 	}

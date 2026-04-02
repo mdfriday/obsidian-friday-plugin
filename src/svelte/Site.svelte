@@ -679,10 +679,10 @@
 		}
 
 		// Reset after a delay
-		setTimeout(() => {
-			publishSuccess = false;
-			publishProgress = 0;
-		}, 3000);
+		// setTimeout(() => {
+		// 	publishSuccess = false;
+		// 	publishProgress = 0;
+		// }, 3000);
 	}
 
 	/**
@@ -742,15 +742,16 @@
 				onPreviewError,
 				onPreviewStopped,
 				onPublishComplete,
-				onPublishError,
-				onConnectionTestSuccess,
-				onConnectionTestError,
-				
-				// Quick share and utility methods (migrated from old architecture)
-				setSitePath: setSitePathExternal,
-				startPreviewAndWait,
-				selectMDFShare
-			});
+			onPublishError,
+			onConnectionTestSuccess,
+			onConnectionTestError,
+			
+			// Quick share and utility methods (migrated from old architecture)
+			setSitePath: setSitePathExternal,
+			startPreviewAndWait,
+			selectMDFShare,
+			selectMDFFree
+		});
 		}
 
 		// Notify Main.ts that component is ready
@@ -780,6 +781,11 @@
 	// Select MDFriday Share publish option
 	function selectMDFShare() {
 		selectedPublishOption = 'mdf-share';
+	}
+	
+	// Select MDFriday Free publish option
+	function selectMDFFree() {
+		selectedPublishOption = 'mdf-free';
 	}
 
 	onDestroy(() => {
@@ -1246,12 +1252,50 @@
 			// Create custom Markdown renderer based on theme
 			const customRenderer = await createRendererBasedOnTheme();
 			
+			// Prepare publish config if needed for auto-publish
+			let publishConfig: any = undefined;
+			
+			// Check if we should auto-publish (for mdf-free and mdf-share)
+			if (selectedPublishOption === 'mdf-free' || selectedPublishOption === 'mdf-share') {
+				const projectName = plugin.currentProjectName;
+				if (projectName) {
+					if (selectedPublishOption === 'mdf-free') {
+						publishConfig = {
+							method: 'mdfriday' as const,
+							config: {
+								type: 'mdfriday',
+								deploymentType: 'free',
+								path: nameToId(projectName),
+								enabled: true,
+								accessToken: plugin.licenseState?.getAccessToken() || '',
+								licenseKey: plugin.licenseState?.getLicenseKey() || '',
+								apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+							}
+						};
+					} else if (selectedPublishOption === 'mdf-share') {
+						publishConfig = {
+							method: 'mdfriday' as const,
+							config: {
+								type: 'mdfriday',
+								deploymentType: 'share',
+								path: nameToId(projectName),
+								enabled: true,
+								accessToken: plugin.licenseState?.getAccessToken() || '',
+								licenseKey: plugin.licenseState?.getLicenseKey() || '',
+								apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+							}
+						};
+					}
+				}
+			}
+			
 			// Use event system to request preview from Main.ts
 			if (plugin.handleSiteEvent) {
 				await plugin.handleSiteEvent('previewRequested', {
 					projectName: plugin.currentProjectName,
 					port: serverPort,
-					renderer: hasOBTag ? customRenderer : undefined
+					renderer: hasOBTag ? customRenderer : undefined,
+					publishConfig
 				});
 				
 				// Note: Progress updates and completion will be handled by callbacks

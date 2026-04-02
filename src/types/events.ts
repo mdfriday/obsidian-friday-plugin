@@ -30,6 +30,11 @@ export interface SiteEventData {
 		projectName: string;
 		port: number;
 		renderer?: any;
+		publishConfig?: {
+			method: 'ftp' | 'netlify' | 'mdfriday';
+			config: any;
+			delay?: number;
+		};
 	};
 	publishRequested: {
 		projectName: string;

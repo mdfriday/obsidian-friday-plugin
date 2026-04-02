@@ -248,17 +248,23 @@ export class ProjectServiceManager {
 			port: number;
 			renderer?: any;
 			onProgress?: (progress: ProgressUpdate) => void;
+			publishConfig?: {
+				method: 'ftp' | 'netlify' | 'mdfriday';
+				config: any;
+				delay?: number;
+			};
 		}
 	): Promise<PreviewResult> {
 		try {
-		const { port, renderer, onProgress } = options;
+		const { port, renderer, onProgress, publishConfig } = options;
 
 		const result = await this.plugin.foundryServeService.startServer(
 			{
 				workspacePath: this.plugin.absWorkspacePath,
 				projectName,
 				port,
-				markdown: renderer
+				markdown: renderer,
+				publishConfig
 			},
 			onProgress
 		);
