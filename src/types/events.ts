@@ -52,12 +52,23 @@ export interface SiteEventData {
 
 /**
  * 进度更新 - Preview/Serve
+ * Updated to match Foundry's ObsidianServeProgress interface
  */
 export interface ProgressUpdate {
-	phase: 'initializing' | 'building' | 'watching' | 'publishing' | 'ready';
+	phase: 'initializing' | 'building' | 'build-success' | 'publishing' | 'publish-success' | 'watching' | 'ready' | 'error';
 	percentage: number;
+	overallPercentage?: number;
 	message?: string;
 	currentFile?: string;
+	data?: {
+		buildTime?: number;
+		filesProcessed?: number;
+		publishUrl?: string;
+		filesUploaded?: number;
+		bytesTransferred?: number;
+		publishTime?: number;
+		method?: 'ftp' | 'netlify' | 'mdfriday';
+	};
 }
 
 /**

@@ -111,6 +111,9 @@
 	let publishUrl = '';
 	let selectedPublishOption: ValidPublishMethod = normalizePublishMethod(plugin.settings.publishMethod);
 	
+	// One-click publish mode flag (when preview includes auto-publish)
+	let isOneClickPublishMode = false;
+	
 	// Netlify configuration (project-specific)
 	let netlifyAccessToken = '';
 	let netlifyProjectId = '';
@@ -447,33 +450,46 @@
 
 	/**
 	 * Update build progress (for preview/serve)
+	 * Updated to support new Foundry progress phases and overallPercentage
 	 */
 	export function updateBuildProgress(progress: ProgressUpdate) {
-		// Map Foundry service phases to progress percentage
-		// Phases: 'initializing' | 'building' | 'watching' | 'publishing' | 'ready'
 		switch (progress.phase) {
-			case 'initializing':
-				// 0-10%: Initializing project
-				buildProgress = Math.min(10, progress.percentage * 0.1);
+			case "building":
+				isBuilding = true;
+				buildProgress = progress.percentage || 0;
 				break;
-			case 'building':
-				// 10-70%: Building content
-				buildProgress = 10 + Math.min(60, progress.percentage * 0.6);
+			case "build-success":
+				isBuilding = false;
+				buildProgress = progress.percentage || 0;
 				break;
-			case 'watching':
-				// 70-80%: Setting up file watcher
-				buildProgress = 70 + Math.min(10, progress.percentage * 0.1);
+			case "error":
+				isBuilding = false;
+				buildProgress = 0;
 				break;
-			case 'publishing':
-				// 80-95%: Auto-publishing (if enabled)
-				buildProgress = 80 + Math.min(15, progress.percentage * 0.15);
-				break;
-			case 'ready':
-				// 100%: Server ready
-				buildProgress = 100;
-				break;
-			default:
-				buildProgress = progress.percentage;
+		}
+
+		// If in one-click publish mode, sync publish progress with build progress
+		if (progress.overallPercentage !== undefined && isOneClickPublishMode) {
+			publishProgress = progress.overallPercentage;
+
+			// Set publishing state based on phase
+			if (progress.phase === 'publishing') {
+				isPublishing = true;
+			} else if (progress.phase === 'publish-success') {
+				isPublishing = false;
+				publishSuccess = true;
+				
+				// Extract publish URL from data
+				if (progress.data?.publishUrl) {
+					publishUrl = buildPublishUrl(selectedPublishOption, progress.data.publishUrl);
+					console.log('[Site] Publish success with URL:', publishUrl);
+				}
+			} else if (progress.phase === 'error') {
+				isPublishing = false;
+				publishProgress = 0;
+				publishSuccess = false;
+				isOneClickPublishMode = false;
+			}
 		}
 	}
 
@@ -677,12 +693,6 @@
 		} else {
 			console.log('[Site] Publish completed (no URL to display)');
 		}
-
-		// Reset after a delay
-		// setTimeout(() => {
-		// 	publishSuccess = false;
-		// 	publishProgress = 0;
-		// }, 3000);
 	}
 
 	/**
@@ -750,7 +760,8 @@
 			setSitePath: setSitePathExternal,
 			startPreviewAndWait,
 			selectMDFShare,
-			selectMDFFree
+			selectMDFFree,
+			enableOneClickPublishMode
 		});
 		}
 
@@ -786,6 +797,12 @@
 	// Select MDFriday Free publish option
 	function selectMDFFree() {
 		selectedPublishOption = 'mdf-free';
+	}
+	
+	// Enable one-click publish mode (called from main.ts)
+	export function enableOneClickPublishMode() {
+		isOneClickPublishMode = true;
+		console.log('[Site] One-click publish mode enabled');
 	}
 
 	onDestroy(() => {
@@ -1252,42 +1269,49 @@
 			// Create custom Markdown renderer based on theme
 			const customRenderer = await createRendererBasedOnTheme();
 			
-			// Prepare publish config if needed for auto-publish
-			let publishConfig: any = undefined;
-			
-			// Check if we should auto-publish (for mdf-free and mdf-share)
-			if (selectedPublishOption === 'mdf-free' || selectedPublishOption === 'mdf-share') {
-				const projectName = plugin.currentProjectName;
-				if (projectName) {
-					if (selectedPublishOption === 'mdf-free') {
-						publishConfig = {
-							method: 'mdfriday' as const,
-							config: {
-								type: 'mdfriday',
-								deploymentType: 'free',
-								path: nameToId(projectName),
-								enabled: true,
-								accessToken: plugin.licenseState?.getAccessToken() || '',
-								licenseKey: plugin.licenseState?.getLicenseKey() || '',
-								apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-							}
-						};
-					} else if (selectedPublishOption === 'mdf-share') {
-						publishConfig = {
-							method: 'mdfriday' as const,
-							config: {
-								type: 'mdfriday',
-								deploymentType: 'share',
-								path: nameToId(projectName),
-								enabled: true,
-								accessToken: plugin.licenseState?.getAccessToken() || '',
-								licenseKey: plugin.licenseState?.getLicenseKey() || '',
-								apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
-							}
-						};
-					}
+		// Prepare publish config if needed for auto-publish
+		let publishConfig: any = undefined;
+		
+		// Check if we should auto-publish (for mdf-free and mdf-share)
+		// Note: isOneClickPublishMode is set by quickPublishToFree in main.ts
+		if (isOneClickPublishMode && (selectedPublishOption === 'mdf-free' || selectedPublishOption === 'mdf-share')) {
+			const projectName = plugin.currentProjectName;
+			if (projectName) {
+				// Initialize publish state
+				isPublishing = true;
+				publishProgress = 0;
+				publishSuccess = false;
+				publishUrl = '';
+				
+				if (selectedPublishOption === 'mdf-free') {
+					publishConfig = {
+						method: 'mdfriday' as const,
+						config: {
+							type: 'mdfriday',
+							deploymentType: 'free',
+							path: nameToId(projectName),
+							enabled: true,
+							accessToken: plugin.licenseState?.getAccessToken() || '',
+							licenseKey: plugin.licenseState?.getLicenseKey() || '',
+							apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+						}
+					};
+				} else if (selectedPublishOption === 'mdf-share') {
+					publishConfig = {
+						method: 'mdfriday' as const,
+						config: {
+							type: 'mdfriday',
+							deploymentType: 'share',
+							path: nameToId(projectName),
+							enabled: true,
+							accessToken: plugin.licenseState?.getAccessToken() || '',
+							licenseKey: plugin.licenseState?.getLicenseKey() || '',
+							apiUrl: plugin.licenseState?.getApiUrl() || GetBaseUrl(plugin.settings)
+						}
+					};
 				}
 			}
+		}
 			
 			// Use event system to request preview from Main.ts
 			if (plugin.handleSiteEvent) {

@@ -1179,28 +1179,39 @@ export default class FridayPlugin extends Plugin {
 			// Wait a bit for the panel to initialize
 			await new Promise(resolve => setTimeout(resolve, 500));
 
-			// Step 2: Select MDFriday Free publish option
-			if (this.siteComponent?.selectMDFFree) {
-				this.siteComponent.selectMDFFree();
-			} else {
-				console.error('[Friday] Site component not available for selectMDFFree');
-				new Notice('Site component not ready', 3000);
+		// Step 2: Select MDFriday Free publish option
+		if (this.siteComponent?.selectMDFFree) {
+			this.siteComponent.selectMDFFree();
+		} else {
+			console.error('[Friday] Site component not available for selectMDFFree');
+			new Notice('Site component not ready', 3000);
+			return;
+		}
+
+		// Step 3: Set sitePath to "/f/{previewId}" for MDFriday Free
+		if (this.siteComponent?.setSitePath && this.currentProjectName) {
+			const previewId = nameToId(this.currentProjectName);
+			this.siteComponent.setSitePath(`/f/${previewId}`);
+		}
+
+		// Step 4: Enable one-click publish mode
+		if (this.siteComponent?.enableOneClickPublishMode) {
+			this.siteComponent.enableOneClickPublishMode();
+		}
+
+		// Wait a bit for settings to be applied
+		await new Promise(resolve => setTimeout(resolve, 100));
+
+		// Step 5: Use Site.svelte's existing preview+publish workflow
+		// The Site.svelte component will handle the full build and publish process
+		// by triggering previewRequested event with publishConfig
+		if (this.siteComponent?.startPreviewAndWait) {
+			const success = await this.siteComponent.startPreviewAndWait();
+			if (!success) {
+				new Notice(this.i18n.t('messages.preview_failed_generic'), 5000);
 				return;
 			}
-
-			// Wait a bit for the publish option to be set
-			await new Promise(resolve => setTimeout(resolve, 100));
-
-			// Step 3: Use Site.svelte's existing preview+publish workflow
-			// The Site.svelte component will handle the full build and publish process
-			// by triggering previewRequested event with publishConfig
-			if (this.siteComponent?.startPreviewAndWait) {
-				const success = await this.siteComponent.startPreviewAndWait();
-				if (!success) {
-					new Notice(this.i18n.t('messages.preview_failed_generic'), 5000);
-					return;
-				}
-			}
+		}
 
 			// Show completion notice
 			new Notice(this.i18n.t('messages.quick_publish_success'), 3000);
