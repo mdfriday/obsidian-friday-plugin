@@ -349,19 +349,7 @@ export default class FridayPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on('file-menu', (menu, file) => {
 				if (file instanceof TFolder) {
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.add_to_publish_list'))
-							.setIcon(FRIDAY_ICON)
-							.onClick(async () => {
-								if (this.siteComponent?.clearAllContent) {
-									this.siteComponent.clearAllContent();
-								}
-
-								await this.openPublishPanel(file, null);
-							});
-					});
-					
+					this.addToPublishListMenuItem(menu, file);
 					// Add site assets menu item
 					menu.addItem(item => {
 						item
@@ -371,98 +359,121 @@ export default class FridayPlugin extends Plugin {
 								await this.setSiteAssets(file);
 							});
 					});
-				} else if (file instanceof TFile && file.extension === 'md') {
-					// Add "Add to Publish List" menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.add_to_publish_list'))
-							.setIcon(FRIDAY_ICON)
-							.onClick(async () => {
-								if (this.siteComponent?.clearAllContent) {
-									this.siteComponent.clearAllContent();
-								}
+					
+					menu.addSeparator();
+					
+					// Add all publish options for folder
+					this.addPublishMenuItems(menu, file);
 
-								await this.openPublishPanel(null, file);
-							});
-					});
-					
-					// Add separator
-					menu.addSeparator();
-					
-					// Add publish to MDFriday Free menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_mdfriday_free'))
-							.setIcon('cloud')
-							.onClick(async () => {
-								await this.publishToMDFridayFree(file);
-							});
-					});
-					
-					// Add publish to MDFriday Share menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_mdfriday_share'))
-							.setIcon('share')
-							.onClick(async () => {
-								await this.publishToMDFridayShare(file);
-							});
-					});
-					
-					// Add publish to MDFriday App (Subdomain) menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_mdfriday_app'))
-							.setIcon('home')
-							.onClick(async () => {
-								await this.publishToMDFridayApp(file);
-							});
-					});
-					
-					// Add publish to MDFriday Custom Domain menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_mdfriday_custom'))
-							.setIcon('link')
-							.onClick(async () => {
-								await this.publishToMDFridayCustom(file);
-							});
-					});
-					
-					// Add publish to MDFriday Enterprise menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_mdfriday_enterprise'))
-							.setIcon('building')
-							.onClick(async () => {
-								await this.publishToMDFridayEnterprise(file);
-							});
-					});
+				} else if (file instanceof TFile && file.extension === 'md') {
+					this.addToPublishListMenuItem(menu, file);
 					
 					menu.addSeparator();
 					
-					// Add publish to Netlify menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_netlify'))
-							.setIcon('globe')
-							.onClick(async () => {
-								await this.publishToNetlify(file);
-							});
-					});
-					
-					// Add publish to FTP menu item
-					menu.addItem(item => {
-						item
-							.setTitle(this.i18n.t('menu.publish_to_ftp'))
-							.setIcon('upload')
-							.onClick(async () => {
-								await this.publishToFTP(file);
-							});
-					});
+					// Add all publish options for file
+					this.addPublishMenuItems(menu, file);
 				}
 			})
 		);
+	}
+
+	/**
+	 * Helper method to add "Add to Publish List" menu item for file or folder
+	 */
+	private addToPublishListMenuItem(menu: Menu, fileOrFolder: TFile | TFolder) {
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.add_to_publish_list'))
+				.setIcon(FRIDAY_ICON)
+				.onClick(async () => {
+					if (this.siteComponent?.clearAllContent) {
+						this.siteComponent.clearAllContent();
+					}
+
+					if (fileOrFolder instanceof TFile) {
+						await this.openPublishPanel(null, fileOrFolder);
+					} else {
+						await this.openPublishPanel(fileOrFolder, null);
+					}
+				});
+		});
+	}
+
+	/**
+	 * Helper method to add publish menu items for file or folder
+	 */
+	private addPublishMenuItems(menu: Menu, fileOrFolder: TFile | TFolder) {
+		// Add publish to MDFriday Free menu item
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.publish_to_mdfriday_free'))
+				.setIcon('cloud')
+				.onClick(async () => {
+					await this.publishToMDFridayFree(fileOrFolder);
+				});
+		});
+		
+		// Add publish to MDFriday Share menu item
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.publish_to_mdfriday_share'))
+				.setIcon('share')
+				.onClick(async () => {
+					await this.publishToMDFridayShare(fileOrFolder);
+				});
+		});
+		
+		// Add publish to MDFriday App (Subdomain) menu item
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.publish_to_mdfriday_app'))
+				.setIcon('home')
+				.onClick(async () => {
+					await this.publishToMDFridayApp(fileOrFolder);
+				});
+		});
+		
+		// Add publish to MDFriday Custom Domain menu item
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.publish_to_mdfriday_custom'))
+				.setIcon('link')
+				.onClick(async () => {
+					await this.publishToMDFridayCustom(fileOrFolder);
+				});
+		});
+		
+		// Add publish to MDFriday Enterprise menu item
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.publish_to_mdfriday_enterprise'))
+				.setIcon('building')
+				.onClick(async () => {
+					await this.publishToMDFridayEnterprise(fileOrFolder);
+				});
+		});
+		
+		menu.addSeparator();
+		
+		// Add publish to Netlify menu item
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.publish_to_netlify'))
+				.setIcon('globe')
+				.onClick(async () => {
+					await this.publishToNetlify(fileOrFolder);
+				});
+		});
+		
+		// Add publish to FTP menu item
+		menu.addItem(item => {
+			item
+				.setTitle(this.i18n.t('menu.publish_to_ftp'))
+				.setIcon('upload')
+				.onClick(async () => {
+					await this.publishToFTP(fileOrFolder);
+				});
+		});
 	}
 
 	/**
@@ -1150,13 +1161,31 @@ export default class FridayPlugin extends Plugin {
 		// Create the internet icon button
 		const iconEl = document.createElement('a');
 		iconEl.className = 'clickable-icon view-action friday-internet-icon';
-		iconEl.setAttribute('aria-label', this.i18n.t('menu.quick_share'));
+		iconEl.setAttribute('aria-label', this.i18n.t('menu.publish_options'));
 		setIcon(iconEl, 'globe');
 
-		// Add click handler for quick share
+		// Add click handler to show publish menu
 		iconEl.addEventListener('click', async (e) => {
 			e.preventDefault();
-			await this.quickPublishToFree(view);
+			
+			const file = view.file;
+			if (!file) {
+				new Notice('No file selected', 3000);
+				return;
+			}
+			
+			// Create a menu
+			const menu = new Menu();
+			
+			this.addToPublishListMenuItem(menu, file);
+			
+			menu.addSeparator();
+			
+			// Add all publish options using helper method
+			this.addPublishMenuItems(menu, file);
+			
+			// Show the menu at the cursor position
+			menu.showAtMouseEvent(e as MouseEvent);
 		});
 
 		// Insert at the beginning of view-actions (left side)
@@ -1242,15 +1271,48 @@ export default class FridayPlugin extends Plugin {
 	 * Base publish method - unified workflow for all publish types
 	 * Does NOT force enable autoPublish - respects user's checkbox setting
 	 */
-	private async publishTo(file: TFile, publishType: 'mdf-free' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp') {
+	private async publishTo(fileOrFolder: TFile | TFolder, publishType: 'mdf-free' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp') {
 		if (!Platform.isDesktop) {
 			new Notice(this.i18n.t('messages.quick_share_desktop_only'));
 			return;
 		}
 		
-		if (!file || file.extension !== 'md') {
+		// Check if it's a file with correct extension
+		if (fileOrFolder instanceof TFile && fileOrFolder.extension !== 'md') {
 			new Notice(this.i18n.t('messages.no_markdown_file'), 3000);
 			return;
+		}
+
+		// Check permissions based on publish type
+		switch (publishType) {
+			case 'mdf-share':
+				if (!this.licenseState?.hasPublishPermission()) {
+					new Notice(this.i18n.t('settings.upgrade_for_mdfshare'), 5000);
+					return;
+				}
+				break;
+			case 'mdf-app':
+				if (!this.licenseState?.hasFeature('customSubDomain')) {
+					new Notice(this.i18n.t('settings.upgrade_for_subdomain'), 5000);
+					return;
+				}
+				break;
+			case 'mdf-custom':
+				if (!this.licenseState?.hasFeature('customDomain') || !this.settings.customDomain) {
+					new Notice(this.i18n.t('settings.upgrade_for_custom_domain'), 5000);
+					return;
+				}
+				break;
+			case 'mdf-enterprise':
+				if (!this.licenseState?.isActivated() || 
+					this.licenseState?.isExpired() || 
+					this.licenseState?.getPlan() !== 'enterprise' || 
+					!this.settings.enterpriseServerUrl) {
+					new Notice(this.i18n.t('settings.upgrade_for_enterprise'), 5000);
+					return;
+				}
+				break;
+			// mdf-free, netlify, ftp don't need special permission checks
 		}
 
 		try {
@@ -1262,8 +1324,12 @@ export default class FridayPlugin extends Plugin {
 				this.siteComponent.clearAllContent();
 			}
 
-			// Step 2: Open publish panel with current file
-			await this.openPublishPanel(null, file);
+			// Step 2: Open publish panel with current file or folder
+			if (fileOrFolder instanceof TFile) {
+				await this.openPublishPanel(null, fileOrFolder);
+			} else {
+				await this.openPublishPanel(fileOrFolder, null);
+			}
 
 			// Wait a bit for the panel to initialize
 			await new Promise(resolve => setTimeout(resolve, 500));
@@ -1379,55 +1445,50 @@ export default class FridayPlugin extends Plugin {
 	/**
 	 * Publish to MDFriday Free
 	 */
-	private async publishToMDFridayFree(file: TFile) {
-		await this.publishTo(file, 'mdf-free');
+	private async publishToMDFridayFree(fileOrFolder: TFile | TFolder) {
+		await this.publishTo(fileOrFolder, 'mdf-free');
 	}
 
 	/**
 	 * Publish to MDFriday Share
 	 */
-	private async publishToMDFridayShare(file: TFile) {
-		// Check if license is activated
-		if (!this.settings.license || !this.settings.licenseUser?.userDir) {
-			new Notice(this.i18n.t('messages.license_required_for_share'), 5000);
-			return;
-		}
-		await this.publishTo(file, 'mdf-share');
+	private async publishToMDFridayShare(fileOrFolder: TFile | TFolder) {
+		await this.publishTo(fileOrFolder, 'mdf-share');
 	}
 
 	/**
 	 * Publish to MDFriday App (custom subdomain)
 	 */
-	private async publishToMDFridayApp(file: TFile) {
-		await this.publishTo(file, 'mdf-app');
+	private async publishToMDFridayApp(fileOrFolder: TFile | TFolder) {
+		await this.publishTo(fileOrFolder, 'mdf-app');
 	}
 
 	/**
 	 * Publish to MDFriday Custom
 	 */
-	private async publishToMDFridayCustom(file: TFile) {
-		await this.publishTo(file, 'mdf-custom');
+	private async publishToMDFridayCustom(fileOrFolder: TFile | TFolder) {
+		await this.publishTo(fileOrFolder, 'mdf-custom');
 	}
 
 	/**
 	 * Publish to MDFriday Enterprise
 	 */
-	private async publishToMDFridayEnterprise(file: TFile) {
-		await this.publishTo(file, 'mdf-enterprise');
+	private async publishToMDFridayEnterprise(fileOrFolder: TFile | TFolder) {
+		await this.publishTo(fileOrFolder, 'mdf-enterprise');
 	}
 
 	/**
 	 * Publish to Netlify
 	 */
-	private async publishToNetlify(file: TFile) {
-		await this.publishTo(file, 'netlify');
+	private async publishToNetlify(fileOrFolder: TFile | TFolder) {
+		await this.publishTo(fileOrFolder, 'netlify');
 	}
 
 	/**
 	 * Publish to FTP
 	 */
-	private async publishToFTP(file: TFile) {
-		await this.publishTo(file, 'ftp');
+	private async publishToFTP(fileOrFolder: TFile | TFolder) {
+		await this.publishTo(fileOrFolder, 'ftp');
 	}
 
 	/**

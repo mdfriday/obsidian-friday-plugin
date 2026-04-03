@@ -322,7 +322,7 @@
 				});
 			}
 			
-			console.log(`[Site] Saved config: ${key} = ${value}`);
+			console.log(`[Site] Saved config: ${plugin.currentProjectName}: ${key} = ${value}`);
 		} catch (error) {
 			console.error('[Site] Error saving config:', error);
 		}
@@ -616,7 +616,7 @@
 
 			case 'mdf-app': {
 				// result.url is path only, need to build: https://{customSubdomain}.{host}{path}
-				const customSubdomain = plugin.settings.customSubdomain;
+				const customSubdomain = plugin.getEffectiveSubdomain();
 				if (!customSubdomain) {
 					console.warn('[Site] No custom subdomain configured for mdf-app');
 					return '';
@@ -941,6 +941,10 @@
 		previousContentLength = 0; // 重置内容长度跟踪，允许下次首次添加时设置站点名称
 
 		autoPublishEnabled = false;
+		isPublishing = false;
+		publishSuccess = false;
+		publishProgress = 0;
+		publishUrl = '';
 		
 		// Reset language config save state
 		lastSavedLanguageConfig = '';
@@ -1763,10 +1767,11 @@
 	// Reactive: Check if FTP is configured
 	$: isFTPConfigured = !!(ftpServer.trim() && ftpUsername.trim() && ftpPassword.trim());
 	
-	// Reactive: Auto-save autoPublishEnabled changes
-	$: {
+	// Handle auto-publish toggle change (only save when user manually toggles)
+	function handleAutoPublishToggle() {
 		if (plugin.currentProjectName && !plugin.isProjectInitializing) {
 			saveFoundryConfig('params.autoPublish', autoPublishEnabled);
+			console.log('[Site] Auto-publish setting saved:', autoPublishEnabled);
 		}
 	}
 
@@ -2223,6 +2228,7 @@
 					type="checkbox"
 					class="toggle-checkbox"
 					bind:checked={autoPublishEnabled}
+					on:change={handleAutoPublishToggle}
 				/>
 				<span class="toggle-label">{t('ui.auto_publish') || 'Auto Publish'}</span>
 			</label>
@@ -3234,7 +3240,6 @@
 	.license-warning {
 		font-size: 11px;
 		color: var(--text-accent);
-		background: var(--background-modifier-error-hover);
 		border: 1px solid var(--background-modifier-error);
 		padding: 6px 10px;
 		border-radius: 3px;
