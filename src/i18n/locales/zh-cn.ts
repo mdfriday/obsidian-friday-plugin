@@ -327,7 +327,7 @@ export const zhCn: TranslationNamespace = {
 		publish_building: "正在发布...",
 		publish_success: "发布成功！",
 		publish_failed: "发布失败",
-		published_successfully: "✅ 发布成功！",
+		published_successfully: "发布成功！",
 
 		// Server section
 		server_start: "启动服务器",

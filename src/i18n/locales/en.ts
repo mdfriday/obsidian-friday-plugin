@@ -336,7 +336,7 @@ export const en: TranslationNamespace = {
 		publish_building: "Publishing...",
 		publish_success: "Published successfully!",
 		publish_failed: "Publish failed",
-		published_successfully: "✅ Published successfully!",
+		published_successfully: "Published successfully!",
 
 		// Server section
 		server_start: "Start Server",

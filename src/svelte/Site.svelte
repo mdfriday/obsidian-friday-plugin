@@ -300,7 +300,7 @@
 				actualValue = {
 					googleAnalytics: { id: value }
 				};
-			} else if (key === 'params.disqusShortname' || key === 'params.password') {
+			} else if (key === 'params.disqusShortname' || key === 'params.password' || key === 'params.autoPublish') {
 				// For params, we need to merge with existing params
 				const existingConfig = await plugin.getFoundryProjectConfigMap(plugin.currentProjectName);
 				const params = existingConfig['params'] || {};
@@ -309,6 +309,8 @@
 					params.disqusShortname = value;
 				} else if (key === 'params.password') {
 					params.password = value;
+				} else if (key === 'params.autoPublish') {
+					params.autoPublish = value;
 				}
 				
 				actualKey = 'params';
@@ -413,16 +415,21 @@
 				}
 			}
 
-			// 4. Load advanced settings
-			if (state.config.services?.googleAnalytics?.id) {
-				googleAnalyticsId = state.config.services.googleAnalytics.id;
-			}
-			if (state.config.params?.disqusShortname) {
-				disqusShortname = state.config.params.disqusShortname;
-			}
-			if (state.config.params?.password) {
-				sitePassword = state.config.params.password;
-			}
+		// 4. Load advanced settings
+		if (state.config.services?.googleAnalytics?.id) {
+			googleAnalyticsId = state.config.services.googleAnalytics.id;
+		}
+		if (state.config.params?.disqusShortname) {
+			disqusShortname = state.config.params.disqusShortname;
+		}
+		if (state.config.params?.password) {
+			sitePassword = state.config.params.password;
+		}
+		
+		// Load auto-publish setting
+		if (state.config.params?.autoPublish !== undefined) {
+			autoPublishEnabled = state.config.params.autoPublish;
+		}
 
 			// 5. Load language configuration
 			if (state.config.languages && state.config.defaultContentLanguage) {
@@ -1605,6 +1612,13 @@
 
 	// Reactive: Check if FTP is configured
 	$: isFTPConfigured = !!(ftpServer.trim() && ftpUsername.trim() && ftpPassword.trim());
+	
+	// Reactive: Auto-save autoPublishEnabled changes
+	$: {
+		if (plugin.currentProjectName && !plugin.isProjectInitializing) {
+			saveFoundryConfig('params.autoPublish', autoPublishEnabled);
+		}
+	}
 
 	// Test FTP connection
 	async function testFTPConnection() {
