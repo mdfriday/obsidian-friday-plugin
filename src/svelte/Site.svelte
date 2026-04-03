@@ -763,8 +763,14 @@
 			setSitePath: setSitePathExternal,
 			startPreviewAndWait,
 			startPublish,
+			clearAllContent,
 			selectMDFShare,
 			selectMDFFree,
+			selectMDFApp,
+			selectMDFCustom,
+			selectMDFEnterprise,
+			selectNetlify,
+			selectFTP,
 			enableAutoPublish
 		});
 		}
@@ -801,6 +807,31 @@
 	// Select MDFriday Free publish option
 	function selectMDFFree() {
 		selectedPublishOption = 'mdf-free';
+	}
+	
+	// Select MDFriday App publish option
+	function selectMDFApp() {
+		selectedPublishOption = 'mdf-app';
+	}
+	
+	// Select MDFriday Custom publish option
+	function selectMDFCustom() {
+		selectedPublishOption = 'mdf-custom';
+	}
+	
+	// Select MDFriday Enterprise publish option
+	function selectMDFEnterprise() {
+		selectedPublishOption = 'mdf-enterprise';
+	}
+	
+	// Select Netlify publish option
+	function selectNetlify() {
+		selectedPublishOption = 'netlify';
+	}
+	
+	// Select FTP publish option
+	function selectFTP() {
+		selectedPublishOption = 'ftp';
 	}
 	
 	// Enable auto-publish mode (called from main.ts for quick publish)
@@ -907,6 +938,8 @@
 		siteName = ''; // 清空内容时也清空站点名称
 		userHasSelectedTheme = false; // 重置主题选择标志，允许重新自动选择
 		previousContentLength = 0; // 重置内容长度跟踪，允许下次首次添加时设置站点名称
+
+		autoPublishEnabled = false;
 		
 		// Reset language config save state
 		lastSavedLanguageConfig = '';
@@ -2150,7 +2183,7 @@
 			<button
 				class="quick-publish-btn"
 				on:click={startPublish}
-				disabled={isPublishDisabled || isPublishing || isBuilding}
+				disabled={currentContents.length === 0 || isPublishDisabled || isPublishing || isBuilding}
 			>
 				{#if autoPublishEnabled && isPublishing}
 					{t('ui.realtime_publishing') || 'Publishing...'}

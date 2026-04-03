@@ -338,8 +338,17 @@ export const zhCn: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: "发布到网络",
+		add_to_publish_list: "添加到发布列表",
 		set_as_site_assets: "设为站点资源",
 		quick_share: "快速分享",
+		publish_options: "发布选项",
+		publish_to_mdfriday_free: "发布到 MDFriday",
+		publish_to_mdfriday_share: "发布到分享",
+		publish_to_mdfriday_app: "发布到子域名",
+		publish_to_mdfriday_custom: "发布到自定义域名",
+		publish_to_mdfriday_enterprise: "发布到企业域名",
+		publish_to_netlify: "发布到 Netlify",
+		publish_to_ftp: "发布到 FTP",
 	},
 
 	commands: {},
@@ -458,9 +467,12 @@ export const zhCn: TranslationNamespace = {
 	no_markdown_file: "请先打开一个 Markdown 文件",
 	license_required_for_share: "请先激活许可证以使用快速分享功能",
 	quick_share_starting: "🚀 正在准备快速分享...",
+	adding_to_publish_panel: "正在添加到发布面板...",
+	content_added_to_publish_panel: "内容已添加到发布面板",
 	preview_failed_generic: "预览生成失败",
 	quick_share_ready: "✅ 准备就绪！点击「发布」即可分享您的笔记",
 	quick_share_failed: "快速分享失败：{{error}}",
+	quick_publish_success: "快速发布完成！",
 
 		// User messages
 		enter_email_password: "请输入您的邮箱和密码",

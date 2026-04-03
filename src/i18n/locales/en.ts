@@ -347,8 +347,17 @@ export const en: TranslationNamespace = {
 
 	menu: {
 		publish_to_web: "Publish to Web",
+		add_to_publish_list: "Add to Publish List",
 		set_as_site_assets: "Set as Site Assets",
 		quick_share: "Quick Share",
+		publish_options: "Publish Options",
+		publish_to_mdfriday_free: "Publish to MDFriday",
+		publish_to_mdfriday_share: "Publish to Share",
+		publish_to_mdfriday_app: "Publish to Subdomain",
+		publish_to_mdfriday_custom: "Publish to Custom Domain",
+		publish_to_mdfriday_enterprise: "Publish to Enterprise",
+		publish_to_netlify: "Publish to Netlify",
+		publish_to_ftp: "Publish to FTP",
 	},
 
 	commands: {},
@@ -470,9 +479,12 @@ export const en: TranslationNamespace = {
 	no_markdown_file: "Please open a Markdown file first",
 	license_required_for_share: "Please activate your license to use Quick Share",
 	quick_share_starting: "🚀 Preparing quick share...",
+	adding_to_publish_panel: "Adding to publish panel...",
+	content_added_to_publish_panel: "Content added to publish panel",
 	preview_failed_generic: "Preview generation failed",
 	quick_share_ready: "✅ Ready to share! Click 'Publish' to share your note",
 	quick_share_failed: "Quick share failed: {{error}}",
+	quick_publish_success: "Quick publish completed successfully!",
 
 		// User messages
 		enter_email_password: "Please enter your email and password",

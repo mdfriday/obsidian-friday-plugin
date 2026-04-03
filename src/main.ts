@@ -1,4 +1,4 @@
-import {App, Modal, Plugin, TFolder, TFile, Notice, MarkdownView, setIcon, Platform, FileSystemAdapter} from 'obsidian';
+import {App, Modal, Menu, Plugin, TFolder, TFile, Notice, MarkdownView, setIcon, Platform, FileSystemAdapter} from 'obsidian';
 import {User} from "./user";
 import './styles/license-settings.css';
 import {I18nService} from "./i18n";
@@ -351,9 +351,13 @@ export default class FridayPlugin extends Plugin {
 				if (file instanceof TFolder) {
 					menu.addItem(item => {
 						item
-							.setTitle(this.i18n.t('menu.publish_to_web'))
+							.setTitle(this.i18n.t('menu.add_to_publish_list'))
 							.setIcon(FRIDAY_ICON)
 							.onClick(async () => {
+								if (this.siteComponent?.clearAllContent) {
+									this.siteComponent.clearAllContent();
+								}
+
 								await this.openPublishPanel(file, null);
 							});
 					});
@@ -368,12 +372,92 @@ export default class FridayPlugin extends Plugin {
 							});
 					});
 				} else if (file instanceof TFile && file.extension === 'md') {
+					// Add "Add to Publish List" menu item
 					menu.addItem(item => {
 						item
-							.setTitle(this.i18n.t('menu.publish_to_web'))
+							.setTitle(this.i18n.t('menu.add_to_publish_list'))
 							.setIcon(FRIDAY_ICON)
 							.onClick(async () => {
+								if (this.siteComponent?.clearAllContent) {
+									this.siteComponent.clearAllContent();
+								}
+
 								await this.openPublishPanel(null, file);
+							});
+					});
+					
+					// Add separator
+					menu.addSeparator();
+					
+					// Add publish to MDFriday Free menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_mdfriday_free'))
+							.setIcon('cloud')
+							.onClick(async () => {
+								await this.publishToMDFridayFree(file);
+							});
+					});
+					
+					// Add publish to MDFriday Share menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_mdfriday_share'))
+							.setIcon('share')
+							.onClick(async () => {
+								await this.publishToMDFridayShare(file);
+							});
+					});
+					
+					// Add publish to MDFriday App (Subdomain) menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_mdfriday_app'))
+							.setIcon('home')
+							.onClick(async () => {
+								await this.publishToMDFridayApp(file);
+							});
+					});
+					
+					// Add publish to MDFriday Custom Domain menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_mdfriday_custom'))
+							.setIcon('link')
+							.onClick(async () => {
+								await this.publishToMDFridayCustom(file);
+							});
+					});
+					
+					// Add publish to MDFriday Enterprise menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_mdfriday_enterprise'))
+							.setIcon('building')
+							.onClick(async () => {
+								await this.publishToMDFridayEnterprise(file);
+							});
+					});
+					
+					menu.addSeparator();
+					
+					// Add publish to Netlify menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_netlify'))
+							.setIcon('globe')
+							.onClick(async () => {
+								await this.publishToNetlify(file);
+							});
+					});
+					
+					// Add publish to FTP menu item
+					menu.addItem(item => {
+						item
+							.setTitle(this.i18n.t('menu.publish_to_ftp'))
+							.setIcon('upload')
+							.onClick(async () => {
+								await this.publishToFTP(file);
 							});
 					});
 				}
@@ -1108,13 +1192,18 @@ export default class FridayPlugin extends Plugin {
 			// Show starting notice
 			new Notice(this.i18n.t('messages.quick_share_starting'), 2000);
 
-			// Step 1: Open publish panel with current file (simulates right-click -> publish)
+			// Step 1: Clear existing content in publish panel
+			if (this.siteComponent?.clearAllContent) {
+				this.siteComponent.clearAllContent();
+			}
+
+			// Step 2: Open publish panel with current file (simulates right-click -> publish)
 			await this.openPublishPanel(null, file);
 
 			// Wait a bit for the panel to initialize
 			await new Promise(resolve => setTimeout(resolve, 500));
 
-			// Step 2: Select MDFriday Share publish option first
+			// Step 3: Select MDFriday Share publish option first
 			if (this.siteComponent?.selectMDFShare) {
 				this.siteComponent.selectMDFShare();
 			} else {
@@ -1123,7 +1212,7 @@ export default class FridayPlugin extends Plugin {
 				return;
 			}
 
-			// Step 3: Set sitePath to "/s/{userDir}" for MDFriday Share (previewId will be added in startPreview)
+			// Step 4: Set sitePath to "/s/{userDir}" for MDFriday Share (previewId will be added in startPreview)
 			if (this.siteComponent?.setSitePath && this.settings.licenseUser?.userDir) {
 				this.siteComponent.setSitePath(`/s/${this.settings.licenseUser.userDir}`);
 			}
@@ -1131,7 +1220,7 @@ export default class FridayPlugin extends Plugin {
 			// Wait a bit for sitePath to be set
 			await new Promise(resolve => setTimeout(resolve, 100));
 
-			// Step 4: Generate preview
+			// Step 5: Generate preview
 			if (this.siteComponent?.startPreviewAndWait) {
 				const previewSuccess = await this.siteComponent.startPreviewAndWait();
 				if (!previewSuccess) {
@@ -1150,7 +1239,200 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
+	 * Base publish method - unified workflow for all publish types
+	 * Does NOT force enable autoPublish - respects user's checkbox setting
+	 */
+	private async publishTo(file: TFile, publishType: 'mdf-free' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp') {
+		if (!Platform.isDesktop) {
+			new Notice(this.i18n.t('messages.quick_share_desktop_only'));
+			return;
+		}
+		
+		if (!file || file.extension !== 'md') {
+			new Notice(this.i18n.t('messages.no_markdown_file'), 3000);
+			return;
+		}
+
+		try {
+			// Show starting notice
+			new Notice(this.i18n.t('messages.adding_to_publish_panel') || 'Adding to publish panel...', 2000);
+
+			// Step 1: Clear existing content in publish panel
+			if (this.siteComponent?.clearAllContent) {
+				this.siteComponent.clearAllContent();
+			}
+
+			// Step 2: Open publish panel with current file
+			await this.openPublishPanel(null, file);
+
+			// Wait a bit for the panel to initialize
+			await new Promise(resolve => setTimeout(resolve, 500));
+
+			// Step 3: Select the appropriate publish option
+			switch (publishType) {
+				case 'mdf-free':
+					if (this.siteComponent?.selectMDFFree) {
+						this.siteComponent.selectMDFFree();
+					} else {
+						console.error('[Friday] Site component not available for selectMDFFree');
+						new Notice('Site component not ready', 3000);
+						return;
+					}
+					break;
+				case 'mdf-share':
+					if (this.siteComponent?.selectMDFShare) {
+						this.siteComponent.selectMDFShare();
+					} else {
+						console.error('[Friday] Site component not available for selectMDFShare');
+						new Notice('Site component not ready', 3000);
+						return;
+					}
+					break;
+				case 'mdf-app':
+					if (this.siteComponent?.selectMDFApp) {
+						this.siteComponent.selectMDFApp();
+					} else {
+						console.error('[Friday] Site component not available for selectMDFApp');
+						new Notice('Site component not ready', 3000);
+						return;
+					}
+					break;
+				case 'mdf-custom':
+					if (this.siteComponent?.selectMDFCustom) {
+						this.siteComponent.selectMDFCustom();
+					} else {
+						console.error('[Friday] Site component not available for selectMDFCustom');
+						new Notice('Site component not ready', 3000);
+						return;
+					}
+					break;
+				case 'mdf-enterprise':
+					if (this.siteComponent?.selectMDFEnterprise) {
+						this.siteComponent.selectMDFEnterprise();
+					} else {
+						console.error('[Friday] Site component not available for selectMDFEnterprise');
+						new Notice('Site component not ready', 3000);
+						return;
+					}
+					break;
+				case 'netlify':
+					if (this.siteComponent?.selectNetlify) {
+						this.siteComponent.selectNetlify();
+					} else {
+						console.error('[Friday] Site component not available for selectNetlify');
+						new Notice('Site component not ready', 3000);
+						return;
+					}
+					break;
+				case 'ftp':
+					if (this.siteComponent?.selectFTP) {
+						this.siteComponent.selectFTP();
+					} else {
+						console.error('[Friday] Site component not available for selectFTP');
+						new Notice('Site component not ready', 3000);
+						return;
+					}
+					break;
+			}
+
+			// Step 4: Set sitePath based on publish type
+			if (this.siteComponent?.setSitePath && this.currentProjectName) {
+				const previewId = nameToId(this.currentProjectName);
+				switch (publishType) {
+					case 'mdf-free':
+						this.siteComponent.setSitePath(`/f/${previewId}`);
+						break;
+					case 'mdf-share':
+						if (this.settings.licenseUser?.userDir) {
+							this.siteComponent.setSitePath(`/s/${this.settings.licenseUser.userDir}`);
+						}
+						break;
+					case 'mdf-app':
+					case 'mdf-custom':
+					case 'mdf-enterprise':
+						// These will use custom sitePath from user settings
+						break;
+					default:
+						// netlify and ftp don't need sitePath
+						break;
+				}
+			}
+
+			// Wait a bit for settings to be applied
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			// Step 6: Trigger publish (which will auto-generate preview with publish config)
+			// Since autoPublishEnabled is true, startPublish will call autoPublish
+			if (this.siteComponent?.startPublish) {
+				await this.siteComponent.startPublish();
+			}
+
+			// Show completion notice
+			new Notice(this.i18n.t('messages.content_added_to_publish_panel') || 'Content added to publish panel', 3000);
+
+		} catch (error) {
+			console.error('Publish setup failed:', error);
+			new Notice(this.i18n.t('messages.quick_share_failed', { error: (error as Error).message }), 5000);
+		}
+	}
+
+	/**
+	 * Publish to MDFriday Free
+	 */
+	private async publishToMDFridayFree(file: TFile) {
+		await this.publishTo(file, 'mdf-free');
+	}
+
+	/**
+	 * Publish to MDFriday Share
+	 */
+	private async publishToMDFridayShare(file: TFile) {
+		// Check if license is activated
+		if (!this.settings.license || !this.settings.licenseUser?.userDir) {
+			new Notice(this.i18n.t('messages.license_required_for_share'), 5000);
+			return;
+		}
+		await this.publishTo(file, 'mdf-share');
+	}
+
+	/**
+	 * Publish to MDFriday App (custom subdomain)
+	 */
+	private async publishToMDFridayApp(file: TFile) {
+		await this.publishTo(file, 'mdf-app');
+	}
+
+	/**
+	 * Publish to MDFriday Custom
+	 */
+	private async publishToMDFridayCustom(file: TFile) {
+		await this.publishTo(file, 'mdf-custom');
+	}
+
+	/**
+	 * Publish to MDFriday Enterprise
+	 */
+	private async publishToMDFridayEnterprise(file: TFile) {
+		await this.publishTo(file, 'mdf-enterprise');
+	}
+
+	/**
+	 * Publish to Netlify
+	 */
+	private async publishToNetlify(file: TFile) {
+		await this.publishTo(file, 'netlify');
+	}
+
+	/**
+	 * Publish to FTP
+	 */
+	private async publishToFTP(file: TFile) {
+		await this.publishTo(file, 'ftp');
+	}
+
+	/**
 	 * Quick publish to MDFriday Free - One-click full automated workflow (Desktop only)
+	 * This version enables autoPublish for immediate publishing
 	 * 1. Open publish panel with current file
 	 * 2. Select MDFriday Free publish option
 	 * 3. Auto-fill or create project
@@ -1173,13 +1455,18 @@ export default class FridayPlugin extends Plugin {
 			// Show starting notice
 			new Notice(this.i18n.t('messages.quick_share_starting'), 2000);
 
-			// Step 1: Open publish panel with current file
+			// Step 1: Clear existing content in publish panel
+			if (this.siteComponent?.clearAllContent) {
+				this.siteComponent.clearAllContent();
+			}
+
+			// Step 2: Open publish panel with current file
 			await this.openPublishPanel(null, file);
 
 			// Wait a bit for the panel to initialize
 			await new Promise(resolve => setTimeout(resolve, 500));
 
-		// Step 2: Select MDFriday Free publish option
+		// Step 3: Select MDFriday Free publish option
 		if (this.siteComponent?.selectMDFFree) {
 			this.siteComponent.selectMDFFree();
 		} else {
@@ -1188,13 +1475,13 @@ export default class FridayPlugin extends Plugin {
 			return;
 		}
 
-		// Step 3: Set sitePath to "/f/{previewId}" for MDFriday Free
+		// Step 4: Set sitePath to "/f/{previewId}" for MDFriday Free
 		if (this.siteComponent?.setSitePath && this.currentProjectName) {
 			const previewId = nameToId(this.currentProjectName);
 			this.siteComponent.setSitePath(`/f/${previewId}`);
 		}
 
-		// Step 4: Enable auto-publish mode
+		// Step 5: Enable auto-publish mode
 		if (this.siteComponent?.enableAutoPublish) {
 			this.siteComponent.enableAutoPublish();
 		}
@@ -1202,7 +1489,7 @@ export default class FridayPlugin extends Plugin {
 		// Wait a bit for settings to be applied
 		await new Promise(resolve => setTimeout(resolve, 100));
 
-		// Step 5: Trigger publish (which will auto-generate preview with publish config)
+		// Step 6: Trigger publish (which will auto-generate preview with publish config)
 		// Since autoPublishEnabled is true, startPublish will call autoPublish
 		if (this.siteComponent?.startPublish) {
 			await this.siteComponent.startPublish();
