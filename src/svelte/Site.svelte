@@ -479,8 +479,9 @@
 			// Set publishing state based on phase
 			if (progress.phase === 'publishing') {
 				isPublishing = true;
+				publishSuccess = false;
 			} else if (progress.phase === 'publish-success') {
-				isPublishing = false;
+				isPublishing = true;
 				publishSuccess = true;
 				
 				// Extract publish URL from data
@@ -1648,6 +1649,19 @@
 		}
 	}
 
+	async function stopPublish() {
+		// Reset publishing state
+		isBuilding = false;
+		isPublishing = false;
+		buildProgress = 0;
+		publishProgress = 0;
+		
+		// Also stop preview if it's running
+		await stopPreview();
+		
+		new Notice(t('messages.publish_stopped') || 'Publishing stopped', 2000);
+	}
+
 	async function startPublish() {
 		// If auto-publish is enabled, use autoPublish instead
 		if (autoPublishEnabled) {
@@ -2141,7 +2155,7 @@
 
 		<!-- Publish Status Area -->
 		<div class="publish-status-area">
-			{#if isPublishing}
+			{#if isPublishing && !publishSuccess}
 				<!-- Publishing in progress -->
 				<div class="status-publishing">
 					<div class="status-text">{t('ui.publish_building')}</div>
@@ -2180,17 +2194,30 @@
 
 		<!-- Publish Actions -->
 		<div class="publish-actions-row">
-			<button
-				class="quick-publish-btn"
-				on:click={startPublish}
-				disabled={currentContents.length === 0 || isPublishDisabled || isPublishing || isBuilding}
-			>
-				{#if autoPublishEnabled && isPublishing}
-					{t('ui.realtime_publishing') || 'Publishing...'}
-				{:else}
+			{#if autoPublishEnabled && isPublishing}
+				<!-- Realtime publishing state with stop button -->
+				<div class="publishing-status">
+					<span class="publishing-text">{t('ui.realtime_publishing') || 'Publishing...'}</span>
+					<button
+						class="stop-publish-btn"
+						on:click={stopPublish}
+						title={t('ui.stop_publish') || 'Stop Publishing'}
+					>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<rect x="6" y="6" width="12" height="12"></rect>
+						</svg>
+						{t('ui.stop') || 'Stop'}
+					</button>
+				</div>
+			{:else}
+				<button
+					class="quick-publish-btn"
+					on:click={startPublish}
+					disabled={currentContents.length === 0 || isPublishDisabled || isPublishing || isBuilding}
+				>
 					{t('ui.publish')}
-				{/if}
-			</button>
+				</button>
+			{/if}
 			<label class="auto-publish-toggle">
 				<input
 					type="checkbox"
@@ -2850,6 +2877,54 @@
 		color: var(--text-muted);
 		cursor: not-allowed;
 		opacity: 0.6;
+	}
+
+	.publishing-status {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex: 0 0 auto;
+	}
+
+	.publishing-text {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--interactive-accent);
+		animation: pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.6;
+		}
+	}
+
+	.stop-publish-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-primary);
+		color: var(--text-normal);
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.stop-publish-btn:hover {
+		background: var(--background-modifier-error);
+		color: var(--text-error);
+		border-color: var(--text-error);
+	}
+
+	.stop-publish-btn svg {
+		fill: currentColor;
 	}
 
 	.auto-publish-toggle {

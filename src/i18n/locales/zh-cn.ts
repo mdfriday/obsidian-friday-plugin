@@ -293,6 +293,8 @@ export const zhCn: TranslationNamespace = {
 		copy: "拷贝",
 		realtime_publishing: "实时发布中...",
 		auto_publish: "自动发布",
+		stop_publish: "停止发布",
+		stop: "停止",
 		settings: "设置",
 		publish_config: "发布配置",
 
@@ -425,9 +427,10 @@ export const zhCn: TranslationNamespace = {
 		build_started: "开始构建",
 		build_completed: "构建成功完成",
 		build_failed: "构建失败",
-		publish_started: "开始发布",
-		publish_completed: "发布成功",
-		publish_failed: "发布失败",
+	publish_started: "开始发布",
+	publish_completed: "发布成功",
+	publish_failed: "发布失败",
+	publish_stopped: "发布已停止",
 
 		// Preview messages
 		no_folder_selected: "未选择文件夹",

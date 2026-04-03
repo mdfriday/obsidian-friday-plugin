@@ -314,6 +314,8 @@ export const en: TranslationNamespace = {
 		copy: "Copy",
 		realtime_publishing: "Realtime Publishing...",
 		auto_publish: "Auto Publish",
+		stop_publish: "Stop Publishing",
+		stop: "Stop",
 		settings: "Settings",
 		publish_config: "Publish Configuration",
 
@@ -434,9 +436,10 @@ export const en: TranslationNamespace = {
 		build_started: "Build started",
 		build_completed: "Build completed successfully",
 		build_failed: "Build failed",
-		publish_started: "Publishing started",
-		publish_completed: "Published successfully",
-		publish_failed: "Publishing failed",
+	publish_started: "Publishing started",
+	publish_completed: "Published successfully",
+	publish_failed: "Publishing failed",
+	publish_stopped: "Publishing stopped",
 
 		// Preview messages
 		no_folder_selected: "No folder selected",
