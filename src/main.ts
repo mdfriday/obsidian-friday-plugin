@@ -1194,23 +1194,18 @@ export default class FridayPlugin extends Plugin {
 			this.siteComponent.setSitePath(`/f/${previewId}`);
 		}
 
-		// Step 4: Enable one-click publish mode
-		if (this.siteComponent?.enableOneClickPublishMode) {
-			this.siteComponent.enableOneClickPublishMode();
+		// Step 4: Enable auto-publish mode
+		if (this.siteComponent?.enableAutoPublish) {
+			this.siteComponent.enableAutoPublish();
 		}
 
 		// Wait a bit for settings to be applied
 		await new Promise(resolve => setTimeout(resolve, 100));
 
-		// Step 5: Use Site.svelte's existing preview+publish workflow
-		// The Site.svelte component will handle the full build and publish process
-		// by triggering previewRequested event with publishConfig
-		if (this.siteComponent?.startPreviewAndWait) {
-			const success = await this.siteComponent.startPreviewAndWait();
-			if (!success) {
-				new Notice(this.i18n.t('messages.preview_failed_generic'), 5000);
-				return;
-			}
+		// Step 5: Trigger publish (which will auto-generate preview with publish config)
+		// Since autoPublishEnabled is true, startPublish will call autoPublish
+		if (this.siteComponent?.startPublish) {
+			await this.siteComponent.startPublish();
 		}
 
 			// Show completion notice

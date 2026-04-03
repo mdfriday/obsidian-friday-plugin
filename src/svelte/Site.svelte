@@ -111,9 +111,6 @@
 	let publishUrl = '';
 	let selectedPublishOption: ValidPublishMethod = normalizePublishMethod(plugin.settings.publishMethod);
 	
-	// One-click publish mode flag (when preview includes auto-publish)
-	let isOneClickPublishMode = false;
-	
 	// Netlify configuration (project-specific)
 	let netlifyAccessToken = '';
 	let netlifyProjectId = '';
@@ -475,8 +472,8 @@
 				break;
 		}
 
-		// If in one-click publish mode, sync publish progress with build progress
-		if (progress.overallPercentage !== undefined && isOneClickPublishMode) {
+		// If auto-publish is enabled, sync publish progress with build progress
+		if (progress.overallPercentage !== undefined && autoPublishEnabled) {
 			publishProgress = progress.overallPercentage;
 
 			// Set publishing state based on phase
@@ -495,7 +492,6 @@
 				isPublishing = false;
 				publishProgress = 0;
 				publishSuccess = false;
-				isOneClickPublishMode = false;
 			}
 		}
 	}
@@ -766,9 +762,10 @@
 			// Quick share and utility methods (migrated from old architecture)
 			setSitePath: setSitePathExternal,
 			startPreviewAndWait,
+			startPublish,
 			selectMDFShare,
 			selectMDFFree,
-			enableOneClickPublishMode
+			enableAutoPublish
 		});
 		}
 
@@ -806,10 +803,10 @@
 		selectedPublishOption = 'mdf-free';
 	}
 	
-	// Enable one-click publish mode (called from main.ts)
-	export function enableOneClickPublishMode() {
-		isOneClickPublishMode = true;
-		console.log('[Site] One-click publish mode enabled');
+	// Enable auto-publish mode (called from main.ts for quick publish)
+	export function enableAutoPublish() {
+		autoPublishEnabled = true;
+		console.log('[Site] Auto-publish enabled');
 	}
 
 	onDestroy(() => {
@@ -1408,26 +1405,109 @@
 			// Create custom Markdown renderer based on theme
 			const customRenderer = await createRendererBasedOnTheme();
 			
-		// Prepare publish config if needed for auto-publish
-		let publishConfig: any = undefined;
-		
-		// Check if we should auto-publish (for mdf-free and mdf-share)
-		// Note: isOneClickPublishMode is set by quickPublishToFree in main.ts
-		if (isOneClickPublishMode && (selectedPublishOption === 'mdf-free' || selectedPublishOption === 'mdf-share')) {
-			const projectName = plugin.currentProjectName;
-			if (projectName) {
-				// Initialize publish state
-				resetPublishState();
+			// Use event system to request preview from Main.ts
+			if (plugin.handleSiteEvent) {
+				await plugin.handleSiteEvent('previewRequested', {
+					projectName: plugin.currentProjectName,
+					port: serverPort,
+					renderer: hasOBTag ? customRenderer : undefined,
+					publishConfig: undefined
+				});
 				
-				if (selectedPublishOption === 'mdf-free') {
-					publishConfig = buildMDFFreePublishConfig(projectName);
-				} else if (selectedPublishOption === 'mdf-share') {
-					publishConfig = buildMDFSharePublishConfig(projectName);
-				}
+				// Note: Progress updates and completion will be handled by callbacks
+				// (updateBuildProgress, onPreviewStarted, onPreviewError)
+			}
+
+			// Send counter for preview (don't wait for result)
+			if (plugin.hugoverse) {
+				plugin.hugoverse.sendCounter('preview').catch(error => {
+					console.warn('Counter request failed (non-critical):', error);
+				});
+			}
+
+		} catch (error) {
+			console.error('Preview generation failed:', error);
+			new Notice(t('messages.preview_failed', { error: error.message }), 5000);
+			isBuilding = false;
+			buildProgress = 0;
+		}
+		// Note: isBuilding will be set to false by onPreviewStarted/onPreviewError callbacks
+	}
+
+	async function autoPublish() {
+		if (currentContents.length === 0) {
+			new Notice(t('messages.no_folder_or_file_selected'), 3000);
+			return;
+		}
+
+		if (!plugin.currentProjectName) {
+			new Notice('No project selected. Please right-click a folder first.', 3000);
+			return;
+		}
+
+		// Stop previous preview if running to avoid port conflicts
+		if (hasPreview || serverRunning) {
+			console.log('[Site] Stopping previous preview before starting auto-publish');
+			try {
+				await stopPreview();
+				// Wait a moment for the server to fully stop
+				await new Promise(resolve => setTimeout(resolve, 500));
+			} catch (error) {
+				console.warn('[Site] Error stopping previous preview:', error);
+				// Continue anyway, the new server start might handle the conflict
 			}
 		}
+
+		isBuilding = true;
+		buildProgress = 0;
+		hasPreview = false;
+
+		try {
+			// Note: Configuration is auto-saved through reactive statements
+			// No need for explicit saveCurrentConfiguration() call
 			
-			// Use event system to request preview from Main.ts
+			// Get theme info to check if we need custom renderer
+			const themeInfo = await themeApiService.getThemeById(selectedThemeId, plugin);
+			hasOBTag = themeInfo?.tags?.some(tag =>
+				tag.toLowerCase() === 'obsidian'
+			) || false;
+			
+			// Create custom Markdown renderer based on theme
+			const customRenderer = await createRendererBasedOnTheme();
+			
+			// Prepare publish config for auto-publish
+			let publishConfig: any = undefined;
+			const projectName = plugin.currentProjectName;
+			
+			// Initialize publish state
+			resetPublishState();
+			
+			// Build publish config based on selected option
+			switch (selectedPublishOption) {
+				case 'mdf-free':
+					publishConfig = buildMDFFreePublishConfig(projectName);
+					break;
+				case 'mdf-share':
+					publishConfig = buildMDFSharePublishConfig(projectName);
+					break;
+				case 'netlify':
+					publishConfig = buildNetlifyPublishConfig();
+					break;
+				case 'ftp':
+					publishConfig = buildFTPPublishConfig();
+					break;
+				case 'mdf-app':
+					publishConfig = buildMDFAppPublishConfig();
+					break;
+				case 'mdf-custom':
+					publishConfig = buildMDFCustomPublishConfig();
+					break;
+				case 'mdf-enterprise':
+					publishConfig = buildMDFEnterprisePublishConfig();
+					break;
+			}
+			
+			// Use event system to request preview with publish config from Main.ts
 			if (plugin.handleSiteEvent) {
 				await plugin.handleSiteEvent('previewRequested', {
 					projectName: plugin.currentProjectName,
@@ -1448,7 +1528,7 @@
 			}
 
 		} catch (error) {
-			console.error('Preview generation failed:', error);
+			console.error('Auto-publish failed:', error);
 			new Notice(t('messages.preview_failed', { error: error.message }), 5000);
 			isBuilding = false;
 			buildProgress = 0;
@@ -1536,9 +1616,32 @@
 	}
 
 	async function startPublish() {
-		if (!hasPreview) {
-			new Notice(t('messages.please_generate_preview_first'), 3000);
+		// If auto-publish is enabled, use autoPublish instead
+		if (autoPublishEnabled) {
+			await autoPublish();
 			return;
+		}
+
+		// If no preview exists, generate it first
+		if (!hasPreview) {
+			new Notice(t('messages.generating_preview_first') || 'Generating preview first...', 3000);
+			await startPreview();
+			
+			// Wait for preview to complete before publishing
+			// The preview callback (onPreviewStarted) will set hasPreview to true
+			const maxWaitTime = 300000; // 5 minutes max
+			const checkInterval = 500; // Check every 500ms
+			let waitedTime = 0;
+			
+			while (!hasPreview && isBuilding && waitedTime < maxWaitTime) {
+				await new Promise(resolve => setTimeout(resolve, checkInterval));
+				waitedTime += checkInterval;
+			}
+			
+			if (!hasPreview) {
+				new Notice(t('messages.preview_generation_failed') || 'Preview generation failed or timed out', 5000);
+				return;
+			}
 		}
 
 		// Check settings based on selected publish option
@@ -2047,7 +2150,7 @@
 			<button
 				class="quick-publish-btn"
 				on:click={startPublish}
-				disabled={!hasPreview || isPublishDisabled || isPublishing}
+				disabled={isPublishDisabled || isPublishing || isBuilding}
 			>
 				{#if autoPublishEnabled && isPublishing}
 					{t('ui.realtime_publishing') || 'Publishing...'}
