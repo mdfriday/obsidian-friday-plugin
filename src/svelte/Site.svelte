@@ -2104,29 +2104,6 @@
 			}
 		}
 	}
-
-	// Get display content path (relative to vault root)
-	function getDisplayContentPath(): string {
-		if (currentContents.length === 0) {
-			return t('ui.no_content_selected') || 'No content selected';
-		}
-		const content = currentContents[0];
-		if (content.folder) {
-			return content.folder.path;
-		} else if (content.file) {
-			return content.file.path;
-		}
-		return '';
-	}
-
-	// Get content icon type
-	function getContentIconType(): 'file' | 'folder' | null {
-		if (currentContents.length === 0) return null;
-		const content = currentContents[0];
-		if (content.folder) return 'folder';
-		if (content.file) return 'file';
-		return null;
-	}
 </script>
 
 <div class="site-builder">
@@ -2143,18 +2120,22 @@
 			<div class="content-label">{t('ui.current_content') || 'Current Content'}</div>
 			<div class="content-display">
 				{#if currentContents.length > 0}
-					{@const iconType = getContentIconType()}
-					{#if iconType === 'folder'}
-						<svg class="content-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-						</svg>
-					{:else if iconType === 'file'}
-						<svg class="content-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-							<polyline points="14 2 14 8 20 8"></polyline>
-						</svg>
-					{/if}
-					<span class="content-path">{getDisplayContentPath()}</span>
+					{#each currentContents as content (content.id)}
+						<div class="content-item">
+							{#if content.folder}
+								<svg class="content-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+								</svg>
+								<span class="content-path">{content.folder.path}</span>
+							{:else if content.file}
+								<svg class="content-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+									<polyline points="14 2 14 8 20 8"></polyline>
+								</svg>
+								<span class="content-path">{content.file.path}</span>
+							{/if}
+						</div>
+					{/each}
 				{:else}
 					<span class="content-empty">{t('ui.no_content_selected_hint')}</span>
 				{/if}
@@ -2756,13 +2737,19 @@
 
 	.content-display {
 		display: flex;
-		align-items: center;
-		gap: 8px;
+		flex-direction: column;
+		gap: 6px;
 		padding: 8px 12px;
 		background: var(--background-secondary);
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 4px;
 		min-height: 36px;
+	}
+
+	.content-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.content-icon {
