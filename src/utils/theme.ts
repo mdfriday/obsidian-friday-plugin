@@ -7,7 +7,7 @@
  */
 export const DEFAULT_THEMES = {
 	NOTE: {
-		id: 16,
+		id: 2,
 		name: 'Note',
 		downloadUrl: 'https://gohugo.net/note.zip?version=1.2',
 		tags: ['obsidian']
@@ -16,12 +16,6 @@ export const DEFAULT_THEMES = {
 		id: 17,
 		name: 'Quartz',
 		downloadUrl: 'https://gohugo.net/quartz-theme.zip?version=1.2',
-		tags: ['obsidian']
-	},
-	BOOK: {
-		id: 18,
-		name: 'Book',
-		downloadUrl: 'https://gohugo.net/book-theme.zip?version=1.2',
 		tags: []
 	}
 } as const;
@@ -34,7 +28,7 @@ export const DEFAULT_THEMES = {
  * @returns 是否使用内部渲染器
  */
 export function shouldUseInternalRenderer(themeTags: string[] = []): boolean {
-	return themeTags.includes('obsidian');
+	return !themeTags.includes('obsidian');
 }
 
 /**

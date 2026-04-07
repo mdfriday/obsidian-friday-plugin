@@ -13,6 +13,7 @@
 	import {themeApiService} from "../theme/themeApiService";
 	import type { ProjectState, ProgressUpdate, PublishProgressUpdate } from "../types/events";
 	import {nameToId} from "src/utils/hash.ts";
+	import { DEFAULT_THEMES } from "../utils/theme";
 
 	// Receive props
 	export let app: App;
@@ -25,13 +26,6 @@
 	
 	// Reactive translation function
 	$: t = plugin.i18n?.t || ((key: string) => key);
-
-	const BOOK_THEME_URL = "https://gohugo.net/book-ob.zip?version=1.1"
-	const BOOK_THEME_ID = "3"
-	const BOOK_THEME_NAME = "Obsidian Book"
-	const NOTE_THEME_URL = "https://gohugo.net/note.zip?version=1.2"
-	const NOTE_THEME_ID = "2"
-	const NOTE_THEME_NAME = "Note";
 
 	const isWindows = process.platform === 'win32';
 	const FRIDAY_ROOT_FOLDER = 'MDFriday';
@@ -58,9 +52,9 @@
 	
 	// 其他配置保持在本地管理
 	let sitePath = '/';
-	let selectedThemeDownloadUrl = BOOK_THEME_URL;
-	let selectedThemeName = BOOK_THEME_NAME;
-	let selectedThemeId = BOOK_THEME_ID;
+	let selectedThemeDownloadUrl: string = DEFAULT_THEMES.QUARTZ.downloadUrl;
+	let selectedThemeName: string = DEFAULT_THEMES.QUARTZ.name;
+	let selectedThemeId: string = DEFAULT_THEMES.QUARTZ.id.toString();
 	
 	// 标志用户是否手动选择过主题
 	let userHasSelectedTheme = false;
@@ -69,16 +63,16 @@
 	$: {
 		if (currentContents.length > 0 && !userHasSelectedTheme) {
 			const firstContent = currentContents[0];
-			if (firstContent.file && !selectedThemeDownloadUrl.includes('note')) {
+			if (firstContent.file) {
 				// 单文件 - 设置为 Note 主题
-				selectedThemeDownloadUrl = NOTE_THEME_URL;
-				selectedThemeName = NOTE_THEME_NAME;
-				selectedThemeId = NOTE_THEME_ID;
-			} else if (firstContent.folder && !selectedThemeDownloadUrl.includes('book')) {
+				selectedThemeDownloadUrl = DEFAULT_THEMES.NOTE.downloadUrl;
+				selectedThemeName = DEFAULT_THEMES.NOTE.name;
+				selectedThemeId = DEFAULT_THEMES.NOTE.id.toString();
+			} else if (firstContent.folder) {
 				// 文件夹 - 设置为 Book 主题
-				selectedThemeDownloadUrl = BOOK_THEME_URL;
-				selectedThemeName = BOOK_THEME_NAME;
-				selectedThemeId = BOOK_THEME_ID;
+				selectedThemeDownloadUrl = DEFAULT_THEMES.QUARTZ.downloadUrl;
+				selectedThemeName = DEFAULT_THEMES.QUARTZ.name;
+				selectedThemeId = DEFAULT_THEMES.QUARTZ.id.toString();
 			}
 		}
 	}
@@ -110,6 +104,7 @@
 	let publishSuccess = false;
 	let publishUrl = '';
 	let selectedPublishOption: ValidPublishMethod = normalizePublishMethod(plugin.settings.publishMethod);
+	let isPublishDisabled = true; // Will be updated reactively based on permissions
 	
 	// Netlify configuration (project-specific)
 	let netlifyAccessToken = '';
@@ -190,7 +185,12 @@
 	}
 
 	// Check if publish button should be disabled
-	$: isPublishDisabled = !hasCurrentPublishPermission();
+	// Explicitly reference selectedPublishOption to ensure Svelte tracks the dependency
+	$: {
+		// Force Svelte to track selectedPublishOption changes
+		selectedPublishOption;
+		isPublishDisabled = !hasCurrentPublishPermission();
+	}
 
 	/**
 	 * Apply language configuration from Foundry config to UI
@@ -362,17 +362,6 @@
 						selectedThemeName = matchedTheme.title || matchedTheme.name;
 						console.log('[Site] Loaded theme:', selectedThemeName, 'ID:', selectedThemeId);
 					} else {
-						// Fallback: determine from URL
-						if (themeUrl.includes('book')) {
-							selectedThemeName = BOOK_THEME_NAME;
-							selectedThemeId = BOOK_THEME_ID;
-					} else if (themeUrl.includes('note')) {
-						selectedThemeName = NOTE_THEME_NAME;
-						selectedThemeId = NOTE_THEME_ID;
-					} else if (themeUrl.includes('quartz')) {
-						selectedThemeName = 'Quartz';
-						selectedThemeId = "17";
-					}
 						console.warn('[Site] Theme not found by URL, used fallback:', themeUrl);
 					}
 				} catch (error) {
@@ -1191,7 +1180,7 @@
 	}
 
 	// Reactive statement to ensure theme name updates
-	$: displayThemeName = selectedThemeName || BOOK_THEME_NAME;
+	$: displayThemeName = selectedThemeName || DEFAULT_THEMES.QUARTZ.name;
 
 	function toggleAdvancedSettings() {
 		showAdvancedSettings = !showAdvancedSettings;
