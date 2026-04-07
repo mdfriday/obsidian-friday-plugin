@@ -335,6 +335,7 @@
 	export async function initialize(state: ProjectState) {
 		console.log('[Site] Initializing with project state:', state.name);
 		projectName = state.name;
+		absPreviewDir = state.path;
 
 		// Load configuration to UI
 		if (state.config) {
@@ -548,7 +549,6 @@
 		buildProgress = 100;
 		isBuilding = false;
 		previewUrl = result.url || '';
-		absPreviewDir = result.path || ''; // Set preview directory path
 		console.log('[Site] Preview started:', result.url, 'Path:', result.path);
 	}
 
@@ -731,10 +731,7 @@
 		themesDir = path.join(plugin.pluginDir, 'themes')
 		await createThemesDirectory()
 
-		const adapter = app.vault.adapter;
-		if (adapter instanceof FileSystemAdapter) {
-			basePath = adapter.getBasePath()
-		}
+		basePath = plugin.vaultBasePath;
 		
 		// ==================== NEW ARCHITECTURE: Register component ====================
 		// Register this component to Main.ts for direct method calls
@@ -1146,14 +1143,12 @@
 			const baseName = currentThemeWithSample.name.toLowerCase().replace(/\s+/g, '-');
 			const targetFolderName = await generateUniqueFolderName(baseName);
 			
-			// Construct absolute path using adapter.getBasePath()
-			const adapter = app.vault.adapter;
+			// Construct absolute path using plugin.vaultBasePath
 			let targetFolderPath: string;
 			
-			if (adapter instanceof FileSystemAdapter) {
+			if (plugin.vaultBasePath) {
 				// Use absolute path to avoid vault root interpretation issues
-				const vaultBasePath = adapter.getBasePath();
-				targetFolderPath = path.join(vaultBasePath, FRIDAY_ROOT_FOLDER, targetFolderName);
+				targetFolderPath = path.join(plugin.vaultBasePath, FRIDAY_ROOT_FOLDER, targetFolderName);
 			} else {
 				// Fallback for non-FileSystemAdapter
 				targetFolderPath = path.join(FRIDAY_ROOT_FOLDER, targetFolderName);
@@ -1358,6 +1353,16 @@
 		try {
 			// Get theme information by ID
 			const obImagesDir = path.join(absPreviewDir, 'public', 'ob-images');
+			
+			// Ensure ob-images directory exists
+			// Convert absolute path to vault-relative path
+			if (plugin.vaultBasePath) {
+				const relativeObImagesDir = path.relative(plugin.vaultBasePath, obImagesDir);
+				
+				if (!await app.vault.adapter.exists(relativeObImagesDir)) {
+					await app.vault.adapter.mkdir(relativeObImagesDir);
+				}
+			}
 			
 			if (hasOBTag) {
 				// Use OBStyleRenderer for themes with "Book" tag
@@ -1886,13 +1891,11 @@
 
 	async function ensureRootFolderExists() {
 		// Ensure we're working with the vault root for the MDFriday folder
-		const adapter = app.vault.adapter;
 		let rootFolderPath: string;
 		
-		if (adapter instanceof FileSystemAdapter) {
+		if (plugin.vaultBasePath) {
 			// Use absolute path
-			const vaultBasePath = adapter.getBasePath();
-			rootFolderPath = path.join(vaultBasePath, FRIDAY_ROOT_FOLDER);
+			rootFolderPath = path.join(plugin.vaultBasePath, FRIDAY_ROOT_FOLDER);
 		} else {
 			// Fallback for non-FileSystemAdapter
 			rootFolderPath = FRIDAY_ROOT_FOLDER;
@@ -1918,13 +1921,11 @@
 		let counter = 0;
 		
 		// Get the correct root folder path
-		const adapter = app.vault.adapter;
 		let rootFolderPath: string;
 		
-		if (adapter instanceof FileSystemAdapter) {
+		if (plugin.vaultBasePath) {
 			// Use absolute path
-			const vaultBasePath = adapter.getBasePath();
-			rootFolderPath = path.join(vaultBasePath, FRIDAY_ROOT_FOLDER);
+			rootFolderPath = path.join(plugin.vaultBasePath, FRIDAY_ROOT_FOLDER);
 		} else {
 			// Fallback for non-FileSystemAdapter
 			rootFolderPath = FRIDAY_ROOT_FOLDER;

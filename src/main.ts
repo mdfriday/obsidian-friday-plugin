@@ -1157,6 +1157,7 @@ export default class FridayPlugin extends Plugin {
 			// Step 4: Prepare complete ProjectState
 			const projectState: ProjectState = {
 				name: project.name,
+				path: project.path,
 				folder,
 				file,
 				config,

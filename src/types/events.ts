@@ -89,6 +89,7 @@ export interface PublishProgressUpdate {
  */
 export interface ProjectState {
 	name: string;
+	path: string;
 	folder: TFolder | null;
 	file: TFile | null;
 	config: Record<string, any>;
