@@ -1906,6 +1906,7 @@
 			rootFolderPath = path.normalize(rootFolderPath);
 		}
 
+		const adapter = app.vault.adapter;
 		if (!(await adapter.exists(rootFolderPath))) {
 			// Use Node.js fs for absolute paths, adapter for relative paths
 			if (adapter instanceof FileSystemAdapter && path.isAbsolute(rootFolderPath)) {

@@ -1560,13 +1560,14 @@ export default class FridayPlugin extends Plugin {
 			// Step 4: Set sitePath based on publish type
 			if (this.siteComponent?.setSitePath && this.currentProjectName) {
 				const previewId = nameToId(this.currentProjectName);
+				let sitePath = '/';
 				switch (publishType) {
 					case 'mdf-free':
-						this.siteComponent.setSitePath(`/f/${previewId}`);
+						sitePath = `/f/${previewId}`;
 						break;
 					case 'mdf-share':
 						if (this.settings.licenseUser?.userDir) {
-							this.siteComponent.setSitePath(`/s/${this.settings.licenseUser.userDir}`);
+							sitePath = `/s/${this.settings.licenseUser.userDir}/${previewId}`;
 						}
 						break;
 					case 'mdf-app':
@@ -1577,6 +1578,14 @@ export default class FridayPlugin extends Plugin {
 					default:
 						// netlify and ftp don't need sitePath
 						break;
+				}
+
+				if (publishType != 'ftp') {
+					this.siteComponent.setSitePath(sitePath);
+					await this.handleSiteEvent('configChanged', {
+						key: 'baseURL',
+						value: sitePath
+					});
 				}
 			}
 
