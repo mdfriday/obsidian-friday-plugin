@@ -13,7 +13,7 @@
 	import {themeApiService} from "../theme/themeApiService";
 	import type { ProjectState, ProgressUpdate, PublishProgressUpdate } from "../types/events";
 	import {nameToId} from "src/utils/hash.ts";
-	import { DEFAULT_THEMES } from "../utils/theme";
+	import { DEFAULT_THEMES, shouldUseInternalRenderer } from "../utils/theme";
 
 	// Receive props
 	export let app: App;
@@ -361,6 +361,13 @@
 						selectedThemeId = matchedTheme.id;
 						selectedThemeName = matchedTheme.title || matchedTheme.name;
 						console.log('[Site] Loaded theme:', selectedThemeName, 'ID:', selectedThemeId);
+						
+						// Ensure markdown.useInternalRenderer is set correctly based on theme tags
+						if (matchedTheme.tags && state.config.markdown?.useInternalRenderer === undefined) {
+							const useInternalRenderer = shouldUseInternalRenderer(matchedTheme.tags);
+							await saveFoundryConfig('markdown.useInternalRenderer', useInternalRenderer);
+							console.log('[Site] Initialized markdown.useInternalRenderer:', useInternalRenderer, 'for theme tags:', matchedTheme.tags);
+						}
 					} else {
 						console.warn('[Site] Theme not found by URL, used fallback:', themeUrl);
 					}
@@ -1095,7 +1102,7 @@
 		plugin.showThemeSelectionModal(selectedThemeId, async (themeUrl: string, themeName?: string, themeId?: string) => {
 			// Force reactive updates by reassigning all variables
 			selectedThemeDownloadUrl = themeUrl;
-			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Book");
+			selectedThemeName = themeName || (isForSingleFile ? "Note" : "Quartz");
 			selectedThemeId = themeId || selectedThemeId;
 			
 		// 标记用户已手动选择主题，防止后续自动重置
@@ -1104,10 +1111,17 @@
 		// Save theme to Foundry config
 		await saveFoundryConfig('module.imports.0.path', themeUrl);
 			
-			// Get theme info to check for sample availability
+			// Get theme info to check for sample availability and update markdown renderer config
 			if (themeId) {
 				try {
 					currentThemeWithSample = await themeApiService.getThemeById(themeId, plugin);
+					
+					// Update markdown.useInternalRenderer based on theme tags
+					if (currentThemeWithSample?.tags) {
+						const useInternalRenderer = shouldUseInternalRenderer(currentThemeWithSample.tags);
+						await saveFoundryConfig('markdown.useInternalRenderer', useInternalRenderer);
+						console.log('[Site] Updated markdown.useInternalRenderer:', useInternalRenderer, 'for theme tags:', currentThemeWithSample.tags);
+					}
 				} catch (error) {
 					console.warn('Failed to get theme info:', error);
 					currentThemeWithSample = null;

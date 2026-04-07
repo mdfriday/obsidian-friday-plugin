@@ -908,8 +908,8 @@ export default class FridayPlugin extends Plugin {
 		try {
 			console.log('[Friday] Creating new project:', projectName);
 
-			// Collect initial configuration with project context
-			const initialConfig = this.collectInitialConfig(projectName, folder, file);
+			// Collect initial configuration with project context (now async)
+			const initialConfig = await this.collectInitialConfig(projectName, folder, file);
 
 			// Create project through ProjectServiceManager
 			const result = await this.projectServiceManager.createProject({
@@ -944,7 +944,7 @@ export default class FridayPlugin extends Plugin {
 	 * @param file - Selected file (if file project)
 	 * @returns Complete initial configuration
 	 */
-	private collectInitialConfig(projectName: string, folder: TFolder | null, file: TFile | null): Record<string, any> {
+	private async collectInitialConfig(projectName: string, folder: TFolder | null, file: TFile | null): Promise<Record<string, any>> {
 		const publishMethod = normalizePublishMethod(this.settings.publishMethod);
 		
 		// Determine if this is a folder project
@@ -1008,6 +1008,43 @@ export default class FridayPlugin extends Plugin {
 				method: publishMethod
 			}
 		};
+
+		// Scan folder structure if this is a folder project
+		if (folder && this.projectServiceManager && this.vaultBasePath) {
+			try {
+				const path = require('path');
+				const absoluteFolderPath = path.join(this.vaultBasePath, folder.path);
+				
+				console.log('[Friday] Scanning folder structure:', absoluteFolderPath);
+				const scanResult = await this.projectServiceManager.scanFolderStructure(absoluteFolderPath);
+				
+				if (scanResult && scanResult.success && scanResult.data) {
+					// Generate languages configuration from scan result
+					const languages = this.generateLanguagesConfig(scanResult.data);
+					config.languages = languages;
+					
+					console.log('[Friday] Languages config generated:', languages);
+				} else {
+					console.warn('[Friday] Folder scan failed, using default language config');
+					// Fallback: default single language
+					config.languages = {
+						en: {
+							contentDir: 'content',
+							weight: 1
+						}
+					};
+				}
+			} catch (error) {
+				console.error('[Friday] Error scanning folder structure:', error);
+				// Fallback: default single language
+				config.languages = {
+					en: {
+						contentDir: 'content',
+						weight: 1
+					}
+				};
+			}
+		}
 		
 		// Apply default FTP configuration if available
 		if (this.settings.ftpServer || this.settings.ftpUsername) {
@@ -1031,6 +1068,67 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
+	 * 从文件夹路径获取 TFolder 对象
+	 */
+	private getVaultRelativePath(absolutePath: string): string {
+		if (this.vaultBasePath) {
+			// Use path.relative to get the relative path
+			const path = require('path');
+			return path.relative(this.vaultBasePath, absolutePath);
+		}
+		// Fallback: return the path as-is if we can't determine the base path
+		return absolutePath;
+	}
+
+	/**
+	 * 从路径字符串获取 TFolder 对象
+	 */
+	private getFolderFromPath(absolutePath: string): TFolder | null {
+		const relativePath = this.getVaultRelativePath(absolutePath);
+		const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
+		
+		if (abstractFile instanceof TFolder) {
+			return abstractFile;
+		}
+		
+		return null;
+	}
+
+	/**
+	 * 从扫描结果生成 languages 配置
+	 */
+	private generateLanguagesConfig(scanResult: any): Record<string, any> {
+		const languages: Record<string, any> = {};
+
+		if (scanResult.isStructured && scanResult.contentFolders.length > 0) {
+			// 多语言结构：根据扫描结果生成配置
+			for (const contentFolder of scanResult.contentFolders) {
+				languages[contentFolder.languageCode] = {
+					contentDir: this.extractContentDirName(contentFolder.path),
+					weight: contentFolder.weight
+				};
+			}
+		} else {
+			// 非结构化或空文件夹：生成默认单语言配置
+			languages['en'] = {
+				contentDir: 'content',
+				weight: 1
+			};
+		}
+
+		return languages;
+	}
+
+	/**
+	 * 从完整路径中提取 content 目录名
+	 * 例如: /path/to/vault/myfolder/content.zh -> content.zh
+	 */
+	private extractContentDirName(absolutePath: string): string {
+		const path = require('path');
+		return path.basename(absolutePath);
+	}
+
+	/**
 	 * Apply existing Foundry project configuration to panel
 	 * Uses new architecture: Main.ts as Controller, Site.svelte as View
 	 */
@@ -1045,8 +1143,8 @@ export default class FridayPlugin extends Plugin {
 			// Step 1: Set current project name FIRST before any operations
 			this.currentProjectName = project.name;
 			
-			// Step 2: Initialize content selection (site.ts data management)
-			this.site.initializeContent(folder, file);
+			// Step 2: Load content based on project type
+			await this.loadExistingProjectContent(project);
 			
 			// Step 3: Get complete project configuration from Foundry
 			if (!this.projectServiceManager) {
@@ -1079,6 +1177,63 @@ export default class FridayPlugin extends Plugin {
 			console.error('[Friday] Error applying project to panel:', error);
 			// Fallback: at least initialize content
 			this.site.initializeContent(folder, file);
+		}
+	}
+
+	/**
+	 * Load content from existing project's contentLinks and staticLink
+	 */
+	private async loadExistingProjectContent(project: ObsidianProjectInfo) {
+		// Load content links
+		if (project.contentLinks && project.contentLinks.length > 0) {
+			for (let i = 0; i < project.contentLinks.length; i++) {
+				const contentLink = project.contentLinks[i];
+				const relativePath = this.getVaultRelativePath(contentLink.sourcePath);
+				const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
+
+				if (!abstractFile) {
+					console.warn(`[Friday] Content path not found: ${contentLink.sourcePath}`);
+					continue;
+				}
+
+				let contentFolder: TFolder | null = null;
+				let contentFile: TFile | null = null;
+
+				if (abstractFile instanceof TFolder) {
+					contentFolder = abstractFile;
+				} else if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+					contentFile = abstractFile;
+				}
+
+				if (i === 0) {
+					// First content: initialize with language
+					this.site.initializeContentWithLanguage(
+						contentFolder,
+						contentFile,
+						contentLink.languageCode
+					);
+				} else {
+					// Additional contents: add with language
+					this.site.addLanguageContentWithCode(
+						contentFolder,
+						contentFile,
+						contentLink.languageCode
+					);
+				}
+			}
+
+			console.log('[Friday] Loaded content links from project');
+		}
+
+		// Load static link
+		if (project.staticLink) {
+			const relativePath = this.getVaultRelativePath(project.staticLink.sourcePath);
+			const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
+			
+			if (abstractFile instanceof TFolder) {
+				this.site.setSiteAssets(abstractFile);
+				console.log('[Friday] Static assets loaded from project');
+			}
 		}
 	}
 

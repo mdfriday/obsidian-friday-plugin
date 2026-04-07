@@ -10,7 +10,7 @@ export const DEFAULT_THEMES = {
 		id: 2,
 		name: 'Note',
 		downloadUrl: 'https://gohugo.net/note.zip?version=1.2',
-		tags: ['obsidian']
+		tags: ['Obsidian']
 	},
 	QUARTZ: {
 		id: 17,
@@ -27,8 +27,8 @@ export const DEFAULT_THEMES = {
  * @param themeTags - 主题的标签数组
  * @returns 是否使用内部渲染器
  */
-export function shouldUseInternalRenderer(themeTags: string[] = []): boolean {
-	return !themeTags.includes('obsidian');
+export function shouldUseInternalRenderer(themeTags: readonly string[] = []): boolean {
+	return !themeTags.includes('Obsidian');
 }
 
 /**

@@ -30,7 +30,11 @@ export class ProjectServiceManager {
 
 		try {
 			// 准备创建选项
-			const basePath = (this.plugin.app.vault.adapter as any).getBasePath();
+			const basePath = this.plugin.vaultBasePath;
+			if (!basePath) {
+				return { success: false, error: 'Vault base path not available' };
+			}
+
 			const createOptions: any = {
 				name,
 				workspacePath: this.plugin.absWorkspacePath,
@@ -126,6 +130,33 @@ export class ProjectServiceManager {
 		} catch (error) {
 			console.error('[ProjectServiceManager] Error getting project info:', error);
 			return null;
+		}
+	}
+
+	/**
+	 * 扫描文件夹结构
+	 */
+	async scanFolderStructure(folderPath: string): Promise<FolderStructureResult | null> {
+		try {
+			const result = await this.plugin.foundryProjectService.scanFolderStructure(folderPath);
+
+			if (result.success && result.data) {
+				return {
+					success: true,
+					data: result.data
+				};
+			}
+
+			return {
+				success: false,
+				error: result.error
+			};
+		} catch (error) {
+			console.error('[ProjectServiceManager] Error scanning folder structure:', error);
+			return {
+				success: false,
+				error: (error as Error).message
+			};
 		}
 	}
 
@@ -428,4 +459,26 @@ export interface ConnectionResult {
 	success: boolean;
 	error?: string;
 	message?: string;
+}
+
+export interface FolderStructureResult {
+	success: boolean;
+	error?: string;
+	data?: {
+		rootPath: string;
+		isStructured: boolean;
+		contentFolders: Array<{
+			path: string;
+			languageCode: string;
+			weight: number;
+		}>;
+		staticFolder?: {
+			path: string;
+		};
+		isValid: boolean;
+		isMultilingual: boolean;
+		supportedLanguages: string[];
+		defaultLanguage?: string;
+		summary: string;
+	};
 }
