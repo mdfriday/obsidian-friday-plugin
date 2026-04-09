@@ -41,10 +41,9 @@ export const DEFAULT_INTERNAL_IGNORE_PATTERNS = [
     "\\.obsidian\\/workspace-mobile\\.json", // Mobile workspace
     "\\.obsidian\\/cache",               // Cache directory
     "\\/node_modules\\/",                // Node modules
-    "\\/\\.git\\/",                      // Git directories
-    "plugins\\/mdfriday\\/preview",      // MDFriday preview files (generated)
-    "plugins\\/mdfriday\\/themes",       // MDFriday themes (generated)
-    "plugins\\/mdfriday\\/data\\.json",  // MDFriday plugin settings (device-specific)
+    "\\/\\.git\\/",                      // Git directories (in subdirectories)
+    "^\\.git\\/",                        // Git directories (at root)
+    "plugins\\/mdfriday",                // MDFriday plugin directory (device-specific)
 ].join(",");
 
 /**

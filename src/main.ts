@@ -201,20 +201,18 @@ export default class FridayPlugin extends Plugin {
 				this.absWorkspacePath = `${basePath}/${this.pluginDir}/workspace`;
 			}
 
-		await this.initDesktopFeatures();
-	} else {
-		// Initialize workspace path for Mobile
-		// Mobile 使用相对路径，因为 vault.adapter 接受相对于 vault 根目录的路径
-		this.absWorkspacePath = `${this.pluginDir}/workspace`;
-		
-		const adapter = this.app.vault.adapter;
-		if (adapter instanceof FileSystemAdapter) {
-			const basePath = adapter.getBasePath();
-			this.vaultBasePath = basePath;
-		}
+			await this.initDesktopFeatures();
+		} else {
+			// Initialize workspace path for Mobile
+			this.absWorkspacePath = `${this.pluginDir}/workspace`;
 
-		await this.initMobileFeatures();
-	}
+			const adapter = this.app.vault.adapter;
+			if (adapter instanceof FileSystemAdapter) {
+				this.vaultBasePath = adapter.getBasePath();
+			}
+
+			await this.initMobileFeatures();
+		}
 		
 		// Initialize Sync Service (common for both platforms)
 		setTimeout(() => {
@@ -1877,11 +1875,8 @@ export default class FridayPlugin extends Plugin {
 			"\\.obsidian\\/cache",
 			"\\/node_modules\\/",
 			"\\/\\.git\\/",
-			"plugins\\/mdfriday\\/main\\.js",
-			"plugins\\/mdfriday\\/styles\\.css",
-			"plugins\\/mdfriday\\/manifest\\.json",
-			"plugins\\/mdfriday\\/preview",
-			"plugins\\/mdfriday\\/themes",
+			"^\\.git\\/",
+			"plugins\\/mdfriday",
 		];
 		
 		let internalPatterns = [...defaultInternalPatterns];

@@ -1494,11 +1494,8 @@ export class FridaySettingTab extends PluginSettingTab {
 			"\\.obsidian\\/cache",
 			"\\/node_modules\\/",
 			"\\/\\.git\\/",
-			"plugins\\/mdfriday\\/main\\.js",
-			"plugins\\/mdfriday\\/styles\\.css",
-			"plugins\\/mdfriday\\/manifest\\.json",
-			"plugins\\/mdfriday\\/preview",
-			"plugins\\/mdfriday\\/themes",
+			"^\\.git\\/",
+			"plugins\\/mdfriday",
 		];
 		
 		let internalPatterns = [...defaultInternalPatterns];
