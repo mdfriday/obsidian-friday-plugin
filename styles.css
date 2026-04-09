@@ -149,6 +149,40 @@
   font-size: 16px;
   font-weight: 600;
 }
+.friday-security-container summary {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-normal);
+  padding: 8px 0;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
+.friday-security-container summary::-webkit-details-marker {
+  display: none;
+}
+.friday-security-container summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 6px solid var(--text-muted);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+}
+.friday-security-container details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.friday-security-container summary:hover {
+  color: var(--text-accent);
+}
+.friday-collapsible-content {
+  padding-top: 8px;
+}
 .sync-test-status {
   display: inline-block;
   margin-left: 8px;

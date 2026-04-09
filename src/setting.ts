@@ -1293,9 +1293,11 @@ export class FridaySettingTab extends PluginSettingTab {
 				});
 		}
 
-		// ========== Selective Sync Subsection ==========
-		const selectiveSyncContainer = containerEl.createDiv('friday-security-container');
-		selectiveSyncContainer.createEl("h3", {text: this.plugin.i18n.t('settings.selective_sync')});
+		// ========== Selective Sync Subsection (Collapsible) ==========
+		const selectiveSyncDetails = containerEl.createEl('details', {cls: 'friday-security-container'});
+		selectiveSyncDetails.createEl('summary', {text: this.plugin.i18n.t('settings.selective_sync'), cls: 'friday-collapsible-header'});
+		
+		const selectiveSyncContainer = selectiveSyncDetails.createDiv('friday-collapsible-content');
 
 		// Initialize syncConfig.selectiveSync if not exists
 		if (!this.plugin.settings.syncConfig.selectiveSync) {
@@ -1467,30 +1469,6 @@ export class FridaySettingTab extends PluginSettingTab {
 			createPatternRow(pattern);
 		});
 		
-		// ========== UI Display Settings (Desktop only) ==========
-		// Mobile always shows editor status (no status bar), so no setting needed
-		if (Platform.isDesktop) {
-			const uiDisplayContainer = containerEl.createDiv('friday-ui-display-container');
-			uiDisplayContainer.createEl("h3", {text: "显示设置"});
-			
-			// Show Editor Status Display toggle
-			new Setting(uiDisplayContainer)
-				.setName(this.plugin.i18n.t('settings.show_editor_status'))
-				.setDesc(this.plugin.i18n.t('settings.show_editor_status_desc'))
-				.addToggle((toggle) => {
-					toggle.setValue(this.plugin.settings.showEditorStatusDisplay ?? false);
-					toggle.onChange(async (value) => {
-						this.plugin.settings.showEditorStatusDisplay = value;
-						await this.plugin.saveSettings();
-						// Apply visibility immediately
-						if (this.plugin.syncStatusDisplay) {
-							// @ts-ignore - access method
-							this.plugin.syncStatusDisplay.applyEditorStatusVisibility();
-						}
-					});
-				});
-		}
-
 		// ========== Danger Zone ==========
 		this.renderDangerZone(containerEl);
 	}
