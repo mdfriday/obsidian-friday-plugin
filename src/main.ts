@@ -721,17 +721,6 @@ export default class FridayPlugin extends Plugin {
 }
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
-		if (!Platform.isDesktop || !this.site) {
-			new Notice(this.i18n.t('messages.publishing_desktop_only'));
-			return;
-		}
-		
-		// Check if Foundry services are initialized
-		if (!this.foundryProjectService || !this.foundryProjectConfigService) {
-			new Notice('Foundry services not initialized');
-			return;
-		}
-		
 		const rightSplit = this.app.workspace.rightSplit;
 		if (!rightSplit) {
 			return;
@@ -743,7 +732,7 @@ export default class FridayPlugin extends Plugin {
 		// Get project name from folder/file
 		const projectName = this.getProjectNameFromSelection(folder, file);
 		if (!projectName) {
-			new Notice('Unable to determine project name');
+			console.warn('Unable to determine project name');
 			return;
 		}
 
@@ -766,7 +755,6 @@ export default class FridayPlugin extends Plugin {
 					this.isProjectInitializing = false; // Reset flag after initialization
 				} else {
 					console.error('[Friday] Failed to retrieve newly created project');
-					new Notice('Project created but failed to load');
 				}
 			}
 		}
@@ -874,7 +862,7 @@ export default class FridayPlugin extends Plugin {
 		);
 
 		if (!success) {
-			new Notice(`Failed to save configuration: ${data.key}`);
+			console.error(`Failed to save configuration: ${data.key}`);
 		}
 	}
 
@@ -896,10 +884,8 @@ export default class FridayPlugin extends Plugin {
 		);
 
 		if (result.success) {
-			new Notice('Build completed successfully');
 			this.siteComponent?.onBuildComplete?.(result);
 		} else {
-			new Notice(`Build failed: ${result.error}`);
 			this.siteComponent?.onBuildError?.(result.error);
 		}
 	}
@@ -924,10 +910,8 @@ export default class FridayPlugin extends Plugin {
 		);
 
 		if (result.success) {
-			new Notice(`Preview started: ${result.url}`);
 			this.siteComponent?.onPreviewStarted?.(result);
 		} else {
-			new Notice(`Preview failed: ${result.error}`);
 			this.siteComponent?.onPreviewError?.(result.error);
 		}
 	}
@@ -952,10 +936,8 @@ export default class FridayPlugin extends Plugin {
 		);
 
 		if (result.success) {
-			new Notice(`Published successfully: ${result.url}`);
 			this.siteComponent?.onPublishComplete?.(result);
 		} else {
-			new Notice(`Publish failed: ${result.error}`);
 			this.siteComponent?.onPublishError?.(result.error);
 		}
 	}
@@ -971,10 +953,8 @@ export default class FridayPlugin extends Plugin {
 		);
 
 		if (result.success) {
-			new Notice('Connection test successful');
 			this.siteComponent?.onConnectionTestSuccess?.(result.message);
 		} else {
-			new Notice(`Connection test failed: ${result.error}`);
 			this.siteComponent?.onConnectionTestError?.(result.error);
 		}
 	}
@@ -997,12 +977,6 @@ export default class FridayPlugin extends Plugin {
 	 * Create new Foundry project (simplified - only creates project)
 	 */
 	private async createFoundryProject(projectName: string, folder: TFolder | null, file: TFile | null): Promise<boolean> {
-		if (!this.projectServiceManager) {
-			console.error('[Friday] ProjectServiceManager not available');
-			new Notice('Project service not available');
-			return false;
-		}
-
 		try {
 			// Collect initial configuration with project context (now async)
 			const initialConfig = await this.collectInitialConfig(projectName, folder, file);
@@ -1019,13 +993,10 @@ export default class FridayPlugin extends Plugin {
 				throw new Error(result.error);
 			}
 
-			new Notice(`Project "${projectName}" created successfully`);
-			
 			return true;
 
 		} catch (error) {
 			console.error('[Friday] Error creating project:', error);
-			new Notice(`Error creating project: ${error}`);
 			return false;
 		}
 	}
@@ -1259,9 +1230,6 @@ export default class FridayPlugin extends Plugin {
 			} else {
 				console.error('[Friday] Site component not registered - cannot apply configuration');
 			}
-			
-			new Notice(`Loaded project: ${project.name}`);
-			
 		} catch (error) {
 			console.error('[Friday] Error applying project to panel:', error);
 			// Fallback: at least initialize content
@@ -1348,11 +1316,6 @@ export default class FridayPlugin extends Plugin {
 
 
 	async setSiteAssets(folder: TFolder) {
-		if (!Platform.isDesktop || !this.site) {
-			new Notice(this.i18n.t('messages.site_assets_desktop_only'));
-			return;
-		}
-		
 		// Set the site assets folder
 		const success = this.site.setSiteAssets(folder);
 		
@@ -1372,10 +1335,6 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	showThemeSelectionModal(selectedTheme: string, onSelect: (themeUrl: string, themeName?: string, themeId?: string) => void, isForSingleFile: boolean = false) {
-		if (!Platform.isDesktop || !this.ThemeSelectionModalClass) {
-			new Notice(this.i18n.t('messages.theme_selection_desktop_only'));
-			return;
-		}
 		const modal = new this.ThemeSelectionModalClass(this.app, selectedTheme, onSelect, this, isForSingleFile);
 		modal.open();
 	}
@@ -1411,7 +1370,7 @@ export default class FridayPlugin extends Plugin {
 			
 			const file = view.file;
 			if (!file) {
-				new Notice('No file selected', 3000);
+				console.warn("[Friday] No file found in view");
 				return;
 			}
 			
@@ -1441,11 +1400,6 @@ export default class FridayPlugin extends Plugin {
 	 * 4. Select MDFriday Share publish option
 	 */
 	private async quickShareCurrentFile(view: MarkdownView) {
-		if (!Platform.isDesktop) {
-			new Notice(this.i18n.t('messages.quick_share_desktop_only'));
-			return;
-		}
-		
 		const file = view.file;
 		if (!file || file.extension !== 'md') {
 			new Notice(this.i18n.t('messages.no_markdown_file'), 3000);
@@ -1513,12 +1467,6 @@ export default class FridayPlugin extends Plugin {
 	 * Does NOT force enable autoPublish - respects user's checkbox setting
 	 */
 	private async publishTo(fileOrFolder: TFile | TFolder, publishType: 'mdf-free' | 'mdf-share' | 'mdf-app' | 'mdf-custom' | 'mdf-enterprise' | 'netlify' | 'ftp') {
-		if (!Platform.isDesktop) {
-			new Notice(this.i18n.t('messages.quick_share_desktop_only'));
-			return;
-		}
-		
-		// Check if it's a file with correct extension
 		if (fileOrFolder instanceof TFile && fileOrFolder.extension !== 'md') {
 			new Notice(this.i18n.t('messages.no_markdown_file'), 3000);
 			return;
@@ -1557,9 +1505,6 @@ export default class FridayPlugin extends Plugin {
 		}
 
 		try {
-			// Show starting notice
-			new Notice(this.i18n.t('messages.adding_to_publish_panel') || 'Adding to publish panel...', 2000);
-
 			// Step 1: Clear existing content in publish panel
 			if (this.siteComponent?.clearAllContent) {
 				this.siteComponent.clearAllContent();
@@ -1582,7 +1527,6 @@ export default class FridayPlugin extends Plugin {
 						this.siteComponent.selectMDFFree();
 					} else {
 						console.error('[Friday] Site component not available for selectMDFFree');
-						new Notice('Site component not ready', 3000);
 						return;
 					}
 					break;
@@ -1591,7 +1535,6 @@ export default class FridayPlugin extends Plugin {
 						this.siteComponent.selectMDFShare();
 					} else {
 						console.error('[Friday] Site component not available for selectMDFShare');
-						new Notice('Site component not ready', 3000);
 						return;
 					}
 					break;
@@ -1600,7 +1543,6 @@ export default class FridayPlugin extends Plugin {
 						this.siteComponent.selectMDFApp();
 					} else {
 						console.error('[Friday] Site component not available for selectMDFApp');
-						new Notice('Site component not ready', 3000);
 						return;
 					}
 					break;
@@ -1609,7 +1551,6 @@ export default class FridayPlugin extends Plugin {
 						this.siteComponent.selectMDFCustom();
 					} else {
 						console.error('[Friday] Site component not available for selectMDFCustom');
-						new Notice('Site component not ready', 3000);
 						return;
 					}
 					break;
@@ -1618,7 +1559,6 @@ export default class FridayPlugin extends Plugin {
 						this.siteComponent.selectMDFEnterprise();
 					} else {
 						console.error('[Friday] Site component not available for selectMDFEnterprise');
-						new Notice('Site component not ready', 3000);
 						return;
 					}
 					break;
@@ -1627,7 +1567,6 @@ export default class FridayPlugin extends Plugin {
 						this.siteComponent.selectNetlify();
 					} else {
 						console.error('[Friday] Site component not available for selectNetlify');
-						new Notice('Site component not ready', 3000);
 						return;
 					}
 					break;
@@ -1636,7 +1575,6 @@ export default class FridayPlugin extends Plugin {
 						this.siteComponent.selectFTP();
 					} else {
 						console.error('[Friday] Site component not available for selectFTP');
-						new Notice('Site component not ready', 3000);
 						return;
 					}
 					break;
