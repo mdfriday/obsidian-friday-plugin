@@ -103,8 +103,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 	 * Handle project selection - apply to panel
 	 */
 	async onChooseSuggestion(project: ObsidianProjectInfo, evt: MouseEvent | KeyboardEvent) {
-		console.log('[Friday] Selected project:', project.name);
-		
 		// Apply project to panel using the same flow as openPublishPanel
 		await this.applyProjectToPanel(project);
 		
@@ -123,8 +121,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 		}
 
 		try {
-			console.log('[Friday] Applying project to panel:', project.name);
-			
 			// Ensure right panel is expanded (same as openPublishPanel)
 			const rightSplit = this.app.workspace.rightSplit;
 			if (rightSplit?.collapsed) {
@@ -156,7 +152,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 			// Step 6: Call Site.svelte's initialize method (event architecture)
 			if (this.plugin.siteComponent?.initialize) {
 				await this.plugin.siteComponent.initialize(projectState);
-				console.log('[Friday] Project configuration applied to UI via event architecture');
 				new Notice(`Loaded project: ${project.name}`);
 			} else {
 				console.error('[Friday] Site component not registered - cannot apply configuration');
@@ -200,8 +195,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 		
 		// Handle folder-based projects (contentLinks)
 		if (project.contentLinks && project.contentLinks.length > 0) {
-			console.log('[Friday] Loading folder-based project contents:', project.contentLinks);
-			
 			// Load each content link
 			for (let i = 0; i < project.contentLinks.length; i++) {
 				const contentLink = project.contentLinks[i];
@@ -244,14 +237,11 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 				}
 			}
 			
-			console.log('[Friday] Folder-based project contents loaded successfully');
 			contentLoaded = true;
 		}
 		
 		// Handle file-based projects (fileLink)
 		if (project.fileLink) {
-			console.log('[Friday] Loading file-based project content:', project.fileLink);
-			
 			// Convert absolute path to vault-relative path
 			const relativePath = this.getVaultRelativePath(project.fileLink.sourcePath);
 			const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
@@ -266,7 +256,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 					abstractFile,
 					project.language || 'en'
 				);
-				console.log('[Friday] File-based project content loaded successfully');
 				contentLoaded = true;
 			} else {
 				console.warn(`[Friday] Invalid file type: ${project.fileLink.sourcePath}`);
@@ -276,20 +265,17 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 		
 		// If no content was loaded, initialize with empty content
 		if (!contentLoaded) {
-			console.log('[Friday] No content links or file link found in project, initializing with empty content');
+			console.warn('[Friday] No content links or file link found in project, initializing with empty content');
 		}
 		
 		// Load static assets folder if specified
 		if (project.staticLink) {
-			console.log('[Friday] Loading static assets:', project.staticLink);
-			
 			// Convert absolute path to vault-relative path
 			const relativePath = this.getVaultRelativePath(project.staticLink.sourcePath);
 			const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
 			
 			if (abstractFile instanceof TFolder) {
 				this.plugin.site.setSiteAssets(abstractFile);
-				console.log('[Friday] Static assets loaded successfully');
 			} else {
 				console.warn(`[Friday] Static assets path not found or not a folder: ${project.staticLink.sourcePath} (relative: ${relativePath})`);
 			}

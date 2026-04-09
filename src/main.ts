@@ -1,66 +1,43 @@
-import {App, Modal, Menu, Plugin, TFolder, TFile, Notice, MarkdownView, setIcon, Platform, FileSystemAdapter} from 'obsidian';
-import {User} from "./user";
+import {FileSystemAdapter, MarkdownView, Menu, Notice, Platform, Plugin, setIcon, TFile, TFolder} from 'obsidian';
 import './styles/license-settings.css';
 import {I18nService} from "./i18n";
-import {SyncService, SyncStatusDisplay, type SyncConfig, clearSyncHandlerCache} from "./sync";
+import {type SyncConfig, SyncService, SyncStatusDisplay} from "./sync";
 import {
-    type StoredLicenseData,
-    type StoredSyncData,
-    type StoredUserData,
-    type StoredUsageData,
-    isValidLicenseKeyFormat,
-    licenseKeyToEmail,
-    licenseKeyToPassword,
-    maskLicenseKey,
-    formatExpirationDate,
-    formatPlanName,
-    isLicenseExpired,
-    generateEncryptionPassphrase
+	isLicenseExpired,
+	isValidLicenseKeyFormat,
+	type StoredLicenseData,
+	type StoredSyncData,
+	type StoredUsageData,
+	type StoredUserData
 } from "./license";
 import {FridaySettingTab} from "./setting";
-import {
-	createObsidianWorkspaceService,
-	type ObsidianWorkspaceService,
-	createObsidianProjectService,
-	type ObsidianProjectService,
-	createObsidianBuildService,
-	type ObsidianBuildService,
-	createObsidianGlobalConfigService,
-	type ObsidianGlobalConfigService,
-	createObsidianProjectConfigService,
-	type ObsidianProjectConfigService,
-	createObsidianServeService,
-	type ObsidianServeService,
-	createObsidianPublishService,
-	type ObsidianPublishService,
-	type ObsidianProjectInfo,
-	type FTPConfig,
-	type NetlifyConfig,
-	createObsidianAuthService,
-	type ObsidianAuthService,
-	createObsidianLicenseService,
-	type ObsidianLicenseService,
-	createObsidianDomainService,
-	type ObsidianDomainService,
+// Foundry PC 专用服务类型
+import type {
+	ObsidianBuildService,
+	ObsidianDomainService,
+	ObsidianProjectInfo,
+	ObsidianProjectService,
+	ObsidianPublishService,
+	ObsidianServeService,
 } from '@mdfriday/foundry';
-import { createObsidianHttpClient, createObsidianIdentityHttpClient } from './http';
-import { LicenseServiceManager } from './services/license';
-import { DomainServiceManager } from './services/domain';
-import { LicenseStateManager } from './services/licenseState';
-import { ProjectServiceManager } from './services/project';
-import type { SiteEventType, SiteEventData, ProjectState } from './types/events';
-import type { PublishMethod, ValidPublishMethod } from './types/publish';
-import { DEFAULT_PUBLISH_METHOD, normalizePublishMethod } from './types/publish';
-import { generateRandomId } from './utils/common';
-import { getDefaultTheme, shouldUseInternalRenderer } from './utils/theme';
+// Mobile 专用配置类型
+import type {ObsidianEnvironmentConfig as ObsidianMobileEnvironmentConfig,} from '@mdfriday/foundry/obsidian/mobile';
+import {createObsidianHttpClient, createObsidianIdentityHttpClient} from './http';
+import {LicenseServiceManager} from './services/license';
+import {DomainServiceManager} from './services/domain';
+import {LicenseStateManager} from './services/licenseState';
+import {ProjectServiceManager} from './services/project';
+import type {ProjectState, SiteEventData, SiteEventType} from './types/events';
+import type {PublishMethod} from './types/publish';
+import {normalizePublishMethod} from './types/publish';
+import {getDefaultTheme, shouldUseInternalRenderer} from './utils/theme';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
 import type {Site} from "./site";
 import type {ThemeSelectionModal} from "./theme/modal";
 import type {FoundryProjectManagementModal} from "./projects/foundryModal";
-import type ServerView from './server';
-import {nameToId} from "src/utils/hash.ts";
+import {nameToIdAsync} from "src/utils/hash.ts";
 
 // Export view type for dynamic import
 export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
@@ -164,7 +141,6 @@ export default class FridayPlugin extends Plugin {
 	apiUrl: string
 	
 	// Core services (always available)
-	user: User
 	i18n: I18nService
 	syncService: SyncService
 	syncStatusDisplay: SyncStatusDisplay | null = null
@@ -172,16 +148,16 @@ export default class FridayPlugin extends Plugin {
 	// PC-only services (optional, only loaded on desktop)
 	hugoverse?: Hugoverse
 	site?: Site
-	workspaceService?: ObsidianWorkspaceService | null
+	workspaceService?: any // Foundry service, type inferred at runtime
 	// Foundry services
 	foundryProjectService?: ObsidianProjectService | null
 	foundryBuildService?: ObsidianBuildService | null
-	foundryGlobalConfigService?: ObsidianGlobalConfigService | null
-	foundryProjectConfigService?: ObsidianProjectConfigService | null
+	foundryGlobalConfigService?: any // Type inferred at runtime
+	foundryProjectConfigService?: any // Type inferred at runtime
 	foundryServeService?: ObsidianServeService | null
 	foundryPublishService?: ObsidianPublishService | null
-	foundryAuthService?: ObsidianAuthService | null
-	foundryLicenseService?: ObsidianLicenseService | null
+	foundryAuthService?: any // Type inferred at runtime
+	foundryLicenseService?: any // Type inferred at runtime
 	foundryDomainService?: ObsidianDomainService | null
 	licenseServiceManager?: LicenseServiceManager | null
 	domainServiceManager?: DomainServiceManager | null
@@ -225,10 +201,20 @@ export default class FridayPlugin extends Plugin {
 				this.absWorkspacePath = `${basePath}/${this.pluginDir}/workspace`;
 			}
 
-			await this.initDesktopFeatures();
-		} else {
-			await this.initMobileFeatures();
+		await this.initDesktopFeatures();
+	} else {
+		// Initialize workspace path for Mobile
+		// Mobile 使用相对路径，因为 vault.adapter 接受相对于 vault 根目录的路径
+		this.absWorkspacePath = `${this.pluginDir}/workspace`;
+		
+		const adapter = this.app.vault.adapter;
+		if (adapter instanceof FileSystemAdapter) {
+			const basePath = adapter.getBasePath();
+			this.vaultBasePath = basePath;
 		}
+
+		await this.initMobileFeatures();
+	}
 		
 		// Initialize Sync Service (common for both platforms)
 		setTimeout(() => {
@@ -248,11 +234,7 @@ export default class FridayPlugin extends Plugin {
 		// Initialize i18n service first
 		this.i18n = new I18nService(this);
 		await this.i18n.init();
-		
-		this.user = new User(this);
-		
-		// Initialize Hugoverse for license-related API calls (works on both platforms)
-		// Note: Some Hugoverse methods are desktop-only, but license activation works on mobile
+
 		const { Hugoverse } = await import('./hugoverse');
 		this.hugoverse = new Hugoverse(this);
 		
@@ -481,7 +463,21 @@ export default class FridayPlugin extends Plugin {
 	 */
 	private async initializeWorkspace(): Promise<void> {
 		try {
-			// Create workspace service
+			// 动态导入 PC 专用的 Foundry 服务（从根目录）
+			const {
+				createObsidianWorkspaceService,
+				createObsidianProjectService,
+				createObsidianBuildService,
+				createObsidianGlobalConfigService,
+				createObsidianProjectConfigService,
+				createObsidianServeService,
+				createObsidianPublishService,
+				createObsidianAuthService,
+				createObsidianLicenseService,
+				createObsidianDomainService,
+			} = await import('@mdfriday/foundry');
+			
+			// Create workspace service（无需参数，使用 Node.js 默认实现）
 			this.workspaceService = createObsidianWorkspaceService();
 			
 			// Get relative workspace path for Obsidian adapter
@@ -490,7 +486,6 @@ export default class FridayPlugin extends Plugin {
 			// Ensure workspace directory exists using Obsidian's adapter
 			if (!await this.app.vault.adapter.exists(relativeWorkspacePath)) {
 				await this.app.vault.adapter.mkdir(relativeWorkspacePath);
-				console.log('[Friday] Created workspace directory:', relativeWorkspacePath);
 			}
 			
 			// Check if workspace is already initialized (using absolute path)
@@ -500,18 +495,14 @@ export default class FridayPlugin extends Plugin {
 				// Workspace doesn't exist, initialize it
 				const initResult = await this.workspaceService.initWorkspace(this.absWorkspacePath);
 				
-				if (initResult.success) {
-					console.log('[Friday] Workspace initialized successfully at:', this.absWorkspacePath);
-				} else {
+				if (!initResult.success) {
 					console.error('[Friday] Failed to initialize workspace:', initResult.error);
 				}
-			} else if (existsResult.success) {
-				console.log('[Friday] Workspace already exists at:', this.absWorkspacePath);
-			} else {
+			} else if (!existsResult.success) {
 				console.error('[Friday] Failed to check workspace existence:', existsResult.error);
 			}
 			
-		// Initialize Foundry services
+		// Initialize PC-only Foundry services（无参数，使用默认实现）
 		this.foundryProjectService = createObsidianProjectService();
 		this.foundryBuildService = createObsidianBuildService();
 		this.foundryGlobalConfigService = createObsidianGlobalConfigService();
@@ -549,7 +540,6 @@ export default class FridayPlugin extends Plugin {
 	// Create Project Service Manager
 	if (this.foundryProjectService && this.foundryProjectConfigService) {
 		this.projectServiceManager = new ProjectServiceManager(this);
-		console.log('[Friday] Project Service Manager initialized');
 	}
 
 	// Create License State Manager (unified license state from Foundry)
@@ -565,18 +555,9 @@ export default class FridayPlugin extends Plugin {
 		const initResult = await this.licenseState.initialize();
 		
 		if (initResult.isActivated) {
-			console.log('[Friday] License activated:', initResult.licenseKey);
-			
 			// Sync to settings (for UI display only)
 			await this.syncLicenseToSettings();
-			
-			// If has sync feature, initialize sync service
-			if (this.licenseState.hasFeature('syncEnabled')) {
-				console.log('[Friday] Sync feature enabled, will initialize sync service');
-				// Sync service will be initialized in setTimeout later
-			}
 		} else {
-			console.log('[Friday] No license activated or license check failed');
 			if (initResult.error) {
 				console.warn('[Friday] License initialization error:', initResult.error);
 			}
@@ -591,15 +572,12 @@ export default class FridayPlugin extends Plugin {
 				// Only load to settings if local setting is empty (local settings have priority)
 				if (!this.settings.enterpriseServerUrl && configResult.data.apiUrl) {
 					this.settings.enterpriseServerUrl = configResult.data.apiUrl;
-					console.log('[Friday] Loaded enterprise server URL from Foundry:', configResult.data.apiUrl);
 				}
 			}
 		} catch (error) {
 			console.error('[Friday] Error loading enterprise server URL from Foundry:', error);
 		}
 	}
-
-	console.log('[Friday] Foundry services initialized successfully');
 
 		// Load settings from Foundry Global Config (merge with local settings)
 		await this.loadSettingsFromFoundryGlobalConfig();
@@ -612,10 +590,135 @@ export default class FridayPlugin extends Plugin {
 	 * Initialize mobile-only features
 	 */
 	private async initMobileFeatures(): Promise<void> {
-		// Mobile currently only needs sync functionality
-		// which is already handled by initializeSyncService()
-		// Additional mobile-specific UI can be added here in the future
+		try {
+			await this.initializeWorkspaceMobile();
+		} catch (error) {
+			console.error('[Friday Mobile] Error initializing mobile features:', error);
+		}
 	}
+
+	/**
+	 * Initialize workspace and Foundry services for Mobile
+	 */
+	private async initializeWorkspaceMobile(): Promise<void> {
+		try {
+			// 动态导入 Mobile repositories
+			const { ObsidianMobileWorkspaceRepository, ObsidianMobileFileSystemRepository } =
+				await import('./services/obsidian-mobile-repositories');
+			
+			// 动态导入 Mobile 专用的 Foundry 服务
+			const {
+				createObsidianWorkspaceService,
+				createObsidianAuthService,
+				createObsidianLicenseService,
+				createObsidianGlobalConfigService,
+			} = await import('@mdfriday/foundry/obsidian/mobile');
+			
+			// 1. 创建 Mobile repositories
+			const workspaceRepo = new ObsidianMobileWorkspaceRepository(
+				this.app.vault,
+				this.pluginDir
+			);
+			const fileSystemRepo = new ObsidianMobileFileSystemRepository(
+				this.app.vault,
+				this.pluginDir
+			);
+			const httpClient = createObsidianIdentityHttpClient();
+
+			// 2. 创建配置（使用实际的 API，而非文档中描述的简化版本）
+			const config: ObsidianMobileEnvironmentConfig = {
+				platform: 'mobile',
+				persistence: {
+					workspace: workspaceRepo,
+					fileSystem: fileSystemRepo,
+				},
+				identityHttpClient: httpClient,
+			};
+
+			// 3. 创建服务（必须传入 config）
+			this.workspaceService = createObsidianWorkspaceService(config);
+			this.foundryAuthService = createObsidianAuthService(httpClient, config);
+			this.foundryLicenseService = createObsidianLicenseService(httpClient, config);
+			this.foundryGlobalConfigService = createObsidianGlobalConfigService(config);
+			// 注意：Mobile 不创建 DomainService（发布功能专用）
+		
+		// 4. 确保 workspace 目录存在
+		// Mobile 使用相对路径（相对于 vault 根目录）
+		if (!await this.app.vault.adapter.exists(this.absWorkspacePath)) {
+			await this.app.vault.adapter.mkdir(this.absWorkspacePath);
+		}
+		
+		// 5. 检查并初始化 workspace
+		const existsResult = await this.workspaceService.workspaceExists(this.absWorkspacePath);
+		
+		if (existsResult.success && !existsResult.data) {
+			const initResult = await this.workspaceService.initWorkspace(this.absWorkspacePath);
+			
+			if (!initResult.success) {
+				console.error('[Friday Mobile] Failed to initialize workspace:', initResult.error);
+			}
+		} else if (!existsResult.success) {
+			console.error('[Friday Mobile] Failed to check workspace existence:', existsResult.error);
+		}
+		
+		// 创建服务管理器（只创建 Mobile 需要的）
+		if (this.foundryLicenseService && this.foundryAuthService && this.foundryGlobalConfigService) {
+			this.licenseServiceManager = new LicenseServiceManager(
+				this.foundryLicenseService,
+				this.foundryAuthService,
+				this.foundryGlobalConfigService,
+				this.absWorkspacePath
+			);
+		}
+		
+		// 注意：不创建 DomainServiceManager（Mobile 不需要）
+		// 注意：不创建 ProjectServiceManager（Mobile 不需要）
+		
+		// 创建 License State Manager
+		if (this.foundryLicenseService && this.foundryAuthService) {
+			this.licenseState = new LicenseStateManager(
+				this.foundryLicenseService,
+				this.foundryAuthService,
+				null, // domainService = null (Mobile 不需要)
+				this.absWorkspacePath
+			);
+			
+			// 初始化 license state
+			const initResult = await this.licenseState.initialize();
+			
+			if (initResult.isActivated) {
+				// Sync to settings
+				await this.syncLicenseToSettings();
+			} else {
+				if (initResult.error) {
+					console.warn('[Friday Mobile] License initialization error:', initResult.error);
+				}
+			}
+		}
+		
+		// 加载企业服务器配置（如果有）
+		if (this.foundryAuthService) {
+			try {
+				const configResult = await this.foundryAuthService.getConfig(this.absWorkspacePath);
+
+				if (configResult.success && configResult.data) {
+					if (!this.settings.enterpriseServerUrl && configResult.data.apiUrl) {
+						this.settings.enterpriseServerUrl = configResult.data.apiUrl;
+					}
+				}
+			} catch (error) {
+				console.error('[Friday Mobile] Error loading enterprise server URL from Foundry:', error);
+			}
+		} else {
+			console.warn('[Friday Mobile] authService not available');
+		}
+		// 加载设置（与 PC 端一致）
+		await this.loadSettingsFromFoundryGlobalConfig();
+
+	} catch (error) {
+		console.error('[Friday Mobile] Error initializing workspace:', error);
+	}
+}
 
 	async openPublishPanel(folder: TFolder | null, file: TFile | null) {
 		if (!Platform.isDesktop || !this.site) {
@@ -714,7 +817,6 @@ export default class FridayPlugin extends Plugin {
 	 */
 	registerSiteComponent(component: any) {
 		this.siteComponent = component;
-		console.log('[Friday] Site component registered for new architecture');
 	}
 
 	/**
@@ -724,8 +826,6 @@ export default class FridayPlugin extends Plugin {
 		type: T,
 		data: SiteEventData[T]
 	): Promise<void> {
-		console.log('[Friday] Handling site event:', type, data);
-
 		switch (type) {
 			case 'initialized':
 				await this.onSiteInitialized(data as SiteEventData['initialized']);
@@ -759,9 +859,7 @@ export default class FridayPlugin extends Plugin {
 
 	// ==================== Event Handlers ====================
 
-	private async onSiteInitialized(data: SiteEventData['initialized']) {
-		console.log('[Friday] Site component initialized for project:', data.projectName);
-	}
+	private async onSiteInitialized(data: SiteEventData['initialized']) {}
 
 	private async onConfigChanged(data: SiteEventData['configChanged']) {
 		if (!this.currentProjectName || !this.projectServiceManager) {
@@ -906,8 +1004,6 @@ export default class FridayPlugin extends Plugin {
 		}
 
 		try {
-			console.log('[Friday] Creating new project:', projectName);
-
 			// Collect initial configuration with project context (now async)
 			const initialConfig = await this.collectInitialConfig(projectName, folder, file);
 
@@ -923,7 +1019,6 @@ export default class FridayPlugin extends Plugin {
 				throw new Error(result.error);
 			}
 
-			console.log('[Friday] Project created successfully:', projectName);
 			new Notice(`Project "${projectName}" created successfully`);
 			
 			return true;
@@ -953,17 +1048,17 @@ export default class FridayPlugin extends Plugin {
 		// Get default theme based on project type
 		const defaultTheme = getDefaultTheme(isFolder);
 		
-		// Calculate baseURL
-		let baseURL = '/';
-		const previewId = nameToId(projectName);
-		if (publishMethod === 'mdf-free') {
-			baseURL = `/f/${previewId}`;
-		} else if (publishMethod === 'mdf-share') {
-			const userDir = this.settings.licenseUser?.userDir || '';
-			if (userDir) {
-				baseURL = `/s/${userDir}/${previewId}`;
-			}
+	// Calculate baseURL
+	let baseURL = '/';
+	const previewId = await nameToIdAsync(projectName);
+	if (publishMethod === 'mdf-free') {
+		baseURL = `/f/${previewId}`;
+	} else if (publishMethod === 'mdf-share') {
+		const userDir = this.settings.licenseUser?.userDir || '';
+		if (userDir) {
+			baseURL = `/s/${userDir}/${previewId}`;
 		}
+	}
 		
 		// Check if user has publish permission (affects branding)
 		const hasPublishPermission = this.licenseState?.hasPublishPermission() || false;
@@ -1015,15 +1110,11 @@ export default class FridayPlugin extends Plugin {
 				const path = require('path');
 				const absoluteFolderPath = path.join(this.vaultBasePath, folder.path);
 				
-				console.log('[Friday] Scanning folder structure:', absoluteFolderPath);
 				const scanResult = await this.projectServiceManager.scanFolderStructure(absoluteFolderPath);
 				
 				if (scanResult && scanResult.success && scanResult.data) {
 					// Generate languages configuration from scan result
-					const languages = this.generateLanguagesConfig(scanResult.data);
-					config.languages = languages;
-					
-					console.log('[Friday] Languages config generated:', languages);
+					config.languages = this.generateLanguagesConfig(scanResult.data);
 				} else {
 					console.warn('[Friday] Folder scan failed, using default language config');
 					// Fallback: default single language
@@ -1138,8 +1229,6 @@ export default class FridayPlugin extends Plugin {
 		}
 
 		try {
-			console.log('[Friday] Applying project to panel:', project.name);
-			
 			// Step 1: Set current project name FIRST before any operations
 			this.currentProjectName = project.name;
 			
@@ -1167,7 +1256,6 @@ export default class FridayPlugin extends Plugin {
 			// Step 5: Call Site.svelte's initialize method (NEW ARCHITECTURE)
 			if (this.siteComponent?.initialize) {
 				await this.siteComponent.initialize(projectState);
-				console.log('[Friday] Project configuration applied to UI via new architecture');
 			} else {
 				console.error('[Friday] Site component not registered - cannot apply configuration');
 			}
@@ -1222,8 +1310,6 @@ export default class FridayPlugin extends Plugin {
 					);
 				}
 			}
-
-			console.log('[Friday] Loaded content links from project');
 		}
 
 		// Load static link
@@ -1233,7 +1319,6 @@ export default class FridayPlugin extends Plugin {
 			
 			if (abstractFile instanceof TFolder) {
 				this.site.setSiteAssets(abstractFile);
-				console.log('[Friday] Static assets loaded from project');
 			}
 		}
 	}
@@ -1557,28 +1642,28 @@ export default class FridayPlugin extends Plugin {
 					break;
 			}
 
-			// Step 4: Set sitePath based on publish type
-			if (this.siteComponent?.setSitePath && this.currentProjectName) {
-				const previewId = nameToId(this.currentProjectName);
-				let sitePath = '/';
-				switch (publishType) {
-					case 'mdf-free':
-						sitePath = `/f/${previewId}`;
-						break;
-					case 'mdf-share':
-						if (this.settings.licenseUser?.userDir) {
-							sitePath = `/s/${this.settings.licenseUser.userDir}/${previewId}`;
-						}
-						break;
-					case 'mdf-app':
-					case 'mdf-custom':
-					case 'mdf-enterprise':
-						// These will use custom sitePath from user settings
-						break;
-					default:
-						// netlify and ftp don't need sitePath
-						break;
-				}
+		// Step 4: Set sitePath based on publish type
+		if (this.siteComponent?.setSitePath && this.currentProjectName) {
+			const previewId = await nameToIdAsync(this.currentProjectName);
+			let sitePath = '/';
+			switch (publishType) {
+				case 'mdf-free':
+					sitePath = `/f/${previewId}`;
+					break;
+				case 'mdf-share':
+					if (this.settings.licenseUser?.userDir) {
+						sitePath = `/s/${this.settings.licenseUser.userDir}/${previewId}`;
+					}
+					break;
+				case 'mdf-app':
+				case 'mdf-custom':
+				case 'mdf-enterprise':
+					// These will use custom sitePath from user settings
+					break;
+				default:
+					// netlify and ftp don't need sitePath
+					break;
+			}
 
 				if (publishType != 'ftp') {
 					this.siteComponent.setSitePath(sitePath);
@@ -1701,11 +1786,11 @@ export default class FridayPlugin extends Plugin {
 			return;
 		}
 
-		// Step 4: Set sitePath to "/f/{previewId}" for MDFriday Free
-		if (this.siteComponent?.setSitePath && this.currentProjectName) {
-			const previewId = nameToId(this.currentProjectName);
-			this.siteComponent.setSitePath(`/f/${previewId}`);
-		}
+	// Step 4: Set sitePath to "/f/{previewId}" for MDFriday Free
+	if (this.siteComponent?.setSitePath && this.currentProjectName) {
+		const previewId = await nameToIdAsync(this.currentProjectName);
+		this.siteComponent.setSitePath(`/f/${previewId}`);
+	}
 
 		// Step 5: Enable auto-publish mode
 		if (this.siteComponent?.enableAutoPublish) {
@@ -2037,8 +2122,6 @@ export default class FridayPlugin extends Plugin {
 			const config = this.foundryGlobalConfigService;
 			const workspace = this.absWorkspacePath;
 			
-			console.log('[Friday] Saving default publish settings to Global Config...');
-			
 			// ========================================
 			// FTP Publish Settings (Default)
 			// ========================================
@@ -2071,27 +2154,7 @@ export default class FridayPlugin extends Plugin {
 			// ========================================
 			await config.set(workspace, 'site.downloadServer', this.settings.downloadServer);
 			await config.set(workspace, 'publish.method', this.settings.publishMethod);
-			
-			// ========================================
-			// NOTE: The following are NOT saved here anymore:
-			// ========================================
-			// ❌ Domain settings (customDomain, customSubdomain)
-			//    → Use DomainService.getDomainInfo() / updateSubdomain() / addCustomDomain()
-			//    → Read from: licenseState.getSubdomain() / getCustomDomain()
-			//
-			// ❌ Auth configuration (enterpriseServerUrl)
-			//    → Use AuthService.getConfig() / updateConfig()
-			//    → Managed by AuthService in workspace/.mdfriday/user-data.json
-			//
-			// ❌ License data (license, licenseUser, licenseSync)
-			//    → Use LicenseService.getLicenseInfo() / activateLicense()
-			//    → Read from: licenseState (unified license state manager)
-			//
-			// ❌ MDFriday publish license key
-			//    → Managed by LicenseServiceManager.saveLicenseKeyToConfig()
-			//    → Automatically saved during license activation
-			
-			console.log('[Friday] Default publish settings saved to Global Config');
+
 		} catch (error) {
 			console.error('[Friday] Error saving settings to Global Config:', error);
 			// Don't throw error - this is not critical, settings are already saved to Obsidian storage
@@ -2113,17 +2176,17 @@ export default class FridayPlugin extends Plugin {
 			
 			// Update license data (for UI display)
 			if (licenseInfo) {
+				const features = licenseInfo.features as any;
 				this.settings.license = {
 					key: this.licenseState.getLicenseKey() || '',
 					plan: licenseInfo.plan,
 					expiresAt: licenseInfo.expiresAt || 0,
-					features: licenseInfo.features,
+					features: {
+						...licenseInfo.features,
+						validityDays: features?.validityDays || 365
+					},
 					activatedAt: Date.now()
 				};
-				console.log('[Friday] Synced license to settings:', {
-					plan: licenseInfo.plan,
-					expiresAt: licenseInfo.expiresAt
-				});
 			}
 			
 			// Update user data (for UI display)
@@ -2132,7 +2195,6 @@ export default class FridayPlugin extends Plugin {
 					email: authStatus.email,
 					userDir: this.licenseState.getUserDir() || ''
 				};
-				console.log('[Friday] Synced user to settings:', authStatus.email);
 			}
 			
 			// Update sync config data (for UI display)
@@ -2147,18 +2209,9 @@ export default class FridayPlugin extends Plugin {
 						email: syncConfig.email,
 						dbPassword: syncConfig.dbPassword || '' // Password might not be included in getStatus
 					};
-					console.log('[Friday] Synced sync config to settings:', {
-						dbName: syncConfig.dbName,
-						email: syncConfig.email,
-						userDir: syncConfig.userDir,
-						isActive: syncConfig.isActive
-					});
 				}
 			}
-			
-			// Note: We don't call saveSettings() here because this is just in-memory cache
-			// The real data source is always Foundry
-			
+
 		} catch (error) {
 			console.error('[Friday] Error syncing license to settings:', error);
 		}
@@ -2194,12 +2247,10 @@ export default class FridayPlugin extends Plugin {
 			const listResult = await config.list(workspace);
 			
 			if (!listResult.success || !listResult.data?.config) {
-				console.log('[Friday] No Foundry Global Config found, using local settings');
 				return;
 			}
 			
 			const foundryConfig = listResult.data.config;
-			console.log('[Friday] Loading default publish settings from Global Config');
 
 			if (!this.settings.publishMethod) {
 				this.settings.publishMethod = foundryConfig['publish']?.method || 'mdf-app';
@@ -2233,24 +2284,6 @@ export default class FridayPlugin extends Plugin {
 			if (!this.settings.netlifyProjectId && foundryConfig['publish']?.netlify?.siteId) {
 				this.settings.netlifyProjectId = foundryConfig['publish'].netlify.siteId;
 			}
-			
-			// ========================================
-			// NOTE: The following are NOT loaded here anymore:
-			// ========================================
-			// ❌ Domain settings (customDomain, customSubdomain)
-			//    → Read from: licenseState.getSubdomain() / getCustomDomain()
-			//    → DomainService is the single source of truth
-			//
-			// ❌ Auth configuration (enterpriseServerUrl)
-			//    → Loaded by: AuthService during initialization
-			//    → Already available via authService.getConfig()
-			//
-			// ❌ License data (license, licenseUser)
-			//    → Loaded by: licenseState.initialize() during plugin initialization
-			//    → LicenseState is the single source of truth
-			//    → Data is synced to settings by syncLicenseToSettings() for UI display only
-			
-			console.log('[Friday] Default publish settings loaded from Global Config');
 		} catch (error) {
 			console.error('[Friday] Error loading settings from Global Config:', error);
 			// Don't throw error - we can still use local settings

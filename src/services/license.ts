@@ -32,12 +32,9 @@ export class LicenseServiceManager {
 			const result = await this.licenseService.requestTrial(this.workspacePath, email);
 			
 			if (result.success && result.data) {
-				console.log('[Friday] Trial license requested successfully:', result.data);
-				
 				// Save license key to global config for MDFriday publishing
 				if (result.data.licenseKey) {
 					await this.saveLicenseKeyToConfig(result.data.licenseKey);
-					console.log('[Friday] Trial license key saved to global config');
 				}
 				
 				// Note: Auth and license data are now managed by Foundry Services
@@ -62,7 +59,6 @@ export class LicenseServiceManager {
 			const result = await this.licenseService.loginWithLicense(this.workspacePath, licenseKey);
 			
 			if (result.success) {
-				console.log('[Friday] Logged in with license successfully');
 				return { success: true, data: result.data };
 			}
 			
@@ -82,12 +78,9 @@ export class LicenseServiceManager {
 			const result = await this.licenseService.activateLicense(this.workspacePath, licenseKey);
 			
 			if (result.success && result.data) {
-				console.log('[Friday] License activated successfully');
-				
 				// Save license key to global config for MDFriday publishing
 				await this.saveLicenseKeyToConfig(licenseKey);
-				console.log('[Friday] License key saved to global config');
-				
+
 				// Note: Auth and license data are now managed by Foundry Services
 				// No need to manually sync - use licenseState.initialize() to refresh
 				

@@ -12,7 +12,7 @@
 	import {createStyleRenderer, OBStyleRenderer} from "../markdown";
 	import {themeApiService} from "../theme/themeApiService";
 	import type { ProjectState, ProgressUpdate, PublishProgressUpdate } from "../types/events";
-	import {nameToId} from "src/utils/hash.ts";
+	import {nameToIdAsync} from "src/utils/hash.ts";
 	import { DEFAULT_THEMES, shouldUseInternalRenderer } from "../utils/theme";
 
 	// Receive props
@@ -205,7 +205,6 @@
 			await tick();
 
 			if (currentContents.length === 0) {
-				console.log('[Site] No contents to apply language configuration');
 				return;
 			}
 
@@ -242,20 +241,15 @@
 				
 				// Update language code if different
 				if (content.languageCode !== expectedLangCode) {
-					console.log(`[Site] Updating content ${index} language: ${content.languageCode} -> ${expectedLangCode}`);
 					site.updateLanguageCode(content.id, expectedLangCode);
 				}
 			});
 			
 			// Wait for updates to complete
 			await tick();
-			
-			console.log('[Site] Language configuration applied to UI');
-			
+
 			// Save if not skipped
-			if (!skipSave) {
-				console.log('[Site] Saving language configuration after apply');
-			}
+			if (!skipSave) {}
 		} catch (error) {
 			console.error('[Site] Error applying language configuration:', error);
 		}
@@ -276,7 +270,6 @@
 		
 		// Skip saving during project initialization
 		if (plugin.isProjectInitializing) {
-			console.log('[Site] Skipping save during initialization');
 			return;
 		}
 		
@@ -322,7 +315,6 @@
 				});
 			}
 			
-			console.log(`[Site] Saved config: ${plugin.currentProjectName}: ${key} = ${value}`);
 		} catch (error) {
 			console.error('[Site] Error saving config:', error);
 		}
@@ -333,7 +325,6 @@
 	 * Called by Main.ts after project creation or when loading existing project
 	 */
 	export async function initialize(state: ProjectState) {
-		console.log('[Site] Initializing with project state:', state.name);
 		projectName = state.name;
 		absPreviewDir = state.path;
 
@@ -361,13 +352,11 @@
 					if (matchedTheme) {
 						selectedThemeId = matchedTheme.id;
 						selectedThemeName = matchedTheme.title || matchedTheme.name;
-						console.log('[Site] Loaded theme:', selectedThemeName, 'ID:', selectedThemeId);
-						
+
 						// Ensure markdown.useInternalRenderer is set correctly based on theme tags
 						if (matchedTheme.tags && state.config.markdown?.useInternalRenderer === undefined) {
 							const useInternalRenderer = shouldUseInternalRenderer(matchedTheme.tags);
 							await saveFoundryConfig('markdown.useInternalRenderer', useInternalRenderer);
-							console.log('[Site] Initialized markdown.useInternalRenderer:', useInternalRenderer, 'for theme tags:', matchedTheme.tags);
 						}
 					} else {
 						console.warn('[Site] Theme not found by URL, used fallback:', themeUrl);
@@ -427,9 +416,6 @@
 
 			// 5. Load language configuration
 			if (state.config.languages && state.config.defaultContentLanguage) {
-				console.log('[Site] Loading language configuration:', state.config.languages);
-				console.log('[Site] Default content language:', state.config.defaultContentLanguage);
-				
 				// Apply language configuration (with initializing flag to prevent saves)
 				await applyLanguageConfiguration(
 					state.config.languages,
@@ -437,8 +423,6 @@
 					true // isInitializing = true
 				);
 			}
-
-			console.log('[Site] Project configuration loaded to UI');
 		}
 
 		// Notify Main.ts that initialization is complete
@@ -484,7 +468,6 @@
 				// Extract publish URL from data
 				if (progress.data?.publishUrl) {
 					publishUrl = buildPublishUrl(selectedPublishOption, progress.data.publishUrl);
-					console.log('[Site] Publish success with URL:', publishUrl);
 				}
 			} else if (progress.phase === 'error') {
 				isPublishing = false;
@@ -528,7 +511,6 @@
 	export function onBuildComplete(result: any) {
 		buildProgress = 100;
 		isBuilding = false;
-		console.log('[Site] Build completed:', result);
 	}
 
 	/**
@@ -549,7 +531,6 @@
 		buildProgress = 100;
 		isBuilding = false;
 		previewUrl = result.url || '';
-		console.log('[Site] Preview started:', result.url, 'Path:', result.path);
 	}
 
 	/**
@@ -571,7 +552,6 @@
 		serverRunning = false;
 		hasPreview = false;
 		absPreviewDir = ''; // Clear preview directory path when stopped
-		console.log('[Site] Preview stopped');
 	}
 
 	/**
@@ -687,12 +667,6 @@
 
 		// Build publish URL based on publish method
 		publishUrl = buildPublishUrl(selectedPublishOption, result.url || '');
-		
-		if (publishUrl) {
-			console.log('[Site] Publish completed:', publishUrl);
-		} else {
-			console.log('[Site] Publish completed (no URL to display)');
-		}
 	}
 
 	/**
@@ -709,7 +683,6 @@
 	 * Connection test success callback
 	 */
 	export function onConnectionTestSuccess(message?: string) {
-		console.log('[Site] Connection test success:', message);
 		new Notice('Connection test successful');
 	}
 
@@ -831,7 +804,6 @@
 	// Enable auto-publish mode (called from main.ts for quick publish)
 	export function enableAutoPublish() {
 		autoPublishEnabled = true;
-		console.log('[Site] Auto-publish enabled');
 	}
 
 	onDestroy(() => {
@@ -1014,13 +986,11 @@
 		
 		// Skip saving during project initialization
 		if (plugin.isProjectInitializing) {
-			console.log('[Site] Skipping language config save during initialization');
 			return;
 		}
 		
 		// Prevent re-entry during save
 		if (isSavingLanguageConfig) {
-			console.log('[Site] Language config save already in progress, skipping');
 			return;
 		}
 		
@@ -1069,11 +1039,6 @@
 			
 			// Update last saved config
 			lastSavedLanguageConfig = configString;
-			
-			console.log('[Site] Saved language configuration:', {
-				languages,
-				defaultContentLanguage: defaultLang
-			});
 		} catch (error) {
 			console.error('[Site] Error saving language configuration:', error);
 		} finally {
@@ -1117,7 +1082,6 @@
 					if (currentThemeWithSample?.tags) {
 						const useInternalRenderer = shouldUseInternalRenderer(currentThemeWithSample.tags);
 						await saveFoundryConfig('markdown.useInternalRenderer', useInternalRenderer);
-						console.log('[Site] Updated markdown.useInternalRenderer:', useInternalRenderer, 'for theme tags:', currentThemeWithSample.tags);
 					}
 				} catch (error) {
 					console.warn('Failed to get theme info:', error);
@@ -1230,13 +1194,13 @@
 	/**
 	 * Build publish config for MDFriday Free
 	 */
-	function buildMDFFreePublishConfig(projectName: string) {
+	async function buildMDFFreePublishConfig(projectName: string) {
 		return {
 			method: 'mdfriday' as const,
 			config: {
 				type: 'mdfriday',
 				deploymentType: 'free',
-				path: nameToId(projectName),
+				path: await nameToIdAsync(projectName),
 				enabled: true,
 				accessToken: plugin.licenseState?.getAccessToken() || '',
 				licenseKey: plugin.licenseState?.getLicenseKey() || '',
@@ -1248,13 +1212,13 @@
 	/**
 	 * Build publish config for MDFriday Share
 	 */
-	function buildMDFSharePublishConfig(projectName: string) {
+	async function buildMDFSharePublishConfig(projectName: string) {
 		return {
 			method: 'mdfriday' as const,
 			config: {
 				type: 'mdfriday',
 				deploymentType: 'share',
-				path: nameToId(projectName),
+				path: await nameToIdAsync(projectName),
 				enabled: true,
 				accessToken: plugin.licenseState?.getAccessToken() || '',
 				licenseKey: plugin.licenseState?.getLicenseKey() || '',
@@ -1423,7 +1387,6 @@
 
 		// Stop previous preview if running to avoid port conflicts
 		if (hasPreview || serverRunning) {
-			console.log('[Site] Stopping previous preview before starting new one');
 			try {
 				await stopPreview();
 				// Wait a moment for the server to fully stop
@@ -1493,7 +1456,6 @@
 
 		// Stop previous preview if running to avoid port conflicts
 		if (hasPreview || serverRunning) {
-			console.log('[Site] Stopping previous preview before starting auto-publish');
 			try {
 				await stopPreview();
 				// Wait a moment for the server to fully stop
@@ -1531,10 +1493,10 @@
 			// Build publish config based on selected option
 			switch (selectedPublishOption) {
 				case 'mdf-free':
-					publishConfig = buildMDFFreePublishConfig(projectName);
+					publishConfig = await buildMDFFreePublishConfig(projectName);
 					break;
 				case 'mdf-share':
-					publishConfig = buildMDFSharePublishConfig(projectName);
+					publishConfig = await buildMDFSharePublishConfig(projectName);
 					break;
 				case 'netlify':
 					publishConfig = buildNetlifyPublishConfig();
@@ -1592,7 +1554,6 @@
 		
 		// Skip saving during project initialization
 		if (plugin.isProjectInitializing) {
-			console.log('[Site] Skipping publish config save during initialization');
 			return;
 		}
 		
@@ -1632,7 +1593,6 @@
 				});
 			}
 			
-			console.log('[Site] Saved publish config to Foundry:', publishConfig);
 		} catch (error) {
 			console.error('[Site] Error saving publish config:', error);
 		}
@@ -1734,10 +1694,10 @@
 					publishConfig = buildFTPPublishConfig();
 					break;
 				case 'mdf-free':
-					publishConfig = buildMDFFreePublishConfig(projectName);
+					publishConfig = await buildMDFFreePublishConfig(projectName);
 					break;
 				case 'mdf-share':
-					publishConfig = buildMDFSharePublishConfig(projectName);
+					publishConfig = await buildMDFSharePublishConfig(projectName);
 					break;
 				case 'mdf-app':
 					publishConfig = buildMDFAppPublishConfig();
@@ -1779,7 +1739,6 @@
 	function handleAutoPublishToggle() {
 		if (plugin.currentProjectName && !plugin.isProjectInitializing) {
 			saveFoundryConfig('params.autoPublish', autoPublishEnabled);
-			console.log('[Site] Auto-publish setting saved:', autoPublishEnabled);
 		}
 	}
 

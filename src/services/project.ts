@@ -57,8 +57,6 @@ export class ProjectServiceManager {
 				return { success: false, error: result.error };
 			}
 
-			console.log('[ProjectServiceManager] Project created:', name);
-
 			// 应用初始配置（如果有）
 			if (initialConfig) {
 				const configResult = await this.plugin.foundryProjectConfigService.setAll(
@@ -69,8 +67,6 @@ export class ProjectServiceManager {
 
 				if (!configResult.success) {
 					console.warn('[ProjectServiceManager] Failed to apply initial config:', configResult.error);
-				} else {
-					console.log('[ProjectServiceManager] Initial config applied');
 				}
 			}
 
@@ -199,9 +195,7 @@ export class ProjectServiceManager {
 				value
 			);
 
-			if (result.success) {
-				console.log(`[ProjectServiceManager] Config saved: ${key}`);
-			} else {
+			if (!result.success) {
 				console.error(`[ProjectServiceManager] Failed to save config ${key}:`, result.error);
 			}
 
@@ -226,9 +220,7 @@ export class ProjectServiceManager {
 				config
 			);
 
-			if (result.success) {
-				console.log('[ProjectServiceManager] All config saved');
-			} else {
+			if (!result.success) {
 				console.error('[ProjectServiceManager] Failed to save all config:', result.error);
 			}
 

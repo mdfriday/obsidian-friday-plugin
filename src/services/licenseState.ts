@@ -35,7 +35,7 @@ export class LicenseStateManager {
 	constructor(
 		private licenseService: ObsidianLicenseService,
 		private authService: ObsidianAuthService,
-		private domainService: ObsidianDomainService,
+		private domainService: ObsidianDomainService | null,
 		private workspacePath: string
 	) {}
 
@@ -49,8 +49,6 @@ export class LicenseStateManager {
 		error?: string;
 	}> {
 		try {
-			console.log('[LicenseState] Initializing license state...');
-			
 			// 1. 首先获取认证状态（最重要）
 			const authResult = await this.authService.getStatus(this.workspacePath);
 			
@@ -60,11 +58,9 @@ export class LicenseStateManager {
 			}
 			
 			this.authStatus = authResult.data;
-			console.log('[LicenseState] Auth status:', this.authStatus);
-			
+
 			// 2. 判断是否已激活
 			if (!this.authStatus.isAuthenticated || !this.authStatus.license) {
-				console.log('[LicenseState] Not activated or no license');
 				return { isActivated: false };
 			}
 			
@@ -72,30 +68,20 @@ export class LicenseStateManager {
 			const licenseResult = await this.licenseService.getLicenseInfo(this.workspacePath);
 			if (licenseResult.success) {
 				this.licenseInfo = licenseResult.data;
-				console.log('[LicenseState] License info loaded:', {
-					plan: this.licenseInfo.plan,
-					isExpired: this.licenseInfo.isExpired,
-					features: Object.keys(this.licenseInfo.features || {})
-				});
 			} else {
 				console.warn('[LicenseState] Failed to get license info:', licenseResult.error);
 			}
 			
-			// 4. 获取 domain 信息（如果有权限）
-			if (this.hasFeature('customSubDomain') || this.hasFeature('customDomain')) {
+			// 4. 获取 domain 信息（如果有权限且 domainService 可用）
+			if (this.domainService && (this.hasFeature('customSubDomain') || this.hasFeature('customDomain'))) {
 				const domainResult = await this.domainService.getDomainInfo(this.workspacePath);
 				if (domainResult.success) {
 					this.domainInfo = domainResult.data;
-					console.log('[LicenseState] Domain info loaded:', {
-						subdomain: this.domainInfo.subdomain,
-						customDomain: this.domainInfo.customDomain
-					});
 				}
 			}
 			
 			this.lastUpdateTime = Date.now();
 			
-			console.log('[LicenseState] Initialize completed successfully');
 			return {
 				isActivated: true,
 				licenseKey: this.authStatus.license
@@ -237,7 +223,6 @@ export class LicenseStateManager {
 	 * 强制刷新
 	 */
 	async refresh(): Promise<void> {
-		console.log('[LicenseState] Refreshing license state...');
 		await this.initialize();
 	}
 
@@ -245,7 +230,6 @@ export class LicenseStateManager {
 	 * 清空状态
 	 */
 	clear(): void {
-		console.log('[LicenseState] Clearing license state');
 		this.licenseInfo = null;
 		this.authStatus = null;
 		this.domainInfo = null;

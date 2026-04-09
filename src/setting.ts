@@ -830,9 +830,7 @@ export class FridaySettingTab extends PluginSettingTab {
 									}
 								);
 								
-								if (configResult.success) {
-									console.log('[Friday] Enterprise server URL updated to Foundry:', trimmedValue);
-								} else {
+								if (!configResult.success) {
 									console.error('[Friday] Failed to update enterprise server URL to Foundry:', configResult.error);
 								}
 							} catch (error) {
@@ -1704,8 +1702,6 @@ export class FridaySettingTab extends PluginSettingTab {
 				throw new Error(loginResult.error || 'Login with license failed');
 			}
 			
-			console.log('[Friday] Login successful, proceeding with activation');
-
 			// Step 2: Activate license using Foundry (uses the token from login)
 			const activateResult = await this.plugin.licenseServiceManager.activateLicense(licenseKey);
 			
@@ -1714,10 +1710,6 @@ export class FridaySettingTab extends PluginSettingTab {
 			}
 
 			const licenseInfo = activateResult.data;
-			console.log('[Friday] License activation succeeded:', {
-				plan: licenseInfo.plan,
-				firstTime: licenseInfo.activation?.firstTime
-			});
 
 			// Step 3: Reinitialize license state from Foundry (single source of truth)
 			if (this.plugin.licenseState) {
@@ -1726,8 +1718,6 @@ export class FridaySettingTab extends PluginSettingTab {
 				if (!initResult.isActivated) {
 					throw new Error('License activation succeeded but state initialization failed');
 				}
-				
-				console.log('[Friday] License state initialized successfully');
 			}
 
 			// Step 4: Sync to settings (for UI display only)
@@ -1780,9 +1770,6 @@ export class FridaySettingTab extends PluginSettingTab {
 			if (this.plugin.settings.syncEnabled && isFirstTime) {
 				await this.plugin.initializeSyncService();
 			}
-
-			console.log('[Friday] License activation completed successfully');
-			
 		} catch (error) {
 			console.error('[Friday] License activation failed:', error);
 			throw error;
