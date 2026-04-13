@@ -32,7 +32,7 @@ export const zhCn: TranslationNamespace = {
 		devices_registered: "已注册设备数",
 		storage_usage: "存储用量",
 		storage_usage_desc: "总磁盘空间使用量",
-		sync: "同步",
+		sync: "同步设置",
 		publish: "发布",
 		enabled: "已启用",
 		disabled: "未启用",
@@ -61,6 +61,11 @@ export const zhCn: TranslationNamespace = {
 
 		// Sync Settings (License-based)
 		sync_enabled: "同步已启用",
+		sync_enable: "启用同步", // Label for toggle switch
+		sync_enable_message: "请使用上方的开关来启用同步功能，以便开始同步您的 Vault。", // Message shown when sync is disabled
+		sync_enabled_success: "同步已成功启用",
+		sync_disabled_success: "同步已停用",
+		sync_enable_failed: "启用同步失败",
 		sync_description: "您的数据已安全同步至各设备。",
 		sync_first_time_title: "这是您首次使用同步功能。",
 		sync_first_time_desc: "请选择如何在此设备上设置同步。",

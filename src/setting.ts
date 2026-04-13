@@ -41,10 +41,9 @@ export class FridaySettingTab extends PluginSettingTab {
 		// =========================================
 		this.renderLicenseSection(containerEl);
 
-		// If license is activated, show Sync and Security sections (both platforms)
+		// If license is activated and sync is available, show Sync section (both platforms)
 		if (license && licenseSync?.enabled) {
 			this.renderSyncSection(containerEl);
-			this.renderSecuritySection(containerEl);
 		}
 
 		// =========================================
@@ -68,7 +67,10 @@ export class FridaySettingTab extends PluginSettingTab {
 		const {publishMethod, netlifyAccessToken, netlifyProjectId, ftpServer, ftpUsername, ftpPassword, ftpRemoteDir, ftpIgnoreCert} = this.plugin.settings;
 
 		// Publish Settings Section
-		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.publish_settings')});
+		containerEl.createEl("h2", {
+			text: this.plugin.i18n.t('settings.publish_settings'),
+			cls: 'friday-section-title'
+		});
 		
 	// Create containers for dynamic content
 	let mdfridayFreeContainer: HTMLElement;
@@ -769,7 +771,10 @@ export class FridaySettingTab extends PluginSettingTab {
 		// =========================================
 		// General Settings Section (at the bottom)
 		// =========================================
-		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.general_settings')});
+		containerEl.createEl("h2", {
+			text: this.plugin.i18n.t('settings.general_settings'),
+			cls: 'friday-section-title'
+		});
 		
 		// Download Server Setting
 		new Setting(containerEl)
@@ -805,7 +810,10 @@ export class FridaySettingTab extends PluginSettingTab {
 		// =========================================
 		// Enterprise Settings Section (at the bottom)
 		// =========================================
-		containerEl.createEl("h2", { text: this.plugin.i18n.t('settings.enterprise_settings') });
+		containerEl.createEl("h2", {
+			text: this.plugin.i18n.t('settings.enterprise_settings'),
+			cls: 'friday-section-title'
+		});
 		
 		// Enterprise Server URL Setting
 		new Setting(containerEl)
@@ -849,7 +857,10 @@ export class FridaySettingTab extends PluginSettingTab {
 	 * Uses licenseState as the single source of truth
 	 */
 	private renderLicenseSection(containerEl: HTMLElement): void {
-		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.license')});
+		containerEl.createEl("h2", {
+			text: this.plugin.i18n.t('settings.license'),
+			cls: 'friday-section-title'
+		});
 
 		// Use licenseState for all license-related checks
 		if (this.plugin.licenseState?.isActivated() && !this.plugin.licenseState.isExpired()) {
@@ -1137,6 +1148,7 @@ export class FridaySettingTab extends PluginSettingTab {
 	/**
 	 * Render Sync Section (only shown when license is activated)
 	 * Includes Security subsection and Selective Sync subsection
+	 * Users must explicitly enable sync via the toggle switch
 	 */
 	private renderSyncSection(containerEl: HTMLElement): void {
 		const license = this.plugin.settings.license;
@@ -1144,10 +1156,79 @@ export class FridaySettingTab extends PluginSettingTab {
 
 		if (!license || !licenseSync?.enabled) return;
 
-		containerEl.createEl("h2", {text: this.plugin.i18n.t('settings.sync')});
+		// Create sync section header with toggle switch
+		const syncHeaderContainer = containerEl.createDiv('friday-sync-header-container');
+		const syncHeader = syncHeaderContainer.createEl("h2", {
+			text: this.plugin.i18n.t('settings.sync'),
+			cls: 'friday-section-title'
+		});
+		
+		// Add toggle switch to the right of the header
+		const toggleContainer = syncHeaderContainer.createDiv('friday-sync-toggle-container');
+		let syncToggle: HTMLInputElement;
+		
+		const toggleWrapper = toggleContainer.createDiv('friday-sync-toggle-wrapper');
+		toggleWrapper.createSpan({text: this.plugin.i18n.t('settings.sync_enable'), cls: 'friday-sync-toggle-label'});
+		
+		const toggleElement = toggleWrapper.createEl('label', {cls: 'friday-sync-switch'});
+		syncToggle = toggleElement.createEl('input', {type: 'checkbox'});
+		syncToggle.checked = this.plugin.settings.syncUserEnabled || false;
+		toggleElement.createSpan({cls: 'friday-sync-slider'});
+		
+		// Container for all sync settings (shown only when enabled)
+		const syncContentContainer = containerEl.createDiv('friday-sync-content-container');
+		syncContentContainer.style.display = this.plugin.settings.syncUserEnabled ? 'block' : 'none';
+		
+		// Handle toggle change
+		syncToggle.addEventListener('change', async () => {
+			const enabled = syncToggle.checked;
+			this.plugin.settings.syncUserEnabled = enabled;
+			this.plugin.settings.syncEnabled = enabled;
+			
+			await this.plugin.saveSettings();
+			
+			if (enabled) {
+				// Initialize sync service when enabled
+				try {
+					await this.plugin.initializeSyncService();
+					new Notice(this.plugin.i18n.t('settings.sync_enabled_success') || 'Sync enabled');
+					// Refresh display to show sync content
+					this.display();
+				} catch (error) {
+					console.error('Failed to initialize sync service:', error);
+					new Notice(this.plugin.i18n.t('settings.sync_enable_failed') || 'Failed to enable sync');
+					syncToggle.checked = false;
+					this.plugin.settings.syncUserEnabled = false;
+					this.plugin.settings.syncEnabled = false;
+					await this.plugin.saveSettings();
+				}
+			} else {
+				// Close sync service when disabled
+				try {
+					if (this.plugin.syncService?.isInitialized) {
+						await this.plugin.syncService.close();
+					}
+					new Notice(this.plugin.i18n.t('settings.sync_disabled_success') || 'Sync disabled');
+					// Refresh display to hide sync content
+					this.display();
+				} catch (error) {
+					console.error('Failed to close sync service:', error);
+				}
+			}
+		});
+		
+		// If sync is not enabled, show a message and return
+		if (!this.plugin.settings.syncUserEnabled) {
+			const enableMessage = syncContentContainer.createDiv('friday-sync-enable-message');
+			enableMessage.createEl('p', {
+				text: this.plugin.i18n.t('settings.sync_enable_message') || 'Please enable sync using the toggle above to start syncing your vault.',
+				cls: 'friday-sync-info-text'
+			});
+			return;
+		}
 
-		// ========== Security Subsection ==========
-		const securityContainer = containerEl.createDiv('friday-security-container');
+		// ========== Security Subsection (moved to syncContentContainer) ==========
+		const securityContainer = syncContentContainer.createDiv('friday-security-container');
 		securityContainer.createEl("h3", {text: this.plugin.i18n.t('settings.security')});
 
 		// Encryption Password (editable for non-first-time, readonly for first-time with show/hide)
@@ -1294,7 +1375,7 @@ export class FridaySettingTab extends PluginSettingTab {
 		}
 
 		// ========== Selective Sync Subsection (Collapsible) ==========
-		const selectiveSyncDetails = containerEl.createEl('details', {cls: 'friday-security-container'});
+		const selectiveSyncDetails = syncContentContainer.createEl('details', {cls: 'friday-security-container'});
 		selectiveSyncDetails.createEl('summary', {text: this.plugin.i18n.t('settings.selective_sync'), cls: 'friday-collapsible-header'});
 		
 		const selectiveSyncContainer = selectiveSyncDetails.createDiv('friday-collapsible-content');
@@ -1470,7 +1551,7 @@ export class FridaySettingTab extends PluginSettingTab {
 		});
 		
 		// ========== Danger Zone ==========
-		this.renderDangerZone(containerEl);
+		this.renderDangerZone(syncContentContainer);
 	}
 
 	/**
@@ -1698,7 +1779,7 @@ export class FridaySettingTab extends PluginSettingTab {
 			// Step 4: Sync to settings (for UI display only)
 			await this.plugin.syncLicenseToSettings();
 
-			// Step 5: Configure sync if enabled
+			// Step 5: Configure sync if enabled (but don't auto-enable, let user choose)
 			const isFirstTime = licenseInfo.activation?.firstTime || false;
 			
 			if (licenseInfo.sync && licenseInfo.features.syncEnabled) {
@@ -1711,8 +1792,12 @@ export class FridaySettingTab extends PluginSettingTab {
 					dbPassword: licenseInfo.sync.dbPassword
 				};
 
-				// Configure the actual sync config
-				this.plugin.settings.syncEnabled = true;
+				// Configure the actual sync config (but don't enable yet)
+				// Only set to false on first-time activation, preserve user's choice otherwise
+				if (isFirstTime) {
+					this.plugin.settings.syncEnabled = false; // User must manually enable
+					this.plugin.settings.syncUserEnabled = false; // User must manually enable
+				}
 				this.plugin.settings.syncConfig = {
 					...this.plugin.settings.syncConfig,
 					couchDB_URI: licenseInfo.sync.dbEndpoint.replace(`/${licenseInfo.sync.dbName}`, ''),
@@ -1741,10 +1826,7 @@ export class FridaySettingTab extends PluginSettingTab {
 			// Step 8: Set first time flag
 			this.firstTimeSync = isFirstTime;
 
-			// Step 9: Initialize sync service only for first-time activation
-			if (this.plugin.settings.syncEnabled && isFirstTime) {
-				await this.plugin.initializeSyncService();
-			}
+			// Note: Sync service will be initialized when user manually enables sync via the toggle
 		} catch (error) {
 			console.error('[Friday] License activation failed:', error);
 			throw error;

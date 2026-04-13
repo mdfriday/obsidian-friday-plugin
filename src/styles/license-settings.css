@@ -1,5 +1,27 @@
 /* License Settings Styles - Obsidian Native Design */
 
+/* Section Title Styling - Make section headers more prominent */
+.friday-section-title {
+    margin-top: 40px !important;
+    margin-bottom: 20px !important;
+    padding-bottom: 12px !important;
+    border-bottom: 2px solid var(--background-modifier-border) !important;
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    color: var(--text-normal) !important;
+    letter-spacing: 0.02em !important;
+}
+
+/* First section title should have no top margin */
+.friday-section-title:first-child {
+    margin-top: 0 !important;
+}
+
+/* Section Wrapper - Add spacing between sections */
+.friday-settings-section {
+    margin-bottom: 32px;
+}
+
 /* License Status Text (inline with setting) */
 .friday-license-status-text {
     display: block;
@@ -286,4 +308,117 @@
 .friday-premium-btn:active {
     transform: translateY(0);
     box-shadow: none;
+}
+
+/* Sync Section Header with Toggle */
+.friday-sync-header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 40px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--background-modifier-border);
+}
+
+.friday-sync-header-container h2 {
+    margin: 0 0 0 16px !important;
+    padding: 0 !important;
+    flex: 1;
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    color: var(--text-normal) !important;
+    letter-spacing: 0.02em !important;
+    border: none !important;
+}
+
+.friday-sync-toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.friday-sync-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.friday-sync-toggle-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-normal);
+    user-select: none;
+}
+
+/* Toggle Switch Styles */
+.friday-sync-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 24px;
+}
+
+.friday-sync-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.friday-sync-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--background-modifier-border);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.friday-sync-slider::before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.friday-sync-switch input:checked + .friday-sync-slider {
+    background-color: var(--interactive-accent);
+}
+
+.friday-sync-switch input:focus + .friday-sync-slider {
+    box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.friday-sync-switch input:checked + .friday-sync-slider::before {
+    transform: translateX(24px);
+}
+
+/* Sync Content Container */
+.friday-sync-content-container {
+    transition: opacity 0.3s ease, max-height 0.3s ease;
+}
+
+/* Sync Enable Message */
+.friday-sync-enable-message {
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background-color: var(--background-secondary);
+}
+
+.friday-sync-info-text {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.5;
 }

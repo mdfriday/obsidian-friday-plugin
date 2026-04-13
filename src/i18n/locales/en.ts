@@ -32,7 +32,7 @@ export const en: TranslationNamespace = {
 		devices_registered: "Registered devices on this license",
 		storage_usage: "Storage Usage",
 		storage_usage_desc: "Total disk space usage",
-		sync: "Sync",
+		sync: "Sync Settings",
 		publish: "Publish",
 		enabled: "Enabled",
 		disabled: "Disabled",
@@ -61,6 +61,11 @@ export const en: TranslationNamespace = {
 
 		// Sync Settings (License-based)
 		sync_enabled: "Sync is enabled",
+		sync_enable: "Enable Sync", // Label for toggle switch
+		sync_enable_message: "Please enable sync using the toggle above to start syncing your vault.", // Message shown when sync is disabled
+		sync_enabled_success: "Sync enabled successfully",
+		sync_disabled_success: "Sync disabled",
+		sync_enable_failed: "Failed to enable sync",
 		sync_description: "Your data is securely synced across devices.",
 		sync_first_time_title: "This is your first time using sync.",
 		sync_first_time_desc: "Choose how you want to set up sync on this device.",

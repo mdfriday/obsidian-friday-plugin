@@ -72,6 +72,7 @@ interface FridaySettings {
 	ftpIgnoreCert: boolean;
 	// CouchDB Sync Settings (legacy, to be replaced by license-based sync)
 	syncEnabled: boolean;
+	syncUserEnabled: boolean; // User's choice to enable/disable sync (independent of license)
 	syncConfig: SyncConfig;
 	// UI Display Settings
 	showEditorStatusDisplay: boolean;
@@ -105,6 +106,7 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	ftpIgnoreCert: true, // Default to true for easier setup with self-signed certs
 	// CouchDB Sync Settings defaults
 	syncEnabled: false,
+	syncUserEnabled: false, // User must explicitly enable sync
 	syncConfig: SyncService.getDefaultConfig(),
 	// UI Display Settings defaults
 	showEditorStatusDisplay: false,
@@ -216,9 +218,12 @@ export default class FridayPlugin extends Plugin {
 		}
 		
 		// Initialize Sync Service (common for both platforms)
-		setTimeout(() => {
-			void this.initializeSyncService();
-		}, 0);
+		// Only initialize if user has explicitly enabled sync
+		if (this.settings.syncUserEnabled) {
+			setTimeout(() => {
+				void this.initializeSyncService();
+			}, 0);
+		}
 
 		this.statusBar = this.addStatusBarItem();
 		this.addSettingTab(new FridaySettingTab(this.app, this));
