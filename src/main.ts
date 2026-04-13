@@ -1237,18 +1237,41 @@ export default class FridayPlugin extends Plugin {
 	}
 
 	/**
-	 * Load content from existing project's contentLinks and staticLink
+	 * Load content from existing project's contentLinks, fileLink and staticLink
 	 */
 	private async loadExistingProjectContent(project: ObsidianProjectInfo) {
-		// Load content links
+		// 🔍 添加详细调试日志 - 使用 JSON.stringify 确保能看到完整内容
+		console.log('[Friday] loadExistingProjectContent - project name:', project.name);
+		console.log('[Friday] loadExistingProjectContent - project keys:', Object.keys(project));
+		console.log('[Friday] loadExistingProjectContent - hasContentLinks:', !!(project.contentLinks && project.contentLinks.length > 0));
+		console.log('[Friday] loadExistingProjectContent - hasFileLink:', !!project.fileLink);
+		console.log('[Friday] loadExistingProjectContent - hasStaticLink:', !!project.staticLink);
+		
+		// 尝试显示完整的 project 对象（可能很大，但有助于调试）
+		try {
+			console.log('[Friday] loadExistingProjectContent - full project:', JSON.stringify(project, null, 2));
+		} catch (e) {
+			console.warn('[Friday] Cannot stringify project object:', e);
+		}
+		
+		let contentLoaded = false;
+		
+		// Load content links (for folder-based projects)
 		if (project.contentLinks && project.contentLinks.length > 0) {
 			for (let i = 0; i < project.contentLinks.length; i++) {
 				const contentLink = project.contentLinks[i];
 				const relativePath = this.getVaultRelativePath(contentLink.sourcePath);
+				
+				console.log(`[Friday] Processing contentLink ${i}:`, {
+					sourcePath: contentLink.sourcePath,
+					relativePath,
+					languageCode: contentLink.languageCode
+				});
+				
 				const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
 
 				if (!abstractFile) {
-					console.warn(`[Friday] Content path not found: ${contentLink.sourcePath}`);
+					console.warn(`[Friday] Content path not found: ${contentLink.sourcePath} (relative: ${relativePath})`);
 					continue;
 				}
 
@@ -1277,6 +1300,41 @@ export default class FridayPlugin extends Plugin {
 					);
 				}
 			}
+			contentLoaded = true;
+		}
+		
+		// Load single file (for file-based projects)
+		if (project.fileLink) {
+			const relativePath = this.getVaultRelativePath(project.fileLink.sourcePath);
+			
+			console.log('[Friday] Processing fileLink:', {
+				sourcePath: project.fileLink.sourcePath,
+				relativePath,
+				language: project.language
+			});
+			
+			const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
+			
+			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+				// Use project's language configuration, default to 'en' if not set
+				const language = project.language || 'en';
+				this.site.initializeContentWithLanguage(
+					null,
+					abstractFile,
+					language
+				);
+				contentLoaded = true;
+				console.log('[Friday] Successfully loaded single file content');
+			} else if (!abstractFile) {
+				console.warn(`[Friday] File path not found: ${project.fileLink.sourcePath} (relative: ${relativePath})`);
+			} else {
+				console.warn(`[Friday] Invalid file type for fileLink: ${project.fileLink.sourcePath}`, abstractFile);
+			}
+		}
+		
+		// If no content was loaded, log a warning
+		if (!contentLoaded) {
+			console.warn('[Friday] No content links or file link found in project');
 		}
 
 		// Load static link
@@ -1286,6 +1344,8 @@ export default class FridayPlugin extends Plugin {
 			
 			if (abstractFile instanceof TFolder) {
 				this.site.setSiteAssets(abstractFile);
+			} else {
+				console.warn(`[Friday] Static assets path not found or not a folder: ${project.staticLink.sourcePath} (relative: ${relativePath})`);
 			}
 		}
 	}
