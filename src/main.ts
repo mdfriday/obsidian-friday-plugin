@@ -31,6 +31,7 @@ import type {ProjectState, SiteEventData, SiteEventType} from './types/events';
 import type {PublishMethod} from './types/publish';
 import {normalizePublishMethod} from './types/publish';
 import {getDefaultTheme, shouldUseInternalRenderer} from './utils/theme';
+import {joinPath, joinVaultPath} from './utils/common';
 
 // PC-only module types (dynamically imported)
 import type {Hugoverse} from "./hugoverse";
@@ -198,13 +199,13 @@ export default class FridayPlugin extends Plugin {
 			if (adapter instanceof FileSystemAdapter) {
 				const basePath = adapter.getBasePath();
 				this.vaultBasePath = basePath;
-				this.absWorkspacePath = `${basePath}/${this.pluginDir}/workspace`;
+				this.absWorkspacePath = joinPath(basePath, this.pluginDir, 'workspace');
 			}
 
 			await this.initDesktopFeatures();
 		} else {
-			// Initialize workspace path for Mobile
-			this.absWorkspacePath = `${this.pluginDir}/workspace`;
+			// Initialize workspace path for Mobile (relative path for vault.adapter)
+			this.absWorkspacePath = joinVaultPath(this.pluginDir, 'workspace');
 
 			const adapter = this.app.vault.adapter;
 			if (adapter instanceof FileSystemAdapter) {
@@ -475,16 +476,16 @@ export default class FridayPlugin extends Plugin {
 				createObsidianDomainService,
 			} = await import('@mdfriday/foundry');
 			
-			// Create workspace service（无需参数，使用 Node.js 默认实现）
-			this.workspaceService = createObsidianWorkspaceService();
-			
-			// Get relative workspace path for Obsidian adapter
-			const relativeWorkspacePath = `${this.pluginDir}/workspace`;
-			
-			// Ensure workspace directory exists using Obsidian's adapter
-			if (!await this.app.vault.adapter.exists(relativeWorkspacePath)) {
-				await this.app.vault.adapter.mkdir(relativeWorkspacePath);
-			}
+		// Create workspace service（无需参数，使用 Node.js 默认实现）
+		this.workspaceService = createObsidianWorkspaceService();
+		
+		// Get relative workspace path for Obsidian adapter
+		const relativeWorkspacePath = joinVaultPath(this.pluginDir, 'workspace');
+		
+		// Ensure workspace directory exists using Obsidian's adapter
+		if (!await this.app.vault.adapter.exists(relativeWorkspacePath)) {
+			await this.app.vault.adapter.mkdir(relativeWorkspacePath);
+		}
 			
 			// Check if workspace is already initialized (using absolute path)
 			const existsResult = await this.workspaceService.workspaceExists(this.absWorkspacePath);

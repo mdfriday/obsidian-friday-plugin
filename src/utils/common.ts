@@ -2,6 +2,9 @@
  * 工具函数集合
  */
 
+// 重新导出路径工具函数（使用 Obsidian 官方 API）
+export { joinPath, joinVaultPath } from './path';
+
 /**
  * 生成随机 ID（6位字符）
  * 用于预览 ID、项目 ID 等场景

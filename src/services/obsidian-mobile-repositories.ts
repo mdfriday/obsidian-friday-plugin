@@ -17,6 +17,7 @@ import type {
 	WorkspaceMetadataData,
 	WorkspaceRepository,
 } from '@mdfriday/foundry/obsidian/mobile';
+import {joinVaultPath} from '../utils/common';
 
 const MDFRIDAY_DIR = '.mdfriday';
 const WORKSPACE_FILE = 'workspace.json';
@@ -75,11 +76,11 @@ export class ObsidianMobileWorkspaceRepository implements WorkspaceRepository {
 	 */
 	private getWorkspacePath(workspacePath: string, ...segments: string[]): string {
 		// workspacePath 已经是完整路径（如 .obsidian/plugins/mdfriday/workspace）
-		// 直接拼接子路径
+		// 使用 joinVaultPath 拼接子路径（Obsidian 约定使用 /）
 		if (segments.length === 0) {
 			return workspacePath;
 		}
-		return `${workspacePath}/${segments.join('/')}`;
+		return joinVaultPath(workspacePath, ...segments);
 	}
 
 	async isWorkspace(workspacePath: string): Promise<boolean> {
@@ -148,7 +149,7 @@ export class ObsidianMobileFileSystemRepository implements FileSystemRepository 
 	 * 
 	 * Mobile 环境下的路径处理规则：
 	 * 1. workspace 相关路径应该在 ${pluginDir}/workspace 下
-	 * 2. vault.adapter 接受相对于 vault 根目录的路径
+	 * 2. vault.adapter 接受相对于 vault 根目录的路径（始终使用 /）
 	 * 3. 传入的路径可能是：
 	 *    - 绝对路径：/Users/.../workspace/...（需要提取相对部分）
 	 *    - 相对路径：workspace/... 或 modules/...（需要加上 pluginDir）
@@ -156,7 +157,7 @@ export class ObsidianMobileFileSystemRepository implements FileSystemRepository 
 	 */
 	private normalizePath(filePath: string): string {
 		// 1. 如果路径已经包含完整的 pluginDir/workspace 前缀，直接返回
-		const workspacePrefix = `${this.pluginDir}/workspace`;
+		const workspacePrefix = joinVaultPath(this.pluginDir, 'workspace');
 		if (filePath.startsWith(workspacePrefix)) {
 			return filePath;
 		}
@@ -173,20 +174,20 @@ export class ObsidianMobileFileSystemRepository implements FileSystemRepository 
 			if (workspaceIndex !== -1) {
 				// 提取 workspace/ 之后的相对路径
 				const relativePart = filePath.substring(workspaceIndex + '/workspace/'.length);
-				return `${workspacePrefix}/${relativePart}`;
+				return joinVaultPath(workspacePrefix, relativePart);
 			}
 			// 如果找不到 workspace，可能是 workspace 本身
 			if (filePath.endsWith('/workspace')) {
 				return workspacePrefix;
 			}
 			// 否则，去掉开头的 / 并加上前缀
-			const result = `${workspacePrefix}${filePath}`;
+			const result = joinVaultPath(workspacePrefix, filePath.substring(1));
 			console.warn('[Mobile FileSystemRepo] WARNING: This might be incorrect! Path looks like vault content, not workspace.');
 			return result;
 		}
 		
 		// 4. 相对路径，直接加上 workspace 前缀
-		return `${workspacePrefix}/${filePath}`;
+		return joinVaultPath(workspacePrefix, filePath);
 	}
 
 	async exists(filePath: string): Promise<boolean> {

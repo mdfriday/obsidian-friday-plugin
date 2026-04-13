@@ -1,6 +1,7 @@
 import type FridayPlugin from '../main';
 import type {TFile, TFolder} from 'obsidian';
 import type {ProgressUpdate} from '../types/events';
+import {joinPath} from '../utils/common';
 
 /**
  * Project Service Manager
@@ -40,15 +41,13 @@ export class ProjectServiceManager {
 				workspacePath: this.plugin.absWorkspacePath,
 			};
 
-			if (folder && !file) {
-				// Create from folder
-				const sourceFolderPath = `${basePath}/${folder.path}`;
-				createOptions.sourceFolder = sourceFolderPath;
-			} else if (file) {
-				// Create from single file
-				const sourceFilePath = `${basePath}/${file.path}`;
-				createOptions.sourceFile = sourceFilePath;
-			}
+		if (folder && !file) {
+			// Create from folder
+			createOptions.sourceFolder = joinPath(basePath, folder.path);
+		} else if (file) {
+			// Create from single file
+			createOptions.sourceFile = joinPath(basePath, file.path);
+		}
 
 			// 调用 Foundry 创建项目
 			const result = await this.plugin.foundryProjectService.createProject(createOptions);
