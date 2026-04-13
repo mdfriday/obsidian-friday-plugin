@@ -1140,7 +1140,11 @@ export default class FridayPlugin extends Plugin {
 		if (this.vaultBasePath) {
 			// Use path.relative to get the relative path
 			const path = require('path');
-			return path.relative(this.vaultBasePath, absolutePath);
+			const relativePath = path.relative(this.vaultBasePath, absolutePath);
+			
+			// Convert Windows backslashes to forward slashes (Obsidian convention)
+			// This ensures cross-platform compatibility
+			return relativePath.replace(/\\/g, '/');
 		}
 		// Fallback: return the path as-is if we can't determine the base path
 		return absolutePath;
