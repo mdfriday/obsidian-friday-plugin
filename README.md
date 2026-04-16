@@ -44,27 +44,14 @@ More themes available inside the plugin.
 
 ## 🐳 Self-Hosting with Docker
 
-Deploy your own MDFriday instance on any cloud server.
+Deploy your own MDFriday instance on YOUR cloud server.
 
 ### Prerequisites
 
 Before running the installation script, ensure you have:
 
 1. **Docker installed and running**
-   
-   If Docker is not installed, install it first:
-   
-   ```bash
-   # Ubuntu/Debian/CentOS - Quick install
-   curl -fsSL https://get.docker.com | sh
-   sudo systemctl start docker
-   sudo systemctl enable docker
-   ```
-   
-   For other systems, visit [Docker Installation Guide](https://docs.docker.com/engine/install/)
-
 2. **A domain name** pointed to your server
-
 3. **Open firewall ports** - 80 (HTTP) and 443 (HTTPS)
 
 ### One-Command Installation
@@ -74,39 +61,6 @@ Once Docker is ready, deploy MDFriday with a single command:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/install.sh | bash
 ```
-
-The interactive installer will:
-- ✅ Download required configuration files automatically
-- ✅ Verify Docker environment
-- 📝 Collect configuration (domain, admin account, etc.)
-- 🌐 Let you choose Docker registry (auto-detects best option for your location)
-- 📦 Pull images and start services
-
-**For servers in China**: The installer will detect your location and recommend Aliyun Registry for faster downloads.
-
-### Manual Installation
-
-If you prefer to review the script before running:
-
-```bash
-# Download the installation script
-curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/install.sh -o install.sh
-
-# Review the script
-cat install.sh
-
-# Make it executable and run
-chmod +x install.sh
-./install.sh
-```
-
-### What Gets Installed
-
-- 🗄️ **CouchDB** - for data synchronization across devices
-- 🌐 **Caddy** - reverse proxy with automatic HTTPS certificates
-- 🚀 **Hugoverse** - the MDFriday application server
-
-All services run in Docker containers with automatic health checks, log rotation, and easy management.
 
 For detailed configuration options and troubleshooting, see [`docker/README.md`](docker/README.md).
 
