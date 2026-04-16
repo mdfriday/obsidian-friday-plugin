@@ -1,0 +1,159 @@
+services:
+  # ========== CouchDB 服务 ==========
+  couchdb:
+    image: couchdb:3.3
+    container_name: hugoverse-couchdb
+    restart: unless-stopped
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER:-admin}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:-test123456}
+    volumes:
+      # 本机可备份：库文件与本地配置（默认 ./data/couchdb）
+      - ${COUCHDB_HOST_DATA_DIR:-./data/couchdb}/data:/opt/couchdb/data
+      - ${COUCHDB_HOST_DATA_DIR:-./data/couchdb}/local.d:/opt/couchdb/etc/local.d
+    networks:
+      - hugoverse-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5984/_up"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ========== Caddy 服务（自定义构建，带 DNSPod）==========
+  caddy:
+    # 生产环境：使用预构建镜像（推荐）
+    image: mdfriday/caddy:${VERSION:-latest}
+    # 开发环境：本地构建
+    # build:
+    #   context: ./docker/caddy
+    #   dockerfile: Dockerfile
+    container_name: hugoverse-caddy
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "2019:2019"  # Admin API
+    volumes:
+      # 本机可备份：证书、OCSP 等（默认 ./data/caddy）
+      - ${CADDY_HOST_DATA_DIR:-./data/caddy}/data:/data
+      - ${CADDY_HOST_DATA_DIR:-./data/caddy}/config:/config
+      - ./docker/caddy/Caddyfile.initial:/etc/caddy/Caddyfile:ro
+      # 整棵 Hugoverse 数据树（与 hugoverse 服务同源），Caddy 内挂载点为 CADDY_SITE_ROOT（默认 /srv）
+      - ${HUGOVERSE_HOST_DATA_DIR:-./data/hugoverse}:${CADDY_SITE_ROOT:-/srv}:ro
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - CADDY_SITE_ROOT=${CADDY_SITE_ROOT:-/srv}
+      # DNSPod 凭据（Caddy 通过环境变量使用）
+      - TENCENTCLOUD_SECRET_ID=${DNSPOD_ID}
+      - TENCENTCLOUD_SECRET_KEY=${DNSPOD_SECRET}
+    networks:
+      - hugoverse-network
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ========== Hugoverse 主服务 ==========
+  hugoverse:
+    # 生产环境：使用预构建镜像（推荐）
+    image: mdfriday/hugoverse:${VERSION:-latest}
+    # 开发环境：本地构建
+    # build:
+    #   context: .
+    #   dockerfile: docker/hugoverse/Dockerfile
+    container_name: hugoverse-app
+    restart: unless-stopped
+    depends_on:
+      couchdb:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    environment:
+      # ---- Docker 环境标识 ----
+      - DOCKER_CONTAINER=true
+      - HUGOVERSE_DATA_DIR=/data
+      # 与 caddy 服务中整树挂载点一致，供 AddStaticSite 路径映射
+      - CADDY_SITE_ROOT=${CADDY_SITE_ROOT:-/srv}
+      - HTTP_PORT=1314  # Hugoverse 内部监听端口
+      - ENV=prod
+      
+      # ---- 自动初始化 ----
+      - VERSION=${VERSION:-latest}
+      
+      # ---- 域名配置 ----
+      - DOMAIN=${DOMAIN:-localhost}
+      - SERVER_IP=${SERVER_IP}
+      - SITE_NAME=${SITE_NAME:-Hugoverse}
+      
+      # ---- 外部访问端口（Caddy 对外端口）----
+      - EXTERNAL_HTTP_PORT=${HTTP_PORT:-80}  # 对外 HTTP 端口（给用户访问）
+      
+      # ---- 子域名配置（对外服务地址）----
+      - COUCHDB_SUBDOMAIN=${COUCHDB_SUBDOMAIN:-cdb}
+      - HUGOVERSE_SUBDOMAIN=${HUGOVERSE_SUBDOMAIN:-app}
+      
+      # ---- 管理员配置 ----
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      
+      # ---- CouchDB 配置（容器网络内地址）----
+      - COUCHDB_URL=http://couchdb:5984
+      - COUCHDB_USER=${COUCHDB_USER:-admin}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+      - COUCHDB_DB_PREFIX=${COUCHDB_DB_PREFIX:-userdb-}
+      
+      # ---- Caddy 配置（容器网络内地址）----
+      - CADDY_ADMIN_API=http://caddy:2019
+      - CADDY_HOST=caddy
+      - CADDY_PORT=2019
+      
+      # ---- DNSPod 配置 ----
+      - DNSPOD_ENABLED=${DNSPOD_ENABLED:-false}
+      - DNSPOD_ID=${DNSPOD_ID}
+      - DNSPOD_SECRET=${DNSPOD_SECRET}
+      
+    volumes:
+      # 本机目录（默认 ./data/hugoverse → 容器 /data；publish/enterprise 等均在此树下）
+      # 若改回匿名 Docker 卷：在 .env 设置 HUGOVERSE_HOST_DATA_DIR=hugoverse_data
+      - ${HUGOVERSE_HOST_DATA_DIR:-./data/hugoverse}:/data
+      # 备份输出目录（默认 ./data/backups）
+      - ${BACKUPS_HOST_DIR:-./data/backups}:/backups
+    networks:
+      - hugoverse-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1314/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ========== 网络配置 ==========
+networks:
+  hugoverse-network:
+    driver: bridge
+
+# ========== 数据卷配置 ==========
+# 默认全部使用本机绑定挂载（./data/...），整目录打包即可迁移/恢复。
+# 若需改回 Docker 命名卷，可为对应服务单独写 override 文件覆盖 volumes。
+volumes:
+  # 可选：在 .env 设置 HUGOVERSE_HOST_DATA_DIR=hugoverse_data 且挂载命名卷时使用
+  hugoverse_data:
+    driver: local

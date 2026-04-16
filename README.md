@@ -42,6 +42,53 @@ More themes available inside the plugin.
 
 ---
 
+## 🐳 Self-Hosting with Docker
+
+Deploy your own MDFriday instance on any cloud server with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/install.sh | bash
+```
+
+**Requirements:**
+- A cloud server with Docker installed
+- A domain name pointed to your server
+- 5 minutes of your time
+
+The interactive installer will guide you through:
+- Docker environment verification
+- Domain and server configuration
+- Admin account setup
+- CouchDB database configuration
+- Optional DNS provider setup for automatic HTTPS
+
+**Manual Installation:**
+
+If you prefer to review the script first:
+
+```bash
+# Download the installation script
+curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/install.sh -o install.sh
+
+# Review the script
+cat install.sh
+
+# Make it executable and run
+chmod +x install.sh
+./install.sh
+```
+
+**What Gets Installed:**
+- 🗄️ CouchDB - for data synchronization
+- 🌐 Caddy - reverse proxy with automatic HTTPS
+- 🚀 Hugoverse - the MDFriday application server
+
+All services run in Docker containers with automatic health checks and log rotation.
+
+For detailed configuration options, see [`docker/README.md`](docker/README.md).
+
+---
+
 ## 🚀 Start Building Today
 
 Your notes are seeds.
