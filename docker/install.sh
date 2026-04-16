@@ -50,9 +50,22 @@ check_docker_environment() {
     if ! command_exists docker; then
         print_error "Docker 未安装！"
         echo ""
-        echo "请先安装 Docker："
-        echo "  Ubuntu/Debian: curl -fsSL https://get.docker.com | sh"
-        echo "  其他系统请访问: https://docs.docker.com/engine/install/"
+        echo "请先安装 Docker，然后重新运行此脚本。"
+        echo ""
+        echo "=== 快速安装 Docker ==="
+        echo ""
+        echo "Ubuntu/Debian/CentOS:"
+        echo "  curl -fsSL https://get.docker.com | sh"
+        echo "  sudo systemctl start docker"
+        echo "  sudo systemctl enable docker"
+        echo ""
+        echo "macOS (使用 Colima):"
+        echo "  brew install colima docker"
+        echo "  colima start"
+        echo ""
+        echo "其他系统请访问: https://docs.docker.com/engine/install/"
+        echo ""
+        print_info "安装完成后，请重新运行此安装脚本"
         exit 1
     fi
     
@@ -62,9 +75,14 @@ check_docker_environment() {
     if ! docker info >/dev/null 2>&1; then
         print_error "Docker 未运行！"
         echo ""
-        echo "请启动 Docker 服务："
-        echo "  systemctl start docker"
-        echo "  或使用 colima: colima start"
+        echo "请启动 Docker 服务，然后重新运行此脚本："
+        echo ""
+        echo "Linux:"
+        echo "  sudo systemctl start docker"
+        echo ""
+        echo "macOS (Colima):"
+        echo "  colima start"
+        echo ""
         exit 1
     fi
     
@@ -74,8 +92,11 @@ check_docker_environment() {
     if ! docker compose version >/dev/null 2>&1; then
         print_error "Docker Compose 未安装或版本过旧！"
         echo ""
-        echo "请安装 Docker Compose v2："
+        echo "Docker Compose V2 是 Docker 的一部分，通常随 Docker 一起安装。"
+        echo "如果您看到此错误，请更新 Docker 到最新版本："
+        echo ""
         echo "  https://docs.docker.com/compose/install/"
+        echo ""
         exit 1
     fi
     
@@ -94,11 +115,12 @@ read_input() {
         prompt="$prompt [默认: $default]"
     fi
     
+    # 从 /dev/tty 读取以支持 curl | bash 方式执行
     if [ "$is_password" = "true" ]; then
-        read -s -p "$prompt: " input
+        read -s -p "$prompt: " input </dev/tty
         echo ""
     else
-        read -p "$prompt: " input
+        read -p "$prompt: " input </dev/tty
     fi
     
     if [ -z "$input" ] && [ -n "$default" ]; then
@@ -448,14 +470,14 @@ main() {
     echo "  5. 启动服务"
     echo ""
     
-    read -p "按回车键开始安装..." 
+    read -p "按回车键开始安装..." </dev/tty
     
     # 执行安装步骤
     check_docker_environment
     collect_configuration
     show_configuration_summary
     
-    read -p "确认以上配置无误？按回车继续，Ctrl+C 取消..." 
+    read -p "确认以上配置无误？按回车继续，Ctrl+C 取消..." </dev/tty
     
     generate_env_file
     pull_docker_images

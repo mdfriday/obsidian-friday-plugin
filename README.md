@@ -44,27 +44,49 @@ More themes available inside the plugin.
 
 ## 🐳 Self-Hosting with Docker
 
-Deploy your own MDFriday instance on any cloud server with a single command:
+Deploy your own MDFriday instance on any cloud server.
+
+### Prerequisites
+
+Before running the installation script, ensure you have:
+
+1. **Docker installed and running**
+   
+   If Docker is not installed, install it first:
+   
+   ```bash
+   # Ubuntu/Debian/CentOS - Quick install
+   curl -fsSL https://get.docker.com | sh
+   sudo systemctl start docker
+   sudo systemctl enable docker
+   ```
+   
+   For other systems, visit [Docker Installation Guide](https://docs.docker.com/engine/install/)
+
+2. **A domain name** pointed to your server
+
+3. **Open firewall ports** - 80 (HTTP) and 443 (HTTPS)
+
+### One-Command Installation
+
+Once Docker is ready, deploy MDFriday with a single command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/install.sh | bash
 ```
 
-**Requirements:**
-- A cloud server with Docker installed
-- A domain name pointed to your server
-- 5 minutes of your time
-
 The interactive installer will guide you through:
-- Docker environment verification
-- Domain and server configuration
-- Admin account setup
-- CouchDB database configuration
-- Optional DNS provider setup for automatic HTTPS
+- ✅ Docker environment verification
+- 📝 Domain and server configuration
+- 👤 Admin account setup
+- 🗄️ CouchDB database configuration
+- 🔒 Optional DNS provider setup for automatic HTTPS
 
-**Manual Installation:**
+**First-time installation takes about 5 minutes.**
 
-If you prefer to review the script first:
+### Manual Installation
+
+If you prefer to review the script before running:
 
 ```bash
 # Download the installation script
@@ -78,14 +100,15 @@ chmod +x install.sh
 ./install.sh
 ```
 
-**What Gets Installed:**
-- 🗄️ CouchDB - for data synchronization
-- 🌐 Caddy - reverse proxy with automatic HTTPS
-- 🚀 Hugoverse - the MDFriday application server
+### What Gets Installed
 
-All services run in Docker containers with automatic health checks and log rotation.
+- 🗄️ **CouchDB** - for data synchronization across devices
+- 🌐 **Caddy** - reverse proxy with automatic HTTPS certificates
+- 🚀 **Hugoverse** - the MDFriday application server
 
-For detailed configuration options, see [`docker/README.md`](docker/README.md).
+All services run in Docker containers with automatic health checks, log rotation, and easy management.
+
+For detailed configuration options and troubleshooting, see [`docker/README.md`](docker/README.md).
 
 ---
 

@@ -4,9 +4,48 @@ Deploy your own MDFriday instance using Docker. This guide covers everything fro
 
 ## 🚀 Quick Start
 
-### One-Command Installation
+### Step 1: Install Docker
 
-Run this command on your cloud server:
+**If Docker is already installed, skip to Step 2.**
+
+#### Ubuntu/Debian/CentOS
+
+```bash
+# Install Docker using official script
+curl -fsSL https://get.docker.com | sh
+
+# Start and enable Docker service
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# Verify installation
+docker --version
+docker compose version
+```
+
+#### macOS
+
+Using Colima (lightweight Docker alternative):
+
+```bash
+# Install via Homebrew
+brew install colima docker docker-compose
+
+# Start Colima
+colima start
+
+# Verify installation
+docker --version
+docker compose version
+```
+
+#### Other Systems
+
+Visit [Docker Installation Guide](https://docs.docker.com/engine/install/) for detailed instructions.
+
+### Step 2: Run Installation Script
+
+Once Docker is ready, run the one-command installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/install.sh | bash
@@ -21,11 +60,16 @@ The interactive installer will:
 
 ### Prerequisites
 
-- **Docker**: Version 20.10 or higher
-- **Docker Compose**: V2 (included with modern Docker installations)
-- **Domain**: A registered domain name
-- **Server**: Cloud server with public IP address
-- **Ports**: 80 (HTTP) and 443 (HTTPS) open in firewall
+Before running the installation script, ensure your server has:
+
+- ✅ **Docker**: Version 20.10 or higher (see Step 1 above)
+- ✅ **Docker Compose**: V2 (included with modern Docker installations)
+- ✅ **Domain**: A registered domain name
+- ✅ **Server**: Cloud server with public IP address
+- ✅ **Ports**: 80 (HTTP) and 443 (HTTPS) open in firewall
+- ✅ **Terminal Access**: SSH access to your server
+
+**Note**: The installation script will check all requirements and guide you if anything is missing.
 
 ## 📋 Configuration Options
 
