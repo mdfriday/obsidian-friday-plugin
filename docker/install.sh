@@ -469,6 +469,33 @@ pull_docker_images() {
 start_services() {
     print_header "启动服务"
     
+    # 确保数据目录存在并设置正确权限
+    print_info "准备数据目录..."
+    mkdir -p ./data/hugoverse ./data/caddy ./data/couchdb ./data/backups
+    
+    # 设置权限（UID 1000 是 hugoverse 用户）
+    # 如果当前是 root 用户，设置正确的所有者
+    if [ "$(id -u)" = "0" ]; then
+        chown -R 1000:1000 ./data/hugoverse ./data/backups
+        print_success "数据目录权限已设置"
+    else
+        # 非 root 用户，检查是否有写权限
+        if [ ! -w ./data/hugoverse ]; then
+            print_warning "当前用户无法写入数据目录"
+            print_warning "请使用 root 用户运行，或手动执行："
+            echo "  sudo chown -R 1000:1000 ./data/hugoverse ./data/backups"
+            echo ""
+            read -p "是否继续启动服务？(y/N): " continue_anyway </dev/tty
+            if [[ ! "$continue_anyway" =~ ^[Yy]$ ]]; then
+                print_error "安装已取消"
+                exit 1
+            fi
+        else
+            print_success "数据目录权限检查通过"
+        fi
+    fi
+    echo ""
+    
     # 构建 docker compose 命令
     local compose_cmd="docker compose -f docker-compose.yml"
     if [ "$USE_ALIYUN" = "true" ]; then

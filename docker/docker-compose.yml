@@ -43,7 +43,6 @@ services:
       # 本机可备份：证书、OCSP 等（默认 ./data/caddy）
       - ${CADDY_HOST_DATA_DIR:-./data/caddy}/data:/data
       - ${CADDY_HOST_DATA_DIR:-./data/caddy}/config:/config
-      - ./docker/caddy/Caddyfile.initial:/etc/caddy/Caddyfile:ro
       # 整棵 Hugoverse 数据树（与 hugoverse 服务同源），Caddy 内挂载点为 CADDY_SITE_ROOT（默认 /srv）
       - ${HUGOVERSE_HOST_DATA_DIR:-./data/hugoverse}:${CADDY_SITE_ROOT:-/srv}:ro
     environment:
