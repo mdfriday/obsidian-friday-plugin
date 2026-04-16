@@ -75,14 +75,14 @@ Once Docker is ready, deploy MDFriday with a single command:
 curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/install.sh | bash
 ```
 
-The interactive installer will guide you through:
-- ✅ Docker environment verification
-- 📝 Domain and server configuration
-- 👤 Admin account setup
-- 🗄️ CouchDB database configuration
-- 🔒 Optional DNS provider setup for automatic HTTPS
+The interactive installer will:
+- ✅ Download required configuration files automatically
+- ✅ Verify Docker environment
+- 📝 Collect configuration (domain, admin account, etc.)
+- 🌐 Let you choose Docker registry (auto-detects best option for your location)
+- 📦 Pull images and start services
 
-**First-time installation takes about 5 minutes.**
+**For servers in China**: The installer will detect your location and recommend Aliyun Registry for faster downloads.
 
 ### Manual Installation
 

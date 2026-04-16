@@ -1,0 +1,41 @@
+# ============================================
+# Docker Compose Override for Aliyun Registry
+# ============================================
+#
+# 阿里云容器镜像服务配置文件 / Aliyun Container Registry Configuration
+#
+# 用途 / Purpose:
+#   - 国内服务器使用阿里云镜像源，下载速度更快更稳定
+#   - For servers in China, use Aliyun registry for faster and more stable downloads
+#
+# 使用方法 / Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local [command]
+#
+# 示例 / Examples:
+#   # 拉取镜像 / Pull images
+#   docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local pull
+#   
+#   # 启动服务 / Start services
+#   docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local up -d
+#   
+#   # 查看日志 / View logs
+#   docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local logs -f
+#
+# 注意 / Note:
+#   此文件只覆盖镜像地址，其他配置继承自 docker-compose.yml
+#   This file only overrides image URLs, all other configurations are inherited from docker-compose.yml
+#
+# ============================================
+
+services:
+  couchdb:
+    # 使用阿里云镜像仓库 / Use Aliyun Container Registry
+    image: registry.cn-hangzhou.aliyuncs.com/mdfriday/couchdb:3.3
+
+  caddy:
+    # 使用阿里云镜像仓库 / Use Aliyun Container Registry
+    image: registry.cn-hangzhou.aliyuncs.com/mdfriday/caddy:${VERSION:-latest}
+
+  hugoverse:
+    # 使用阿里云镜像仓库 / Use Aliyun Container Registry
+    image: registry.cn-hangzhou.aliyuncs.com/mdfriday/hugoverse:${VERSION:-latest}

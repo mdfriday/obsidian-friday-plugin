@@ -42,6 +42,30 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# 下载所需文件（如果不存在）
+download_required_files() {
+    local base_url="https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker"
+    local files_needed=("docker-compose.yml" "docker-compose.aliyun.yml")
+    local files_downloaded=false
+    
+    for file in "${files_needed[@]}"; do
+        if [ ! -f "$file" ]; then
+            print_info "下载 $file..."
+            if curl -fsSL "$base_url/$file" -o "$file"; then
+                print_success "$file 下载成功"
+                files_downloaded=true
+            else
+                print_error "$file 下载失败"
+                exit 1
+            fi
+        fi
+    done
+    
+    if [ "$files_downloaded" = true ]; then
+        echo ""
+    fi
+}
+
 # 检查 Docker 环境
 check_docker_environment() {
     print_header "检查 Docker 环境"
@@ -314,6 +338,41 @@ collect_configuration() {
     fi
     
     echo ""
+    print_info "选择 Docker 镜像源"
+    echo ""
+    
+    # 尝试检测服务器地理位置（基于 IP）
+    local recommended="1"
+    local location_hint=""
+    
+    # 简单检测：检查是否能快速访问阿里云
+    if timeout 2 curl -s http://registry.cn-hangzhou.aliyuncs.com > /dev/null 2>&1; then
+        recommended="2"
+        location_hint=" (检测到您可能在中国，推荐使用阿里云)"
+    fi
+    
+    echo "Docker 镜像下载源选择："
+    echo "  1) Docker Hub (国际) - 适合海外服务器"
+    echo "  2) 阿里云镜像源 (中国) - 国内服务器推荐，下载速度更快${location_hint}"
+    echo ""
+    
+    # REGISTRY_CHOICE
+    while true; do
+        read_input "请选择镜像源 [1-2]" "$recommended" REGISTRY_CHOICE
+        if [[ "$REGISTRY_CHOICE" == "1" ]]; then
+            USE_ALIYUN="false"
+            print_success "已选择: Docker Hub (国际镜像源)"
+            break
+        elif [[ "$REGISTRY_CHOICE" == "2" ]]; then
+            USE_ALIYUN="true"
+            print_success "已选择: 阿里云镜像源 (registry.cn-hangzhou.aliyuncs.com)"
+            break
+        else
+            print_error "无效选择，请输入 1 或 2"
+        fi
+    done
+    
+    echo ""
     print_success "配置信息收集完成！"
 }
 
@@ -370,6 +429,11 @@ show_configuration_summary() {
     echo "管理员邮箱:     $ADMIN_EMAIL"
     echo "CouchDB 用户:   $COUCHDB_USER"
     echo "DNSPod 启用:    $DNSPOD_ENABLED"
+    if [ "$USE_ALIYUN" = "true" ]; then
+        echo "镜像源:         阿里云镜像源 (registry.cn-hangzhou.aliyuncs.com)"
+    else
+        echo "镜像源:         Docker Hub"
+    fi
     echo ""
 }
 
@@ -377,11 +441,25 @@ show_configuration_summary() {
 pull_docker_images() {
     print_header "拉取 Docker 镜像"
     
-    print_info "正在拉取最新的 Docker 镜像..."
-    if docker compose --env-file .env.local pull; then
+    # 构建 docker compose 命令
+    local compose_cmd="docker compose -f docker-compose.yml"
+    if [ "$USE_ALIYUN" = "true" ]; then
+        compose_cmd="$compose_cmd -f docker-compose.aliyun.yml"
+        print_info "使用阿里云镜像源拉取镜像..."
+    else
+        print_info "正在从 Docker Hub 拉取镜像..."
+    fi
+    
+    if $compose_cmd --env-file .env.local pull; then
         print_success "Docker 镜像拉取完成"
     else
         print_error "Docker 镜像拉取失败！"
+        echo ""
+        if [ "$USE_ALIYUN" = "true" ]; then
+            print_warning "提示: 如果阿里云镜像拉取失败，可以尝试使用 Docker Hub"
+        else
+            print_warning "提示: 如果 Docker Hub 拉取失败，国内服务器可以尝试使用阿里云镜像源"
+        fi
         exit 1
     fi
     echo ""
@@ -391,14 +469,24 @@ pull_docker_images() {
 start_services() {
     print_header "启动服务"
     
+    # 构建 docker compose 命令
+    local compose_cmd="docker compose -f docker-compose.yml"
+    if [ "$USE_ALIYUN" = "true" ]; then
+        compose_cmd="$compose_cmd -f docker-compose.aliyun.yml"
+    fi
+    
     print_info "正在启动 MDFriday 服务..."
-    if docker compose --env-file .env.local up -d; then
+    if $compose_cmd --env-file .env.local up -d; then
         print_success "服务启动成功！"
     else
         print_error "服务启动失败！"
         echo ""
         echo "请检查日志："
-        echo "  docker compose --env-file .env.local logs"
+        if [ "$USE_ALIYUN" = "true" ]; then
+            echo "  docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local logs"
+        else
+            echo "  docker compose --env-file .env.local logs"
+        fi
         exit 1
     fi
     echo ""
@@ -432,10 +520,21 @@ show_access_info() {
     echo ""
     echo "常用命令："
     echo "-----------------------------------"
-    echo "查看服务状态:   docker compose --env-file .env.local ps"
-    echo "查看日志:       docker compose --env-file .env.local logs -f"
-    echo "停止服务:       docker compose --env-file .env.local down"
-    echo "重启服务:       docker compose --env-file .env.local restart"
+    
+    # 根据镜像源显示正确的命令
+    if [ "$USE_ALIYUN" = "true" ]; then
+        local compose_files="-f docker-compose.yml -f docker-compose.aliyun.yml"
+        echo "查看服务状态:   docker compose $compose_files --env-file .env.local ps"
+        echo "查看日志:       docker compose $compose_files --env-file .env.local logs -f"
+        echo "停止服务:       docker compose $compose_files --env-file .env.local down"
+        echo "重启服务:       docker compose $compose_files --env-file .env.local restart"
+    else
+        echo "查看服务状态:   docker compose --env-file .env.local ps"
+        echo "查看日志:       docker compose --env-file .env.local logs -f"
+        echo "停止服务:       docker compose --env-file .env.local down"
+        echo "重启服务:       docker compose --env-file .env.local restart"
+    fi
+    
     echo ""
     echo "配置文件位置:   $(pwd)/.env.local"
     echo ""
@@ -471,6 +570,9 @@ main() {
     echo ""
     
     read -p "按回车键开始安装..." </dev/tty
+    
+    # 下载所需文件
+    download_required_files
     
     # 执行安装步骤
     check_docker_environment

@@ -52,11 +52,13 @@ curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/mai
 ```
 
 The interactive installer will:
-1. ✅ Verify Docker environment
-2. 📝 Collect configuration information
-3. 🔧 Generate `.env.local` configuration file
-4. 📦 Pull Docker images
-5. 🎉 Start all services
+1. ✅ Download required files (docker-compose.yml, docker-compose.aliyun.yml)
+2. ✅ Verify Docker environment
+3. 📝 Collect configuration information
+4. 🌐 Detect location and recommend Docker registry (Docker Hub or Aliyun)
+5. 🔧 Generate `.env.local` configuration file
+6. 📦 Pull Docker images
+7. 🎉 Start all services
 
 ### Prerequisites
 
@@ -72,6 +74,15 @@ Before running the installation script, ensure your server has:
 **Note**: The installation script will check all requirements and guide you if anything is missing.
 
 ## 📋 Configuration Options
+
+### Docker Registry Selection
+
+The installer allows you to choose the Docker registry:
+
+- **Docker Hub** (Default): Best for international servers
+- **Aliyun Container Registry**: Recommended for servers in China (faster and more stable)
+
+This selection is made during the interactive installation process.
 
 ### Required Configuration
 
@@ -115,6 +126,9 @@ cd mdfriday
 # Download docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/docker-compose.yml -o docker-compose.yml
 
+# Download Aliyun override (optional, for China)
+curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/docker-compose.aliyun.yml -o docker-compose.aliyun.yml
+
 # Download .env.example
 curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/main/docker/.env.example -o .env.example
 ```
@@ -131,12 +145,24 @@ nano .env.local
 
 ### Step 3: Deploy
 
+**Using Docker Hub:**
+
 ```bash
 # Pull images
 docker compose --env-file .env.local pull
 
 # Start services
 docker compose --env-file .env.local up -d
+```
+
+**Using Aliyun Registry (recommended for China):**
+
+```bash
+# Pull images
+docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local pull
+
+# Start services
+docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local up -d
 ```
 
 ## 🔧 Service Management
@@ -182,6 +208,58 @@ docker compose --env-file .env.local down
 docker compose --env-file .env.local pull
 
 # Restart with new images
+docker compose --env-file .env.local up -d
+```
+
+## 🌐 Docker Registry Options
+
+### Why Registry Selection Matters
+
+Docker image download speed varies significantly by region:
+- **International servers**: Docker Hub is usually fast
+- **China servers**: Aliyun Container Registry is significantly faster and more reliable
+
+### Registry Options
+
+The installation script provides intelligent registry selection:
+
+| Registry | Best For | Auto-Detection | Image URL Example |
+|----------|----------|----------------|-------------------|
+| Docker Hub | International servers | Default | `mdfriday/hugoverse:latest` |
+| Aliyun | China servers | ✅ Auto-recommended if in China | `registry.cn-hangzhou.aliyuncs.com/mdfriday/hugoverse:latest` |
+
+**Smart Detection**: The installer tests connectivity to Aliyun registry and automatically recommends the best option based on your server's location.
+
+### How It Works
+
+The installation script automatically handles registry selection:
+1. During installation, you'll be prompted to choose a registry
+2. If you select Aliyun, the script uses `docker-compose.aliyun.yml` as an override
+3. All services (CouchDB, Caddy, Hugoverse) will pull from the selected registry
+
+### Manual Registry Switching
+
+If you need to switch registries after installation:
+
+**Switch to Aliyun:**
+
+```bash
+# Stop services
+docker compose --env-file .env.local down
+
+# Pull from Aliyun and restart
+docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local pull
+docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local up -d
+```
+
+**Switch to Docker Hub:**
+
+```bash
+# Stop services
+docker compose -f docker-compose.yml -f docker-compose.aliyun.yml --env-file .env.local down
+
+# Pull from Docker Hub and restart
+docker compose --env-file .env.local pull
 docker compose --env-file .env.local up -d
 ```
 
@@ -310,6 +388,19 @@ dig +short app.yourdomain.com
 # Test Caddy config
 docker compose --env-file .env.local exec caddy caddy validate --config /etc/caddy/Caddyfile
 ```
+
+#### Slow Image Downloads
+
+If Docker image downloads are very slow:
+
+**For China servers:**
+- Run the installer again and choose option `2` (Aliyun Registry)
+- Or manually switch to Aliyun (see Registry Options section above)
+
+**For international servers:**
+- Ensure Docker Hub is accessible
+- Check your network connection
+- Try using a different network or VPN
 
 ### Service URLs
 
