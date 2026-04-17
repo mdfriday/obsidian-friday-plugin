@@ -134,10 +134,20 @@ export class LicenseStateManager {
 	}
 
 	/**
-	 * 获取 plan
+	 * 获取 plan (统一返回小写格式以便比较)
 	 */
 	getPlan(): string {
-		return this.licenseInfo?.plan || 'free';
+		const plan = this.licenseInfo?.plan || 'free';
+		return plan.toLowerCase();
+	}
+
+	/**
+	 * 获取格式化的 plan 名称（用于 UI 显示）
+	 * 例如: "enterprise" -> "Enterprise"
+	 */
+	getFormattedPlan(): string {
+		const plan = this.licenseInfo?.plan || 'free';
+		return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
 	}
 
 	/**
