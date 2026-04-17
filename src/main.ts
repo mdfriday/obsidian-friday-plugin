@@ -1249,20 +1249,6 @@ export default class FridayPlugin extends Plugin {
 	 * Load content from existing project's contentLinks, fileLink and staticLink
 	 */
 	private async loadExistingProjectContent(project: ObsidianProjectInfo) {
-		// 🔍 添加详细调试日志 - 使用 JSON.stringify 确保能看到完整内容
-		console.log('[Friday] loadExistingProjectContent - project name:', project.name);
-		console.log('[Friday] loadExistingProjectContent - project keys:', Object.keys(project));
-		console.log('[Friday] loadExistingProjectContent - hasContentLinks:', !!(project.contentLinks && project.contentLinks.length > 0));
-		console.log('[Friday] loadExistingProjectContent - hasFileLink:', !!project.fileLink);
-		console.log('[Friday] loadExistingProjectContent - hasStaticLink:', !!project.staticLink);
-		
-		// 尝试显示完整的 project 对象（可能很大，但有助于调试）
-		try {
-			console.log('[Friday] loadExistingProjectContent - full project:', JSON.stringify(project, null, 2));
-		} catch (e) {
-			console.warn('[Friday] Cannot stringify project object:', e);
-		}
-		
 		let contentLoaded = false;
 		
 		// Load content links (for folder-based projects)
@@ -1270,12 +1256,6 @@ export default class FridayPlugin extends Plugin {
 			for (let i = 0; i < project.contentLinks.length; i++) {
 				const contentLink = project.contentLinks[i];
 				const relativePath = this.getVaultRelativePath(contentLink.sourcePath);
-				
-				console.log(`[Friday] Processing contentLink ${i}:`, {
-					sourcePath: contentLink.sourcePath,
-					relativePath,
-					languageCode: contentLink.languageCode
-				});
 				
 				const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
 
@@ -1316,12 +1296,6 @@ export default class FridayPlugin extends Plugin {
 		if (project.fileLink) {
 			const relativePath = this.getVaultRelativePath(project.fileLink.sourcePath);
 			
-			console.log('[Friday] Processing fileLink:', {
-				sourcePath: project.fileLink.sourcePath,
-				relativePath,
-				language: project.language
-			});
-			
 			const abstractFile = this.app.vault.getAbstractFileByPath(relativePath);
 			
 			if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
@@ -1333,7 +1307,6 @@ export default class FridayPlugin extends Plugin {
 					language
 				);
 				contentLoaded = true;
-				console.log('[Friday] Successfully loaded single file content');
 			} else if (!abstractFile) {
 				console.warn(`[Friday] File path not found: ${project.fileLink.sourcePath} (relative: ${relativePath})`);
 			} else {

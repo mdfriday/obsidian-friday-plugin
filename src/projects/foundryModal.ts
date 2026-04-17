@@ -41,7 +41,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 	 */
 	private async loadProjects() {
 		if (!this.plugin.foundryProjectService) {
-			new Notice('Foundry services not initialized');
 			this.close();
 			return;
 		}
@@ -56,12 +55,10 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 				// Trigger re-render of suggestions
 				this.inputEl.dispatchEvent(new Event('input'));
 			} else {
-				new Notice('Failed to load projects');
 				this.close();
 			}
 		} catch (error) {
 			console.error('[Friday] Error loading projects:', error);
-			new Notice('Error loading projects');
 			this.close();
 		}
 	}
@@ -116,7 +113,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 	 */
 	private async applyProjectToPanel(project: ObsidianProjectInfo) {
 		if (!this.plugin.foundryProjectConfigService || !this.plugin.projectServiceManager) {
-			new Notice('Foundry services not initialized');
 			return;
 		}
 
@@ -152,10 +148,8 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 			// Step 6: Call Site.svelte's initialize method (event architecture)
 			if (this.plugin.siteComponent?.initialize) {
 				await this.plugin.siteComponent.initialize(projectState);
-				new Notice(`Loaded project: ${project.name}`);
 			} else {
 				console.error('[Friday] Site component not registered - cannot apply configuration');
-				new Notice('Failed to apply project configuration');
 			}
 			
 			// Step 7: Reset initialization flag
@@ -163,7 +157,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 			
 		} catch (error) {
 			console.error('[Friday] Error applying project to panel:', error);
-			new Notice('Error loading project configuration');
 			// Make sure to reset flag even on error
 			this.plugin.isProjectInitializing = false;
 		}
@@ -291,7 +284,6 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 	 */
 	private async deleteProject(project: ObsidianProjectInfo) {
 		if (!this.plugin.foundryProjectService) {
-			new Notice('Foundry services not initialized');
 			return;
 		}
 
@@ -309,19 +301,16 @@ export class FoundryProjectManagementModal extends SuggestModal<ObsidianProjectI
 			);
 
 			if (result.success) {
-				new Notice(`Project "${project.name}" deleted`);
-				
 				// Remove from local list
 				this.projects = this.projects.filter(p => p.id !== project.id);
 				
 				// Trigger re-render
 				this.inputEl.dispatchEvent(new Event('input'));
 			} else {
-				new Notice(`Failed to delete project: ${result.error || result.message}`);
+				console.error(`Failed to delete project: ${result.error || result.message}`)
 			}
 		} catch (error) {
 			console.error('[Friday] Error deleting project:', error);
-			new Notice('Error deleting project');
 		}
 	}
 

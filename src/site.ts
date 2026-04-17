@@ -154,7 +154,6 @@ export class Site {
 
 		// 检查是否有现有内容
 		if (currentContents.length === 0) {
-			new Notice(this.plugin.i18n.t('messages.please_use_publish_first'), 5000);
 			return false;
 		}
 

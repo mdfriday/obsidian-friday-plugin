@@ -1643,7 +1643,6 @@
 
 		// If no preview exists, generate it first
 		if (!hasPreview) {
-			new Notice(t('messages.generating_preview_first') || 'Generating preview first...', 3000);
 			await startPreview();
 			
 			// Wait for preview to complete before publishing
@@ -1658,7 +1657,7 @@
 			}
 			
 			if (!hasPreview) {
-				new Notice(t('messages.preview_generation_failed') || 'Preview generation failed or timed out', 5000);
+				console.error("Preview generation failed or timed out after waiting for 5 minutes.");
 				return;
 			}
 		}
