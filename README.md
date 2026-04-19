@@ -64,6 +64,10 @@ curl -fsSL https://raw.githubusercontent.com/mdfriday/obsidian-friday-plugin/mai
 
 For detailed configuration options and troubleshooting, see [`docker/README.md`](docker/README.md).
 
+Wechat QR Code:
+
+![WeChat QR Code](demo/mdf-wechat.jpg)
+
 ---
 
 ## 🚀 Start Building Today
