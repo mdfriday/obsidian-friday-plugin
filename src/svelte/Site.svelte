@@ -640,7 +640,7 @@
 				let host: string;
 				try {
 					const url = new URL(enterpriseServerUrl);
-					host = url.hostname;
+					host = extractRootDomain(url.hostname);
 				} catch (error) {
 					console.error('[Site] Invalid enterpriseServerUrl:', error);
 					return '';
