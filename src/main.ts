@@ -42,6 +42,10 @@ import {nameToIdAsync} from "src/utils/hash.ts";
 
 // Export view type for dynamic import
 export const FRIDAY_SERVER_VIEW_TYPE = 'Friday_Service';
+export const VIEW_TYPE_FRIDAY_CHAT = 'friday-chat';
+
+// Chat view types
+import type {ChatView} from "./chat/ChatView";
 
 interface FridaySettings {
 	username: string;
@@ -186,6 +190,7 @@ export default class FridayPlugin extends Plugin {
 	private ThemeSelectionModalClass?: typeof ThemeSelectionModal
 	private FoundryProjectManagementModalClass?: typeof FoundryProjectManagementModal
 	private themeApiService?: typeof import("./theme/themeApiService").themeApiService
+	private ChatViewClass?: typeof ChatView
 
 	async onload() {
 		this.pluginDir = `${this.manifest.dir}`;
@@ -257,13 +262,15 @@ export default class FridayPlugin extends Plugin {
 			{ ThemeSelectionModal },
 			{ FoundryProjectManagementModal },
 			{ Site },
-			{ themeApiService }
+			{ themeApiService },
+			{ ChatView }
 		] = await Promise.all([
 			import('./server'),
 			import('./theme/modal'),
 			import('./projects/foundryModal'),
 			import('./site'),
-			import('./theme/themeApiService')
+			import('./theme/themeApiService'),
+			import('./chat/ChatView')
 		]);
 		
 		// Import PC-only styles
@@ -271,13 +278,15 @@ export default class FridayPlugin extends Plugin {
 			import('./styles/theme-modal.css'),
 			import('./styles/publish-settings.css'),
 			import('./styles/project-modal.css'),
-			import('./styles/live-sync.css')
+			import('./styles/live-sync.css'),
+			import('./chat/styles/chat.css')
 		]);
 		
 		// Store dynamic module references
 		this.ThemeSelectionModalClass = ThemeSelectionModal;
 		this.FoundryProjectManagementModalClass = FoundryProjectManagementModal;
 		this.themeApiService = themeApiService;
+		this.ChatViewClass = ChatView;
 		
 		// Initialize PC-only services (hugoverse already initialized in initCore)
 		this.site = new Site(this);
@@ -291,6 +300,19 @@ export default class FridayPlugin extends Plugin {
 		} catch (e) {
 			console.error('[Friday] View already registered, skipping');
 		}
+		
+		// Register Chat view
+		try {
+			this.registerView(VIEW_TYPE_FRIDAY_CHAT, (leaf) => {
+				if (this.ChatViewClass) {
+					return new this.ChatViewClass(leaf, this);
+				}
+				throw new Error('ChatView not loaded');
+			});
+		} catch (e) {
+			console.error('[Friday] Chat view already registered, skipping');
+		}
+		
 		this.app.workspace.onLayoutReady(() => this.initLeaf());
 		
 		// Add ribbon icon for project management
@@ -300,6 +322,11 @@ export default class FridayPlugin extends Plugin {
 				const modal = new this.FoundryProjectManagementModalClass(this.app, this);
 				modal.open();
 			}
+		});
+		
+		// Add Chat ribbon icon
+		this.addRibbonIcon('message-square', 'Friday Chat (Beta)', async () => {
+			await this.activateChatView();
 		});
 		
 		// Add internet icon to markdown view header
@@ -328,6 +355,15 @@ export default class FridayPlugin extends Plugin {
 					const modal = new this.FoundryProjectManagementModalClass(this.app, this);
 					modal.open();
 				}
+			}
+		});
+		
+		// Register open Chat command
+		this.addCommand({
+			id: "open-friday-chat",
+			name: "Open Friday Chat",
+			callback: () => {
+				this.activateChatView();
 			}
 		});
 		
@@ -2411,5 +2447,194 @@ export default class FridayPlugin extends Plugin {
 
 	isValidLicenseKeyFormat(licenseKey: string): boolean {
 		return isValidLicenseKeyFormat(licenseKey);
+	}
+	
+	// ==================== Chat 相关方法 ====================
+	
+	/**
+	 * 获取或创建 Wiki 项目
+	 * 用于 Chat Runtime
+	 */
+	async getOrCreateProjectForFolder(folderPath: string): Promise<string> {
+		// 生成项目名（folder name + -wiki 后缀）
+		const projectName = `${folderPath}-wiki`;
+		
+		// 检查项目是否已存在
+		const existingProject = await this.getFoundryProject(projectName);
+		
+		if (existingProject) {
+			return projectName;
+		}
+		
+		// 项目不存在，创建新的 wiki 项目
+		const folder = this.app.vault.getAbstractFileByPath(folderPath);
+		if (!(folder instanceof TFolder)) {
+			throw new Error(`Folder not found: ${folderPath}`);
+		}
+		
+		// 创建项目（type: 'wiki' 很重要）
+		const basePath = this.vaultBasePath;
+		if (!basePath) {
+			throw new Error('Vault base path not available');
+		}
+		
+		const createOptions: any = {
+			name: projectName,
+			workspacePath: this.absWorkspacePath,
+			sourceFolder: joinPath(basePath, folder.path),
+			type: 'wiki', // 指定为 wiki 类型项目
+		};
+		
+		const result = await this.foundryProjectService.createProject(createOptions);
+		
+		if (!result.success) {
+			throw new Error(`Failed to create project: ${result.error}`);
+		}
+		
+		// 配置 outputDir（与源文件夹同级，添加 ' wiki' 后缀）
+		// 例如：源文件夹 'What' -> outputDir 'What wiki'
+		const outputDirName = `${folderPath} wiki`;
+		const outputDirPath = joinPath(basePath, outputDirName);
+		
+		const configResult = await this.foundryProjectConfigService.set(
+			this.absWorkspacePath,
+			projectName,
+			'outputDir',
+			outputDirPath
+		);
+		
+		if (!configResult.success) {
+			console.error(`[Friday] Failed to set outputDir for ${projectName}:`, configResult.error);
+			throw new Error(`Failed to configure outputDir: ${configResult.error}`);
+		}
+		
+		return projectName;
+	}
+	
+	/**
+	 * 发布 Wiki 项目的 outputDir
+	 * 用于 Chat Runtime
+	 * 
+	 * @param folderPath - 原始源文件夹路径（用于获取 wiki 项目名）
+	 */
+	async publishFolder(
+		folderPath: string,
+		options?: {
+			onProgress?: (progress: { message: string; percent: number }) => void;
+		}
+	): Promise<{ success: boolean; url?: string; error?: string }> {
+		try {
+			// 1. 获取 Wiki 项目名
+			const projectName = `${folderPath}-wiki`;
+			
+			// 2. 获取项目的 outputDir 配置
+			const configResult = await this.foundryProjectConfigService.get(
+				this.absWorkspacePath,
+				projectName,
+				'outputDir'
+			);
+			
+			if (!configResult.success || !configResult.data?.value) {
+				throw new Error(`Wiki project ${projectName} does not have outputDir configured`);
+			}
+			
+			const outputDirPath = configResult.data.value as string;
+			
+			// 3. 将绝对路径转换为相对于 vault 的路径
+			const basePath = this.vaultBasePath;
+			if (!basePath) {
+				throw new Error('Vault base path not available');
+			}
+			
+			const relativePath = outputDirPath.startsWith(basePath)
+				? outputDirPath.slice(basePath.length + 1) // +1 for the path separator
+				: outputDirPath;
+			
+			// 4. 获取 outputDir 文件夹对象
+			const outputFolder = this.app.vault.getAbstractFileByPath(relativePath);
+			if (!(outputFolder instanceof TFolder)) {
+				throw new Error(`Wiki output folder not found: ${relativePath}`);
+			}
+			
+			// 5. 为 outputDir 创建或获取一个 site 项目
+			const siteProjectName = `${folderPath}-wiki-site`;
+			await this.getOrCreateSiteProjectForOutputDir(siteProjectName, outputDirPath);
+			
+			// 6. 发布 outputDir
+			await this.publishTo(outputFolder, 'mdf-free');
+			
+			// 7. 构建 URL
+			const previewId = await nameToIdAsync(siteProjectName);
+			const url = `https://mdfriday.com/f/${previewId}`;
+			
+			return {
+				success: true,
+				url,
+			};
+		} catch (error) {
+			console.error('[Friday] Publish wiki failed:', error);
+			return {
+				success: false,
+				error: (error as Error).message,
+			};
+		}
+	}
+	
+	/**
+	 * 为 Wiki outputDir 创建或获取 site 项目
+	 */
+	private async getOrCreateSiteProjectForOutputDir(
+		projectName: string,
+		outputDirPath: string
+	): Promise<string> {
+		// 检查项目是否已存在
+		const existingProject = await this.getFoundryProject(projectName);
+		
+		if (existingProject) {
+			return projectName;
+		}
+		
+		// 创建新的 site 项目
+		const createOptions: any = {
+			name: projectName,
+			workspacePath: this.absWorkspacePath,
+			sourceFolder: outputDirPath,
+			type: 'site', // site 类型项目，用于发布
+		};
+		
+		const result = await this.foundryProjectService.createProject(createOptions);
+		
+		if (!result.success) {
+			throw new Error(`Failed to create site project: ${result.error}`);
+		}
+		
+		return projectName;
+	}
+	
+	/**
+	 * 激活 Chat View
+	 */
+	async activateChatView(): Promise<void> {
+		const { workspace } = this.app;
+		
+		// 查找已存在的 Chat leaf
+		let leaf = workspace.getLeavesOfType(VIEW_TYPE_FRIDAY_CHAT)[0];
+		
+		if (!leaf) {
+			// 如果不存在，在右侧边栏创建新的 leaf
+			const rightLeaf = workspace.getRightLeaf(false);
+			if (rightLeaf) {
+				await rightLeaf.setViewState({
+					type: VIEW_TYPE_FRIDAY_CHAT,
+					active: true,
+				});
+				leaf = rightLeaf;
+			}
+		}
+		
+		// 显示 leaf
+		if (leaf) {
+			workspace.revealLeaf(leaf);
+		}
 	}
 }

@@ -191,6 +191,13 @@
 		selectedPublishOption;
 		isPublishDisabled = !hasCurrentPublishPermission();
 	}
+	
+	/**
+	 * Switch to AI Chat View
+	 */
+	function switchToChatView() {
+		plugin.activateChatView();
+	}
 
 	/**
 	 * Apply language configuration from Foundry config to UI
@@ -2069,10 +2076,15 @@
 <div class="site-builder">
 	<!-- Quick Publish Panel -->
 	<div class="quick-publish-panel">
-		<!-- Header with Logo -->
+		<!-- Header with Logo and AI Switch Button -->
 		<div class="panel-header">
-			<img src="https://gohugo.net/mdfriday.svg" alt="MDFriday" class="mdfriday-logo" width="20" height="20" />
-			<span class="panel-title">MDFriday</span>
+			<div class="panel-header-left">
+				<img src="https://gohugo.net/mdfriday.svg" alt="MDFriday" class="mdfriday-logo" width="20" height="20" />
+				<span class="panel-title">MDFriday</span>
+			</div>
+			<button class="friday-ai-switch-btn" on:click={switchToChatView} title="Switch to AI Chat (Beta)">
+				🤖 AI
+			</button>
 		</div>
 
 		<!-- Current Content Display -->
@@ -3578,5 +3590,43 @@
 		background-color: rgba(var(--color-red-rgb), 0.1);
 		color: var(--color-red);
 		border: 1px solid rgba(var(--color-red-rgb), 0.3);
+	}
+	
+	/* Friday AI Switch Button */
+	.panel-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	
+	.panel-header-left {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	
+	.friday-ai-switch-btn {
+		padding: 4px 10px;
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 12px;
+		font-weight: 500;
+		transition: all 0.2s;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	
+	.friday-ai-switch-btn:hover {
+		background: var(--interactive-accent-hover);
+		transform: translateY(-1px);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	}
+	
+	.friday-ai-switch-btn:active {
+		transform: translateY(0);
 	}
 </style> 

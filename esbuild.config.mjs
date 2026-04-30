@@ -102,6 +102,7 @@ const externals = [
 	// Node.js builtins used by desktop-only features (publish/ftp/foundry)
 	// These are available in Obsidian Desktop (Electron) but not on mobile
 	// The code using these is only executed on desktop (guarded by Platform.isDesktop)
+	'events',
 	'fs',
 	'fs/promises',
 	'path',

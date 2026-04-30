@@ -6,7 +6,15 @@
  */
 
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian';
-import type { PublishHttpClient, PublishHttpResponse, IdentityHttpClient, IdentityHttpResponse } from '@mdfriday/foundry';
+import type { 
+	PublishHttpClient, 
+	PublishHttpResponse, 
+	IdentityHttpClient, 
+	IdentityHttpResponse,
+	LLMHttpClient,
+	LLMHttpRequest,
+	LLMHttpResponse 
+} from '@mdfriday/foundry';
 
 /**
  * Obsidian HTTP Client
@@ -583,4 +591,151 @@ export class ObsidianIdentityHttpClient implements IdentityHttpClient {
  */
 export function createObsidianIdentityHttpClient(): IdentityHttpClient {
   return new ObsidianIdentityHttpClient();
+}
+
+/**
+ * Obsidian LLM HTTP Client
+ * 
+ * 为 Wiki LLM Provider 提供的 HTTP 客户端
+ * 使用 Node.js http/https 模块绕过 CORS 限制
+ * 支持流式响应（SSE）
+ * 
+ * 实现参考：Claudian createNodeFetch
+ * https://github.com/chuanqisun/obsidian-claudian/blob/main/src/core/mcp/McpTester.ts
+ */
+export class ObsidianLLMHttpClient implements LLMHttpClient {
+	/**
+	 * Fetch request (with streaming support)
+	 */
+	async fetch(request: LLMHttpRequest): Promise<LLMHttpResponse> {
+		// 注意：必须在函数内部 require，不能在模块顶层 import
+		// 因为这些是 Node.js 模块，在 Electron 主进程中可用
+		const http = require('http');
+		const https = require('https');
+		
+		return new Promise((resolve, reject) => {
+			const url = new URL(request.url);
+			const transport = url.protocol === 'https:' ? https : http;
+			
+			const requestHeaders: Record<string, string> = request.headers || {};
+			if (request.body) {
+				// 设置 Content-Length（避免 chunked 编码）
+				requestHeaders['content-length'] = String(Buffer.byteLength(request.body));
+			}
+			
+			const req = transport.request(
+				url,
+				{
+					method: request.method,
+					headers: requestHeaders,
+				},
+				(res: any) => {
+					// 转换 Node.js IncomingMessage 为 Web ReadableStream
+					const stream = new ReadableStream<Uint8Array>({
+						start(controller) {
+							res.on('data', (chunk: Buffer | string) => {
+								const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+								controller.enqueue(new Uint8Array(buffer));
+							});
+							res.on('end', () => {
+								controller.close();
+							});
+							res.on('error', (error: Error) => {
+								controller.error(error);
+							});
+						},
+						cancel(reason?: any) {
+							res.destroy(reason instanceof Error ? reason : new Error('Response body cancelled'));
+						}
+					});
+					
+					// 实现 text() 方法（读取完整响应）
+					let bodyUsed = false;
+					const readAsText = async (): Promise<string> => {
+						if (bodyUsed) {
+							throw new TypeError('Body has already been consumed');
+						}
+						bodyUsed = true;
+						const reader = stream.getReader();
+						const chunks: Uint8Array[] = [];
+						let total = 0;
+						let done = false;
+						
+						try {
+							while (!done) {
+								const { value, done: streamDone } = await reader.read();
+								done = streamDone;
+								if (done) break;
+								if (value) {
+									chunks.push(value);
+									total += value.byteLength;
+								}
+							}
+						} finally {
+							reader.releaseLock();
+						}
+						
+						const merged = new Uint8Array(total);
+						let offset = 0;
+						for (const chunk of chunks) {
+							merged.set(chunk, offset);
+							offset += chunk.byteLength;
+						}
+						return new TextDecoder().decode(merged);
+					};
+					
+					resolve({
+						status: res.statusCode || 200,
+						statusText: res.statusMessage || '',
+						ok: (res.statusCode || 200) >= 200 && (res.statusCode || 200) < 300,
+						body: stream,
+						text: readAsText,
+						json: async () => JSON.parse(await readAsText())
+					});
+				}
+			);
+			
+			// 错误处理
+			req.on('error', (error: Error) => {
+				reject(new Error(`HTTP request failed: ${error.message}`));
+			});
+			
+			// 支持 AbortSignal
+			if (request.signal) {
+				if (request.signal.aborted) {
+					req.destroy();
+					reject(new Error('Request aborted'));
+					return;
+				}
+				request.signal.addEventListener('abort', () => {
+					req.destroy();
+					reject(new Error('Request aborted'));
+				}, { once: true });
+			}
+			
+			// 发送请求体
+			if (request.body) {
+				req.end(request.body);
+			} else {
+				req.end();
+			}
+		});
+	}
+}
+
+/**
+ * 创建 ObsidianLLMHttpClient 实例
+ * 
+ * @returns ObsidianLLMHttpClient 实例
+ * 
+ * @example
+ * ```typescript
+ * import { createObsidianLLMHttpClient } from './http';
+ * 
+ * const llmClient = createObsidianLLMHttpClient();
+ * const wikiService = createObsidianWikiService(llmClient);
+ * ```
+ */
+export function createObsidianLLMHttpClient(): LLMHttpClient {
+	return new ObsidianLLMHttpClient();
 }
