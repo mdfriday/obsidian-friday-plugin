@@ -129,23 +129,52 @@ export class FridayWikiRuntime implements ChatRuntime {
 				delta: `📁 Project: ${projectName}\n\n`,
 			};
 			
-			// 4. Ingest
+			// 4. 显示处理中动画
 			yield {
 				type: 'tool_call_delta',
 				id: toolId,
-				delta: '📥 Ingesting files...\n',
+				delta: '<div class="friday-wiki-progress">' +
+				       '<div class="friday-spinner"></div>' +
+				       '<span class="friday-progress-text">Processing files and generating wiki</span>' +
+				       '</div>\n\n' +
+				       '<div class="friday-progress-hint">💡 Detailed progress in DevTools Console (Ctrl/Cmd+Shift+I)</div>\n\n',
 			};
 			
-			const result = await this.wikiService.ingest(projectName);
+			// 5. 执行 ingest（收集关键进度）
+			const keyProgress: string[] = [];
+			const result = await this.wikiService.ingest(projectName, (event) => {
+				// 收集关键进度事件
+				if (event.type === 'ingest:file:complete') {
+					const progressText = event.progress 
+						? ` [${event.progress.current}/${event.progress.total}]`
+						: '';
+					keyProgress.push(`✓ File processed${progressText}`);
+				} else if (event.type === 'ingest:pages:complete') {
+					keyProgress.push(`✓ Generated ${event.metadata?.pageCount || 0} wiki pages`);
+				}
+				
+				// 所有事件输出到控制台
+				const progressText = event.progress 
+					? ` [${event.progress.current}/${event.progress.total}] (${event.progress.percentage}%)`
+					: '';
+				console.log(`[${event.type}] ${event.message}${progressText}`);
+			});
 			
-			// 5. 显示结果
+			// 6. 显示关键进度摘要（用特殊标记替换之前的动画内容）
+			const progressSummary = keyProgress.length > 0 
+				? keyProgress.join('\n') + '\n\n'
+				: '';
+			
+			// 7. 显示结果
 			const resultText = [
+				progressSummary,
 				`✅ **Ingest completed!**\n`,
 				`- **Entities**: ${result.extractedEntities}`,
 				`- **Concepts**: ${result.extractedConcepts}`,
 				`- **Connections**: ${result.extractedConnections}`,
+				result.pagesGenerated ? `- **Pages Generated**: ${result.pagesGenerated}` : '',
 				`- **Total Knowledge**: ${result.extractedEntities + result.extractedConcepts}\n`,
-			].join('\n');
+			].filter(Boolean).join('\n');
 			
 			yield {
 				type: 'tool_call_result',
@@ -153,7 +182,7 @@ export class FridayWikiRuntime implements ChatRuntime {
 				result: resultText,
 			};
 			
-			// 6. 后续提示
+			// 8. 后续提示
 			yield {
 				type: 'text',
 				content: `\n### 🎉 Wiki ready!
@@ -190,25 +219,61 @@ You can now:
 			return;
 		}
 		
+		const toolId = `query-${Date.now()}`;
 		yield {
-			type: 'text',
-			content: `🔍 Searching wiki...\n\n`,
+			type: 'tool_call_start',
+			id: toolId,
+			name: 'wiki_query',
+			input: { question },
+		};
+		
+		// 显示查询动画
+		yield {
+			type: 'tool_call_delta',
+			id: toolId,
+			delta: '<div class="friday-wiki-progress">' +
+			       '<div class="friday-spinner"></div>' +
+			       '<span class="friday-progress-text">Searching knowledge base</span>' +
+			       '</div>\n\n',
 		};
 		
 		try {
 			const projectName = await this.plugin.getOrCreateProjectForFolder(this.currentFolderPath);
 			
-			// 流式查询
-			for await (const chunk of this.wikiService.queryStream(projectName, question)) {
-				yield {
-					type: 'text',
-					content: chunk,
-				};
+			// 流式查询 with progress callback
+			let firstChunk = true;
+			for await (const chunk of this.wikiService.queryStream(projectName, question, (event) => {
+				// ✅ 显示查询进度到控制台
+				console.log(`[${event.type}] ${event.message}`);
+			})) {
+				// 第一个 chunk 替换动画
+				if (firstChunk) {
+					yield {
+						type: 'tool_call_delta',
+						id: toolId,
+						delta: chunk,
+					};
+					firstChunk = false;
+				} else {
+					yield {
+						type: 'tool_call_delta',
+						id: toolId,
+						delta: chunk,
+					};
+				}
 			}
+			
+			yield {
+				type: 'tool_call_result',
+				id: toolId,
+				result: '✅ Query completed',
+			};
+			
 		} catch (error) {
 			yield {
-				type: 'text',
-				content: `\n\n❌ **Query error**: ${error.message}`,
+				type: 'tool_call_result',
+				id: toolId,
+				result: `❌ **Query error**: ${error.message}`,
 			};
 		}
 	}
@@ -360,15 +425,17 @@ Continue chatting to improve your wiki, then publish again to update it.
 			contextLength: 262144,
 		});
 		
+		// ✅ 默认输出语言设置为英语
 		await this.plugin.foundryGlobalConfigService.set(
 			this.plugin.absWorkspacePath,
 			'wiki.outputLanguage',
-			'Chinese'
+			'English'
 		);
 	}
 	
 	/**
 	 * 辅助方法：转换对话格式
+	 * ✅ 过滤掉命令消息（/wiki, /publish, /save 等）
 	 */
 	private convertToWikiFormat(history: ChatMessage[]): Array<{ question: string; answer: string }> {
 		const result: Array<{ question: string; answer: string }> = [];
@@ -378,6 +445,14 @@ Continue chatting to improve your wiki, then publish again to update it.
 			const assistant = history[i + 1];
 			
 			if (user?.role === 'user' && assistant?.role === 'assistant') {
+				// ✅ 过滤掉命令消息
+				const userText = user.content.trim();
+				if (userText.startsWith('/wiki') || 
+				    userText.startsWith('/publish') || 
+				    userText.startsWith('/save')) {
+					continue; // 跳过命令消息
+				}
+				
 				result.push({
 					question: user.content,
 					answer: assistant.content,

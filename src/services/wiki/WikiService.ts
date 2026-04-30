@@ -27,11 +27,15 @@ export class WikiService {
 	 * 
 	 * 注意：Foundry ingest 方法会自动生成 Wiki 页面，无需手动调用 generatePages
 	 */
-	async ingest(projectName: string): Promise<IngestResult> {
+	async ingest(
+		projectName: string,
+		onProgress?: (event: any) => void
+	): Promise<IngestResult> {
 		const result = await this.wikiService.ingest({
 			workspacePath: this.workspacePath,
 			projectName,
 			temperature: 0.3,
+			onProgress, // ✅ 传递 progress callback
 		});
 		
 		if (!result.success || !result.data) {
@@ -52,12 +56,14 @@ export class WikiService {
 	 */
 	async *queryStream(
 		projectName: string,
-		question: string
+		question: string,
+		onProgress?: (event: any) => void
 	): AsyncGenerator<string> {
 		for await (const chunk of this.wikiService.queryStream({
 			workspacePath: this.workspacePath,
 			projectName,
 			question,
+			onProgress, // ✅ 传递 progress callback
 		})) {
 			yield chunk;
 		}
