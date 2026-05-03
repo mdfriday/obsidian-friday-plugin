@@ -1,10 +1,11 @@
 /**
- * Friday Chat View - 简化版本
- * 专为 Wiki Chat 设计，移除了 Claudian 的复杂依赖
+ * Friday Chat View
+ * UI aligned with Claudian: wrapper input, markdown rendering,
+ * welcome screen, copy buttons, collapsible tool calls, scroll-to-bottom.
  */
 
 import type { WorkspaceLeaf, TFolder } from 'obsidian';
-import { ItemView, Notice } from 'obsidian';
+import { ItemView, MarkdownRenderer, Notice, setIcon } from 'obsidian';
 import { FridayWikiRuntime } from './ChatRuntime';
 import type FridayPlugin from '../main';
 import { VIEW_TYPE_FRIDAY_CHAT } from '../main';
@@ -17,474 +18,488 @@ export { VIEW_TYPE_FRIDAY_CHAT };
 export class ChatView extends ItemView {
 	private plugin: FridayPlugin;
 	private runtime: FridayWikiRuntime | null = null;
+
+	// DOM refs
 	private messagesEl: HTMLElement | null = null;
+	private messagesWrapperEl: HTMLElement | null = null;
 	private inputEl: HTMLTextAreaElement | null = null;
-	private inputContainerEl: HTMLElement | null = null;
+	private inputWrapperEl: HTMLElement | null = null;
+	private sendBtn: HTMLButtonElement | null = null;
+	private scrollBtn: HTMLElement | null = null;
+
+	// State
 	private conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-	
+	private isStreaming = false;
+
 	// Pickers
 	private commandPicker: CommandPicker | null = null;
 	private folderPicker: FolderPicker | null = null;
-	
+
 	constructor(leaf: WorkspaceLeaf, plugin: FridayPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
-	
-	getViewType(): string {
-		return VIEW_TYPE_FRIDAY_CHAT;
-	}
-	
-	getDisplayText(): string {
-		return 'Friday Chat (Beta)';
-	}
-	
-	getIcon(): string {
-		return 'message-square';
-	}
-	
+
+	getViewType(): string { return VIEW_TYPE_FRIDAY_CHAT; }
+	getDisplayText(): string { return 'Friday Chat'; }
+	getIcon(): string { return 'message-square'; }
+
 	async onOpen(): Promise<void> {
-		const container = this.containerEl.children[1];
+		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass('friday-chat-view');
-		
-		// 初始化 Runtime
+
 		this.runtime = new FridayWikiRuntime(this.plugin);
-		
-		// 创建 Header
-		const headerEl = container.createDiv({ cls: 'friday-chat-header' });
-		
-		// Logo 和标题
-		const titleContainer = headerEl.createDiv({ cls: 'friday-chat-title-container' });
-		const logoImg = titleContainer.createEl('img', {
-			cls: 'friday-chat-logo',
-			attr: {
-				src: 'https://gohugo.net/mdfriday.svg',
-				alt: 'MDFriday',
-				width: '24',
-				height: '24'
-			}
-		});
-		titleContainer.createSpan({ cls: 'friday-chat-title', text: 'Friday Wiki Chat' });
-		
-		// Action buttons container
-		const actionsEl = headerEl.createDiv({ cls: 'friday-chat-actions' });
-		
-		// Manual mode button
-		const switchBtn = actionsEl.createEl('button', {
-			cls: 'friday-chat-icon-btn',
-			attr: { 'aria-label': 'Switch to Manual Mode', title: 'Switch to Manual Mode' }
-		});
-		switchBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
-		switchBtn.addEventListener('click', () => {
-			this.switchToManualMode();
-		});
-		
-		// 消息区域
-		this.messagesEl = container.createDiv({ cls: 'friday-chat-messages' });
-		
-		// 显示欢迎消息
-		this.appendWelcomeMessage();
-		
-		// 输入区域
-		this.inputContainerEl = container.createDiv({ cls: 'friday-chat-input-container' });
-		
-		this.inputEl = this.inputContainerEl.createEl('textarea', {
-			cls: 'friday-chat-input',
-			attr: {
-				placeholder: 'Type /wiki @folder to start, or ask a question...',
-				rows: '3'
-			}
-		});
-		
-		const sendBtn = this.inputContainerEl.createEl('button', {
-			cls: 'friday-chat-send-btn',
-			text: 'Send'
-		});
-		
-		// 事件处理
-		sendBtn.addEventListener('click', () => this.handleSend());
-		this.inputEl.addEventListener('keydown', (e) => {
-			this.handleInputKeydown(e);
-		});
-		
-		// Input change handler for autocomplete
-		this.inputEl.addEventListener('input', () => {
-			this.handleInputChange();
-		});
+
+		this.buildHeader(container);
+		this.buildMessagesArea(container);
+		this.buildInputArea(container);
 	}
-	
+
 	async onClose(): Promise<void> {
-		if (this.runtime) {
-			this.runtime.cleanup();
-		}
+		this.runtime?.cleanup();
 		this.destroyPickers();
 	}
-	
-	/**
-	 * Handle input keydown events
-	 */
-	private handleInputKeydown(e: KeyboardEvent): void {
-		// Handle picker navigation
-		if (this.commandPicker || this.folderPicker) {
-			const picker = this.commandPicker || this.folderPicker;
-			
-			if (e.key === 'ArrowUp') {
-				e.preventDefault();
-				picker.selectPrevious();
-				return;
-			}
-			
-			if (e.key === 'ArrowDown') {
-				e.preventDefault();
-				picker.selectNext();
-				return;
-			}
-			
-			if (e.key === 'Enter' && !e.shiftKey) {
-				e.preventDefault();
-				picker.confirm();
-				return;
-			}
-			
-			if (e.key === 'Escape') {
-				e.preventDefault();
-				this.destroyPickers();
-				return;
-			}
-			
-			// Tab also confirms selection
-			if (e.key === 'Tab') {
-				e.preventDefault();
-				picker.confirm();
-				return;
-			}
+
+	// ─────────────────────────────────────────
+	// Build: Header
+	// ─────────────────────────────────────────
+
+	private buildHeader(container: HTMLElement): void {
+		const headerEl = container.createDiv({ cls: 'friday-chat-header' });
+
+		const titleContainer = headerEl.createDiv({ cls: 'friday-chat-title-container' });
+		titleContainer.createEl('img', {
+			cls: 'friday-chat-logo',
+			attr: { src: 'https://gohugo.net/mdfriday.svg', alt: 'MDFriday', width: '20', height: '20' },
+		});
+		titleContainer.createSpan({ cls: 'friday-chat-title', text: 'Friday Chat' });
+
+		const actionsEl = headerEl.createDiv({ cls: 'friday-chat-actions' });
+
+		// New conversation button
+		const newBtn = actionsEl.createDiv({ cls: 'friday-chat-icon-btn', attr: { title: 'New conversation', 'aria-label': 'New conversation' } });
+		setIcon(newBtn, 'square-pen');
+		newBtn.addEventListener('click', () => this.startNewConversation());
+
+		// Switch to Manual Mode button
+		const switchBtn = actionsEl.createDiv({ cls: 'friday-chat-icon-btn', attr: { title: 'Switch to Manual Mode', 'aria-label': 'Switch to Manual Mode' } });
+		setIcon(switchBtn, 'settings-2');
+		switchBtn.addEventListener('click', () => this.switchToManualMode());
+	}
+
+	// ─────────────────────────────────────────
+	// Build: Messages area
+	// ─────────────────────────────────────────
+
+	private buildMessagesArea(container: HTMLElement): void {
+		this.messagesWrapperEl = container.createDiv({ cls: 'friday-chat-messages-wrapper' });
+		this.messagesEl = this.messagesWrapperEl.createDiv({ cls: 'friday-chat-messages' });
+
+		// Scroll-to-bottom button (inside wrapper for absolute positioning)
+		this.scrollBtn = this.messagesWrapperEl.createDiv({ cls: 'friday-scroll-btn' });
+		setIcon(this.scrollBtn, 'chevron-down');
+		this.scrollBtn.addEventListener('click', () => this.scrollToBottom());
+
+		this.messagesEl.addEventListener('scroll', () => this.updateScrollBtn());
+
+		this.appendWelcomeMessage();
+	}
+
+	// ─────────────────────────────────────────
+	// Build: Input area
+	// ─────────────────────────────────────────
+
+	private buildInputArea(container: HTMLElement): void {
+		const inputContainerEl = container.createDiv({ cls: 'friday-chat-input-container' });
+
+		this.inputWrapperEl = inputContainerEl.createDiv({ cls: 'friday-chat-input-wrapper' });
+
+		this.inputEl = this.inputWrapperEl.createEl('textarea', {
+			cls: 'friday-chat-input',
+			attr: { placeholder: 'Message Friday... (/ for commands, @ for folders)', rows: '3' },
+		});
+
+		const toolbar = this.inputWrapperEl.createDiv({ cls: 'friday-chat-input-toolbar' });
+		toolbar.createSpan({ cls: 'friday-chat-input-hint', text: '↵ send · ⇧↵ newline' });
+
+		this.sendBtn = toolbar.createEl('button', { cls: 'friday-chat-send-btn', text: 'Send' });
+
+		this.sendBtn.addEventListener('click', () => this.handleSend());
+		this.inputEl.addEventListener('keydown', (e) => this.handleInputKeydown(e));
+		this.inputEl.addEventListener('input', () => this.handleInputChange());
+
+		// Auto-resize textarea
+		this.inputEl.addEventListener('input', () => this.resizeInput());
+	}
+
+	// ─────────────────────────────────────────
+	// Welcome screen
+	// ─────────────────────────────────────────
+
+	private appendWelcomeMessage(): void {
+		if (!this.messagesEl) return;
+		const el = this.messagesEl.createDiv({ cls: 'friday-chat-welcome' });
+		el.createDiv({ cls: 'friday-chat-welcome-greeting', text: 'Hello, how can I help?' });
+		el.createDiv({ cls: 'friday-chat-welcome-hint', text: 'Your AI assistant for Obsidian notes.' });
+		const cmds = el.createDiv({ cls: 'friday-chat-welcome-commands' });
+		const items: [string, string][] = [
+			['/wiki @folder', 'build a knowledge base from a folder'],
+			['/ask question', 'ask a question across your notes'],
+			['/save [title]', 'save this conversation'],
+			['/publish', 'publish your site'],
+		];
+		for (const [cmd, desc] of items) {
+			const row = cmds.createDiv({ cls: 'friday-chat-welcome-cmd' });
+			row.createEl('strong', { text: cmd });
+			row.appendText(` — ${desc}`);
 		}
-		
-		// Normal send with Enter (no picker active)
-		if (e.key === 'Enter' && !e.shiftKey && !this.commandPicker && !this.folderPicker) {
+	}
+
+	// ─────────────────────────────────────────
+	// Input: keydown / change
+	// ─────────────────────────────────────────
+
+	private handleInputKeydown(e: KeyboardEvent): void {
+		if (this.commandPicker || this.folderPicker) {
+			const picker = this.commandPicker ?? this.folderPicker!;
+			if (e.key === 'ArrowUp')   { e.preventDefault(); picker.selectPrevious(); return; }
+			if (e.key === 'ArrowDown') { e.preventDefault(); picker.selectNext(); return; }
+			if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); picker.confirm(); return; }
+			if (e.key === 'Escape') { e.preventDefault(); this.destroyPickers(); return; }
+			if (e.key === 'Tab')   { e.preventDefault(); picker.confirm(); return; }
+		}
+
+		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
 			this.handleSend();
 		}
 	}
-	
-	/**
-	 * Handle input changes for autocomplete
-	 */
+
 	private handleInputChange(): void {
-		if (!this.inputEl || !this.inputContainerEl) return;
-		
+		if (!this.inputEl || !this.inputWrapperEl) return;
 		const text = this.inputEl.value;
-		const cursorPos = this.inputEl.selectionStart;
-		
-		// Check for slash command trigger
+		const cursorPos = this.inputEl.selectionStart ?? 0;
 		const beforeCursor = text.substring(0, cursorPos);
+
 		const slashMatch = beforeCursor.match(/\/(\w*)$/);
-		
-		if (slashMatch) {
-			const query = slashMatch[1];
-			this.showCommandPicker(query);
-			return;
-		}
-		
-		// Check for folder mention trigger
-		const atMatch = beforeCursor.match(/@([\w-]*)$/);
-		
-		if (atMatch) {
-			const query = atMatch[1];
-			this.showFolderPicker(query);
-			return;
-		}
-		
-		// No trigger found, close pickers
+		if (slashMatch) { this.showCommandPicker(slashMatch[1]); return; }
+
+		const atMatch = beforeCursor.match(/@([\w/-]*)$/);
+		if (atMatch) { this.showFolderPicker(atMatch[1]); return; }
+
 		this.destroyPickers();
 	}
-	
-	/**
-	 * Show command picker
-	 */
+
+	private resizeInput(): void {
+		if (!this.inputEl) return;
+		this.inputEl.style.height = 'auto';
+		const maxH = Math.max(150, window.innerHeight * 0.45);
+		this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, maxH) + 'px';
+	}
+
+	// ─────────────────────────────────────────
+	// Pickers
+	// ─────────────────────────────────────────
+
 	private showCommandPicker(query: string): void {
-		if (!this.inputContainerEl) return;
-		
-		// Destroy existing pickers
+		if (!this.inputWrapperEl) return;
 		this.destroyPickers();
-		
-		// Create command picker
-		this.commandPicker = new CommandPicker(this.inputContainerEl, {
-			onSelect: (command: SlashCommand) => {
-				this.insertCommand(command);
-				this.destroyPickers();
-			},
-			onCancel: () => {
-				this.destroyPickers();
-			}
+		this.commandPicker = new CommandPicker(this.inputWrapperEl, {
+			onSelect: (command: SlashCommand) => { this.insertCommand(command); this.destroyPickers(); },
+			onCancel: () => this.destroyPickers(),
 		});
-		
 		this.commandPicker.filter(query);
 	}
-	
-	/**
-	 * Show folder picker
-	 */
+
 	private showFolderPicker(query: string): void {
-		if (!this.inputContainerEl) return;
-		
-		// Destroy existing pickers
+		if (!this.inputWrapperEl) return;
 		this.destroyPickers();
-		
-		// Create folder picker
-		this.folderPicker = new FolderPicker(this.inputContainerEl, {
+		this.folderPicker = new FolderPicker(this.inputWrapperEl, {
 			vault: this.plugin.app.vault,
-			onSelect: (folder: TFolder) => {
-				this.insertFolder(folder);
-				this.destroyPickers();
-			},
-			onCancel: () => {
-				this.destroyPickers();
-			}
+			onSelect: (folder: TFolder) => { this.insertFolder(folder); this.destroyPickers(); },
+			onCancel: () => this.destroyPickers(),
 		});
-		
 		this.folderPicker.filter(query);
 	}
-	
-	/**
-	 * Insert command into input
-	 */
+
 	private insertCommand(command: SlashCommand): void {
 		if (!this.inputEl) return;
-		
 		const text = this.inputEl.value;
-		const cursorPos = this.inputEl.selectionStart;
-		const beforeCursor = text.substring(0, cursorPos);
-		const afterCursor = text.substring(cursorPos);
-		
-		// Replace /query with command name (e.g., /wiki)
-		const newBefore = beforeCursor.replace(/\/\w*$/, `${command.name} `);
-		this.inputEl.value = newBefore + afterCursor;
+		const pos = this.inputEl.selectionStart ?? 0;
+		const newBefore = text.substring(0, pos).replace(/\/\w*$/, `${command.name} `);
+		this.inputEl.value = newBefore + text.substring(pos);
 		this.inputEl.selectionStart = this.inputEl.selectionEnd = newBefore.length;
 		this.inputEl.focus();
+		this.resizeInput();
 	}
-	
-	/**
-	 * Insert folder mention into input
-	 */
+
 	private insertFolder(folder: TFolder): void {
 		if (!this.inputEl) return;
-		
 		const text = this.inputEl.value;
-		const cursorPos = this.inputEl.selectionStart;
-		const beforeCursor = text.substring(0, cursorPos);
-		const afterCursor = text.substring(cursorPos);
-		
-		// Replace @query with @folder-name
-		const newBefore = beforeCursor.replace(/@[\w-]*$/, `@${folder.name} `);
-		this.inputEl.value = newBefore + afterCursor;
+		const pos = this.inputEl.selectionStart ?? 0;
+		const newBefore = text.substring(0, pos).replace(/@[\w/-]*$/, `@${folder.name} `);
+		this.inputEl.value = newBefore + text.substring(pos);
 		this.inputEl.selectionStart = this.inputEl.selectionEnd = newBefore.length;
 		this.inputEl.focus();
+		this.resizeInput();
 	}
-	
-	/**
-	 * Destroy active pickers
-	 */
+
 	private destroyPickers(): void {
-		if (this.commandPicker) {
-			this.commandPicker.destroy();
-			this.commandPicker = null;
-		}
-		if (this.folderPicker) {
-			this.folderPicker.destroy();
-			this.folderPicker = null;
-		}
+		this.commandPicker?.destroy(); this.commandPicker = null;
+		this.folderPicker?.destroy();  this.folderPicker = null;
 	}
-	
-	/**
-	 * 显示欢迎消息
-	 */
-	private appendWelcomeMessage(): void {
-		if (!this.messagesEl) return;
-		
-		const messageEl = this.messagesEl.createDiv({ cls: 'friday-chat-message assistant' });
-		const contentEl = messageEl.createDiv({ cls: 'friday-chat-message-content' });
-		
-		contentEl.createEl('div', {
-			cls: 'friday-welcome-title',
-			text: '👋 Welcome to Friday Wiki Chat!'
-		});
-		
-		const instructionsEl = contentEl.createDiv({ cls: 'friday-welcome-instructions' });
-		instructionsEl.createEl('p', { text: 'Get started:' });
-		
-		const list = instructionsEl.createEl('ul');
-		list.createEl('li', { text: 'Type /wiki @your-folder to create a wiki' });
-		list.createEl('li', { text: 'Ask questions about your content' });
-		list.createEl('li', { text: 'Save conversations with /save [title]' });
-		list.createEl('li', { text: 'Publish with /publish' });
-		
-		contentEl.createEl('p', {
-			cls: 'friday-welcome-hint',
-			text: 'Type / to see all commands.'
-		});
-		
-		this.scrollToBottom();
-	}
-	
-	/**
-	 * 处理发送消息
-	 */
+
+	// ─────────────────────────────────────────
+	// Send & streaming
+	// ─────────────────────────────────────────
+
 	private async handleSend(): Promise<void> {
-		if (!this.inputEl || !this.runtime || !this.messagesEl) return;
-		
+		if (!this.inputEl || !this.runtime || !this.messagesEl || this.isStreaming) return;
 		const text = this.inputEl.value.trim();
 		if (!text) return;
-		
-		// Close any open pickers
+
 		this.destroyPickers();
-		
-		// 清空输入
 		this.inputEl.value = '';
-		
-		// 显示用户消息
+		this.resizeInput();
+		this.setStreaming(true);
+
 		this.appendUserMessage(text);
-		
-		// 添加到历史记录
-		this.conversationHistory.push({
-			role: 'user',
-			content: text
-		});
-		
-		// 准备助手消息容器
-		const assistantMessageEl = this.messagesEl.createDiv({ cls: 'friday-chat-message assistant' });
-		const contentEl = assistantMessageEl.createDiv({ cls: 'friday-chat-message-content' });
-		
+		this.conversationHistory.push({ role: 'user', content: text });
+
+		const assistantEl = this.messagesEl.createDiv({ cls: 'friday-chat-message assistant' });
+		const contentEl = assistantEl.createDiv({ cls: 'friday-chat-message-content' });
+
+		// Thinking indicator
+		const thinkingEl = contentEl.createDiv({ cls: 'friday-thinking' });
+		thinkingEl.createDiv({ cls: 'friday-spinner' });
+		thinkingEl.appendText('Thinking…');
+
 		try {
-			// 准备 turn
 			const turn = this.runtime.prepareTurn({ text });
-			
-			// 流式接收响应
 			let assistantContent = '';
-			let hasHtmlContent = false; // Track if content has HTML
-			
+
 			for await (const chunk of this.runtime.query(turn, this.conversationHistory)) {
+				// Remove thinking indicator on first chunk
+				thinkingEl.remove();
+
 				if (chunk.type === 'text') {
 					assistantContent += chunk.content;
-					this.renderContent(contentEl, assistantContent);
+					this.renderStreamingText(contentEl, assistantContent);
 					this.scrollToBottom();
 				} else if (chunk.type === 'tool_call_start') {
-					// 显示工具调用开始
-					const toolEl = contentEl.createDiv({ cls: 'friday-chat-tool-call' });
-					toolEl.createDiv({ cls: 'friday-chat-tool-name', text: `[${chunk.name}]` });
+					assistantContent += '\n';
+					this.appendToolCall(contentEl, chunk.name ?? 'tool', '');
+					this.scrollToBottom();
 				} else if (chunk.type === 'tool_call_delta') {
-					// 追加工具输出
-					assistantContent += chunk.delta;
-					// Track if HTML is present
-					if (chunk.delta.includes('<div') || chunk.delta.includes('<span')) {
-						hasHtmlContent = true;
-					}
-					this.renderContent(contentEl, assistantContent);
+					// Update last tool call summary
+					this.updateLastToolSummary(contentEl, chunk.delta ?? '');
 					this.scrollToBottom();
 				} else if (chunk.type === 'tool_call_result') {
-					// 显示工具结果 - 如果之前有HTML，先清除再显示纯文本结果
-					if (hasHtmlContent) {
-						// Remove HTML tags from accumulated content for final result
-						const cleanContent = this.stripProgressHtml(assistantContent);
-						assistantContent = cleanContent + '\n\n' + chunk.result;
-					} else {
-						assistantContent += chunk.result;
-					}
-					this.renderContent(contentEl, assistantContent);
+					const result = chunk.result ?? '';
+					assistantContent += result;
+					this.finalizeLastToolCall(contentEl, result);
 					this.scrollToBottom();
 				}
 			}
-			
-			// 添加到历史记录 (strip HTML for clean history)
+
+			// Final render with Markdown
+			thinkingEl.remove();
 			if (assistantContent) {
 				const cleanContent = this.stripProgressHtml(assistantContent);
-				this.conversationHistory.push({
-					role: 'assistant',
-					content: cleanContent
-				});
+				await this.renderMarkdown(contentEl, cleanContent);
+				this.conversationHistory.push({ role: 'assistant', content: cleanContent });
 			}
-			
 		} catch (error) {
-			contentEl.setText(`❌ Error: ${error.message}`);
+			thinkingEl.remove();
+			contentEl.empty();
+			contentEl.createDiv({ cls: 'friday-chat-error', text: `Error: ${(error as Error).message}` });
 			console.error('[Friday Chat] Query error:', error);
 		}
-		
+
+		this.setStreaming(false);
 		this.scrollToBottom();
 	}
-	
-	/**
-	 * Render content (supports HTML and preserves line breaks)
-	 */
-	private renderContent(el: HTMLElement, content: string): void {
-		el.empty();
-		
-		// Check if content contains HTML
-		if (content.includes('<div') || content.includes('<span')) {
-			// Set innerHTML for HTML content
-			el.innerHTML = content;
-		} else {
-			// For plain text, convert \n to <br> for reliable display
-			const lines = content.split('\n');
-			lines.forEach((line, index) => {
-				if (index > 0) {
-					el.createEl('br');
-				}
-				if (line) {
-					el.appendText(line);
-				}
-			});
-		}
-	}
-	
-	/**
-	 * Strip progress HTML tags and keep only text content
-	 */
-	private stripProgressHtml(content: string): string {
-		// Remove friday-wiki-progress div (spinner animation)
-		let cleaned = content.replace(/<div class="friday-wiki-progress">[\s\S]*?<\/div>/g, '');
-		
-		// Remove friday-progress-hint div
-		cleaned = cleaned.replace(/<div class="friday-progress-hint">[\s\S]*?<\/div>/g, '');
-		
-		// Remove any remaining HTML tags
-		cleaned = cleaned.replace(/<[^>]+>/g, '');
-		
-		// Clean up extra whitespace
-		cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-		
-		return cleaned;
-	}
-	
-	/**
-	 * 显示用户消息
-	 */
+
+	// ─────────────────────────────────────────
+	// Message rendering helpers
+	// ─────────────────────────────────────────
+
 	private appendUserMessage(text: string): void {
 		if (!this.messagesEl) return;
-		
 		const messageEl = this.messagesEl.createDiv({ cls: 'friday-chat-message user' });
-		messageEl.createDiv({
-			cls: 'friday-chat-message-content',
-			text
+		messageEl.createDiv({ cls: 'friday-chat-message-content', text });
+
+		// Hover actions
+		const actions = messageEl.createDiv({ cls: 'friday-chat-user-actions' });
+		const copyBtn = actions.createSpan({ attr: { title: 'Copy' } });
+		setIcon(copyBtn, 'copy');
+		copyBtn.addEventListener('click', () => {
+			navigator.clipboard.writeText(text).catch(() => {});
+			copyBtn.empty();
+			copyBtn.setText('copied');
+			copyBtn.addClass('copied');
+			setTimeout(() => {
+				copyBtn.removeClass('copied');
+				copyBtn.empty();
+				setIcon(copyBtn, 'copy');
+			}, 1500);
 		});
-		
+
 		this.scrollToBottom();
 	}
-	
-	/**
-	 * 滚动到底部
-	 */
+
+	/** Live streaming text (plain, avoids re-parsing MD on every chunk) */
+	private renderStreamingText(el: HTMLElement, content: string): void {
+		// Keep any tool-call blocks and only re-render the text portion
+		const toolCalls = Array.from(el.querySelectorAll('.friday-tool-call'));
+		el.empty();
+		for (const tc of toolCalls) el.appendChild(tc);
+
+		const lines = content.split('\n');
+		lines.forEach((line, i) => {
+			if (i > 0) el.createEl('br');
+			if (line) el.appendText(line);
+		});
+	}
+
+	/** Proper Markdown rendering (called after stream completes) */
+	private async renderMarkdown(el: HTMLElement, content: string): Promise<void> {
+		el.empty();
+		await MarkdownRenderer.render(
+			this.plugin.app,
+			content,
+			el,
+			'',
+			this,
+		);
+	}
+
+	// ─────────────────────────────────────────
+	// Tool call rendering
+	// ─────────────────────────────────────────
+
+	private appendToolCall(containerEl: HTMLElement, name: string, summary: string): void {
+		const toolEl = containerEl.createDiv({ cls: 'friday-tool-call' });
+
+		const header = toolEl.createDiv({ cls: 'friday-tool-header' });
+
+		const iconEl = header.createDiv({ cls: 'friday-tool-icon' });
+		setIcon(iconEl, 'wrench');
+
+		header.createSpan({ cls: 'friday-tool-name', text: name });
+		header.createSpan({ cls: 'friday-tool-summary', text: summary });
+
+		const statusEl = header.createDiv({ cls: 'friday-tool-status running' });
+		setIcon(statusEl, 'loader-2');
+
+		const contentEl = toolEl.createDiv({ cls: 'friday-tool-content' });
+
+		// Toggle expand/collapse on header click
+		header.addEventListener('click', () => {
+			toolEl.toggleClass('expanded', !toolEl.hasClass('expanded'));
+		});
+
+		// Animate spinner
+		const spinnerInterval = setInterval(() => {
+			if (!document.contains(statusEl)) { clearInterval(spinnerInterval); return; }
+			statusEl.empty();
+			setIcon(statusEl, statusEl.hasClass('running') ? 'loader-2' : 'check');
+		}, 300);
+		(toolEl as any)._spinnerInterval = spinnerInterval;
+		(toolEl as any)._contentEl = contentEl;
+		(toolEl as any)._statusEl = statusEl;
+		(toolEl as any)._spinnerIntervalId = spinnerInterval;
+	}
+
+	private updateLastToolSummary(containerEl: HTMLElement, delta: string): void {
+		const toolCalls = containerEl.querySelectorAll('.friday-tool-call');
+		const last = toolCalls[toolCalls.length - 1] as HTMLElement | undefined;
+		if (!last) return;
+		const summaryEl = last.querySelector('.friday-tool-summary') as HTMLElement | null;
+		if (summaryEl) summaryEl.textContent = (summaryEl.textContent ?? '') + delta;
+		const contentEl = (last as any)._contentEl as HTMLElement | undefined;
+		if (contentEl) {
+			const lines = contentEl.querySelector('.friday-tool-lines') ?? contentEl.createDiv({ cls: 'friday-tool-lines' });
+			lines.textContent = (lines.textContent ?? '') + delta;
+		}
+	}
+
+	private finalizeLastToolCall(containerEl: HTMLElement, result: string): void {
+		const toolCalls = containerEl.querySelectorAll('.friday-tool-call');
+		const last = toolCalls[toolCalls.length - 1] as HTMLElement | undefined;
+		if (!last) return;
+
+		clearInterval((last as any)._spinnerIntervalId);
+		const statusEl = (last as any)._statusEl as HTMLElement | undefined;
+		if (statusEl) {
+			statusEl.removeClass('running');
+			statusEl.addClass('done');
+			statusEl.empty();
+			setIcon(statusEl, 'check');
+		}
+		const contentEl = (last as any)._contentEl as HTMLElement | undefined;
+		if (contentEl && result) {
+			const lines = contentEl.querySelector('.friday-tool-lines') as HTMLElement | null;
+			if (lines) {
+				lines.textContent = result;
+			} else {
+				contentEl.createDiv({ cls: 'friday-tool-lines', text: result });
+			}
+		}
+	}
+
+	// ─────────────────────────────────────────
+	// Scroll
+	// ─────────────────────────────────────────
+
 	private scrollToBottom(): void {
 		if (this.messagesEl) {
 			this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
 		}
+		this.updateScrollBtn();
 	}
-	
-	/**
-	 * 切换到手动模式（Site.svelte）
-	 */
+
+	private updateScrollBtn(): void {
+		if (!this.messagesEl || !this.scrollBtn) return;
+		const { scrollTop, scrollHeight, clientHeight } = this.messagesEl;
+		const atBottom = scrollHeight - scrollTop - clientHeight < 60;
+		this.scrollBtn.toggleClass('visible', !atBottom);
+	}
+
+	// ─────────────────────────────────────────
+	// Misc helpers
+	// ─────────────────────────────────────────
+
+	private setStreaming(active: boolean): void {
+		this.isStreaming = active;
+		if (this.sendBtn) {
+			this.sendBtn.disabled = active;
+			this.sendBtn.textContent = active ? 'Sending…' : 'Send';
+		}
+		if (this.inputEl) this.inputEl.disabled = active;
+	}
+
+	private startNewConversation(): void {
+		if (this.isStreaming) return;
+		this.conversationHistory = [];
+		if (this.messagesEl) {
+			this.messagesEl.empty();
+			this.appendWelcomeMessage();
+		}
+		this.inputEl?.focus();
+	}
+
+	private stripProgressHtml(content: string): string {
+		return content
+			.replace(/<div class="friday-wiki-progress">[\s\S]*?<\/div>/g, '')
+			.replace(/<div class="friday-progress-hint">[\s\S]*?<\/div>/g, '')
+			.replace(/<[^>]+>/g, '')
+			.replace(/\n{3,}/g, '\n\n')
+			.trim();
+	}
+
 	private switchToManualMode(): void {
-		// 激活 Site view
 		this.plugin.activateView();
 		new Notice('Switched to Manual Mode');
 	}

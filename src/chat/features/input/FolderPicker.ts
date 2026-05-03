@@ -3,6 +3,7 @@
  */
 
 import type { TFolder, Vault } from 'obsidian';
+import { setIcon } from 'obsidian';
 
 export interface FolderPickerOptions {
 	vault: Vault;
@@ -135,8 +136,9 @@ export class FolderPicker {
 				cls: `friday-folder-item ${index === this.selectedIndex ? 'selected' : ''}`
 			});
 			
-			// Folder icon
-			itemEl.createSpan({ cls: 'friday-folder-icon', text: '📁' });
+			// Folder icon (SVG via setIcon)
+			const iconEl = itemEl.createDiv({ cls: 'friday-folder-icon' });
+			setIcon(iconEl, 'folder');
 			
 			// Folder name and path
 			const textEl = itemEl.createDiv({ cls: 'friday-folder-text' });

@@ -100,11 +100,14 @@ export class CommandPicker {
 				cls: `friday-command-item ${index === this.selectedIndex ? 'selected' : ''}`
 			});
 			
-			// Command name (using cmd.name instead of cmd.command)
+			// Command name row: slash-name + optional hint
 			const nameEl = itemEl.createDiv({ cls: 'friday-command-name' });
 			nameEl.createSpan({ cls: 'friday-command-slash', text: cmd.name });
+			if ((cmd as any).hint) {
+				nameEl.createSpan({ cls: 'friday-command-hint', text: (cmd as any).hint });
+			}
 			
-			// Command description
+			// Description
 			itemEl.createDiv({
 				cls: 'friday-command-description',
 				text: cmd.description
