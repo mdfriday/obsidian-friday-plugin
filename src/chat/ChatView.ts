@@ -1,7 +1,7 @@
 /**
  * Friday Chat View
- * UI aligned with Claudian: wrapper input, markdown rendering,
- * welcome screen, copy buttons, collapsible tool calls, scroll-to-bottom.
+ * UI aligned with Claudian: wrapper input, per-tool-id live progress,
+ * markdown rendering, welcome screen, copy buttons, scroll-to-bottom.
  */
 
 import type { WorkspaceLeaf, TFolder } from 'obsidian';
@@ -15,42 +15,65 @@ import type { SlashCommand } from './ChatCommands';
 
 export { VIEW_TYPE_FRIDAY_CHAT };
 
+// ─── Tool icons by name ───────────────────────────────────────────────────────
+const TOOL_ICONS: Record<string, string> = {
+	wiki_ingest:  'database',
+	wiki_query:   'search',
+	wiki_publish: 'upload',
+	wiki_save:    'save',
+};
+function getToolIcon(name: string): string {
+	return TOOL_ICONS[name] ?? 'wrench';
+}
+
+// ─── Tool call DOM refs ───────────────────────────────────────────────────────
+interface ToolBlock {
+	toolEl:    HTMLElement;
+	summaryEl: HTMLElement;
+	statusEl:  HTMLElement;
+	linesEl:   HTMLElement;
+	/** Accumulated text for the current streaming chunk (may be partial line) */
+	buffer:    string;
+	/** Whether the content section has been auto-expanded */
+	expanded:  boolean;
+}
+
 export class ChatView extends ItemView {
 	private plugin: FridayPlugin;
 	private runtime: FridayWikiRuntime | null = null;
 
 	// DOM refs
-	private messagesEl: HTMLElement | null = null;
+	private messagesEl:      HTMLElement | null = null;
 	private messagesWrapperEl: HTMLElement | null = null;
-	private inputEl: HTMLTextAreaElement | null = null;
-	private inputWrapperEl: HTMLElement | null = null;
-	private sendBtn: HTMLButtonElement | null = null;
-	private scrollBtn: HTMLElement | null = null;
+	private inputEl:         HTMLTextAreaElement | null = null;
+	private inputWrapperEl:  HTMLElement | null = null;
+	private sendBtn:         HTMLButtonElement | null = null;
+	private scrollBtn:       HTMLElement | null = null;
 
 	// State
 	private conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 	private isStreaming = false;
+	/** Tool blocks keyed by tool-call id */
+	private toolBlocks = new Map<string, ToolBlock>();
 
 	// Pickers
 	private commandPicker: CommandPicker | null = null;
-	private folderPicker: FolderPicker | null = null;
+	private folderPicker:  FolderPicker | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: FridayPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
 
-	getViewType(): string { return VIEW_TYPE_FRIDAY_CHAT; }
+	getViewType():   string { return VIEW_TYPE_FRIDAY_CHAT; }
 	getDisplayText(): string { return 'Friday Chat'; }
-	getIcon(): string { return 'message-square'; }
+	getIcon():       string { return 'message-square'; }
 
 	async onOpen(): Promise<void> {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass('friday-chat-view');
-
 		this.runtime = new FridayWikiRuntime(this.plugin);
-
 		this.buildHeader(container);
 		this.buildMessagesArea(container);
 		this.buildInputArea(container);
@@ -77,13 +100,17 @@ export class ChatView extends ItemView {
 
 		const actionsEl = headerEl.createDiv({ cls: 'friday-chat-actions' });
 
-		// New conversation button
-		const newBtn = actionsEl.createDiv({ cls: 'friday-chat-icon-btn', attr: { title: 'New conversation', 'aria-label': 'New conversation' } });
+		const newBtn = actionsEl.createDiv({
+			cls: 'friday-chat-icon-btn',
+			attr: { title: 'New conversation', 'aria-label': 'New conversation' },
+		});
 		setIcon(newBtn, 'square-pen');
 		newBtn.addEventListener('click', () => this.startNewConversation());
 
-		// Switch to Manual Mode button
-		const switchBtn = actionsEl.createDiv({ cls: 'friday-chat-icon-btn', attr: { title: 'Switch to Manual Mode', 'aria-label': 'Switch to Manual Mode' } });
+		const switchBtn = actionsEl.createDiv({
+			cls: 'friday-chat-icon-btn',
+			attr: { title: 'Switch to Manual Mode', 'aria-label': 'Switch to Manual Mode' },
+		});
 		setIcon(switchBtn, 'settings-2');
 		switchBtn.addEventListener('click', () => this.switchToManualMode());
 	}
@@ -96,7 +123,6 @@ export class ChatView extends ItemView {
 		this.messagesWrapperEl = container.createDiv({ cls: 'friday-chat-messages-wrapper' });
 		this.messagesEl = this.messagesWrapperEl.createDiv({ cls: 'friday-chat-messages' });
 
-		// Scroll-to-bottom button (inside wrapper for absolute positioning)
 		this.scrollBtn = this.messagesWrapperEl.createDiv({ cls: 'friday-scroll-btn' });
 		setIcon(this.scrollBtn, 'chevron-down');
 		this.scrollBtn.addEventListener('click', () => this.scrollToBottom());
@@ -112,25 +138,26 @@ export class ChatView extends ItemView {
 
 	private buildInputArea(container: HTMLElement): void {
 		const inputContainerEl = container.createDiv({ cls: 'friday-chat-input-container' });
-
 		this.inputWrapperEl = inputContainerEl.createDiv({ cls: 'friday-chat-input-wrapper' });
 
 		this.inputEl = this.inputWrapperEl.createEl('textarea', {
 			cls: 'friday-chat-input',
-			attr: { placeholder: 'Message Friday... (/ for commands, @ for folders)', rows: '3' },
+			attr: {
+				placeholder: 'Message Friday... (/ for commands, @ for folders)',
+				rows: '3',
+			},
 		});
 
 		const toolbar = this.inputWrapperEl.createDiv({ cls: 'friday-chat-input-toolbar' });
 		toolbar.createSpan({ cls: 'friday-chat-input-hint', text: '↵ send · ⇧↵ newline' });
-
 		this.sendBtn = toolbar.createEl('button', { cls: 'friday-chat-send-btn', text: 'Send' });
 
 		this.sendBtn.addEventListener('click', () => this.handleSend());
 		this.inputEl.addEventListener('keydown', (e) => this.handleInputKeydown(e));
-		this.inputEl.addEventListener('input', () => this.handleInputChange());
-
-		// Auto-resize textarea
-		this.inputEl.addEventListener('input', () => this.resizeInput());
+		this.inputEl.addEventListener('input', () => {
+			this.handleInputChange();
+			this.resizeInput();
+		});
 	}
 
 	// ─────────────────────────────────────────
@@ -145,9 +172,9 @@ export class ChatView extends ItemView {
 		const cmds = el.createDiv({ cls: 'friday-chat-welcome-commands' });
 		const items: [string, string][] = [
 			['/wiki @folder', 'build a knowledge base from a folder'],
-			['/ask question', 'ask a question across your notes'],
+			['/ask question',  'ask a question across your notes'],
 			['/save [title]', 'save this conversation'],
-			['/publish', 'publish your site'],
+			['/publish',      'publish your site'],
 		];
 		for (const [cmd, desc] of items) {
 			const row = cmds.createDiv({ cls: 'friday-chat-welcome-cmd' });
@@ -167,9 +194,8 @@ export class ChatView extends ItemView {
 			if (e.key === 'ArrowDown') { e.preventDefault(); picker.selectNext(); return; }
 			if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); picker.confirm(); return; }
 			if (e.key === 'Escape') { e.preventDefault(); this.destroyPickers(); return; }
-			if (e.key === 'Tab')   { e.preventDefault(); picker.confirm(); return; }
+			if (e.key === 'Tab')    { e.preventDefault(); picker.confirm(); return; }
 		}
-
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
 			this.handleSend();
@@ -226,7 +252,7 @@ export class ChatView extends ItemView {
 	private insertCommand(command: SlashCommand): void {
 		if (!this.inputEl) return;
 		const text = this.inputEl.value;
-		const pos = this.inputEl.selectionStart ?? 0;
+		const pos  = this.inputEl.selectionStart ?? 0;
 		const newBefore = text.substring(0, pos).replace(/\/\w*$/, `${command.name} `);
 		this.inputEl.value = newBefore + text.substring(pos);
 		this.inputEl.selectionStart = this.inputEl.selectionEnd = newBefore.length;
@@ -237,7 +263,7 @@ export class ChatView extends ItemView {
 	private insertFolder(folder: TFolder): void {
 		if (!this.inputEl) return;
 		const text = this.inputEl.value;
-		const pos = this.inputEl.selectionStart ?? 0;
+		const pos  = this.inputEl.selectionStart ?? 0;
 		const newBefore = text.substring(0, pos).replace(/@[\w/-]*$/, `@${folder.name} `);
 		this.inputEl.value = newBefore + text.substring(pos);
 		this.inputEl.selectionStart = this.inputEl.selectionEnd = newBefore.length;
@@ -263,57 +289,81 @@ export class ChatView extends ItemView {
 		this.inputEl.value = '';
 		this.resizeInput();
 		this.setStreaming(true);
+		this.toolBlocks.clear();
 
 		this.appendUserMessage(text);
 		this.conversationHistory.push({ role: 'user', content: text });
 
 		const assistantEl = this.messagesEl.createDiv({ cls: 'friday-chat-message assistant' });
-		const contentEl = assistantEl.createDiv({ cls: 'friday-chat-message-content' });
+		const contentEl   = assistantEl.createDiv({ cls: 'friday-chat-message-content' });
+		let   assistantText = '';
 
-		// Thinking indicator
+		// Thinking indicator (shown before first chunk)
 		const thinkingEl = contentEl.createDiv({ cls: 'friday-thinking' });
 		thinkingEl.createDiv({ cls: 'friday-spinner' });
 		thinkingEl.appendText('Thinking…');
 
+		// Debounced Markdown render: we schedule a re-render 120ms after the last
+		// text token, so the user sees progressively rendered Markdown during streaming.
+		let mdRenderTimer: ReturnType<typeof setTimeout> | null = null;
+		const scheduleMdRender = () => {
+			if (mdRenderTimer) clearTimeout(mdRenderTimer);
+			mdRenderTimer = setTimeout(async () => {
+				if (assistantText.trim()) {
+					await this.renderMarkdown(contentEl, assistantText);
+					this.scrollToBottom();
+				}
+			}, 120);
+		};
+
 		try {
 			const turn = this.runtime.prepareTurn({ text });
-			let assistantContent = '';
 
 			for await (const chunk of this.runtime.query(turn, this.conversationHistory)) {
-				// Remove thinking indicator on first chunk
-				thinkingEl.remove();
+				thinkingEl.remove(); // no-op after first call
 
-				if (chunk.type === 'text') {
-					assistantContent += chunk.content;
-					this.renderStreamingText(contentEl, assistantContent);
+				const c = chunk as any; // Friday uses custom chunk types beyond StreamChunk
+
+				if (c.type === 'text') {
+					assistantText += c.content as string;
+					// Show plain text immediately for responsiveness, schedule MD render
+					this.renderStreamingText(contentEl, assistantText);
+					scheduleMdRender();
 					this.scrollToBottom();
-				} else if (chunk.type === 'tool_call_start') {
-					assistantContent += '\n';
-					this.appendToolCall(contentEl, chunk.name ?? 'tool', '');
+
+				} else if (c.type === 'tool_call_start') {
+					this.beginToolBlock(contentEl, c.id as string, c.name as string);
 					this.scrollToBottom();
-				} else if (chunk.type === 'tool_call_delta') {
-					// Update last tool call summary
-					this.updateLastToolSummary(contentEl, chunk.delta ?? '');
+
+				} else if (c.type === 'tool_call_delta') {
+					const delta = (c.delta as string) ?? '';
+					this.appendToolDelta(c.id as string, delta);
 					this.scrollToBottom();
-				} else if (chunk.type === 'tool_call_result') {
-					const result = chunk.result ?? '';
-					assistantContent += result;
-					this.finalizeLastToolCall(contentEl, result);
+
+				} else if (c.type === 'tool_call_result') {
+					const result  = (c.result as string) ?? '';
+					const isError = !!(c.isError as boolean);
+					this.finalizeToolBlock(c.id as string, result, isError);
 					this.scrollToBottom();
 				}
 			}
 
-			// Final render with Markdown
+			// Cancel any pending debounced render and do a final definitive Markdown pass
+			if (mdRenderTimer) clearTimeout(mdRenderTimer);
 			thinkingEl.remove();
-			if (assistantContent) {
-				const cleanContent = this.stripProgressHtml(assistantContent);
-				await this.renderMarkdown(contentEl, cleanContent);
-				this.conversationHistory.push({ role: 'assistant', content: cleanContent });
+			if (assistantText.trim()) {
+				await this.renderMarkdown(contentEl, assistantText);
 			}
+
+			if (assistantText.trim()) {
+				this.conversationHistory.push({ role: 'assistant', content: assistantText.trim() });
+			}
+
 		} catch (error) {
+			if (mdRenderTimer) clearTimeout(mdRenderTimer);
 			thinkingEl.remove();
 			contentEl.empty();
-			contentEl.createDiv({ cls: 'friday-chat-error', text: `Error: ${(error as Error).message}` });
+			contentEl.createSpan({ text: `Error: ${(error as Error).message}`, cls: 'friday-error' });
 			console.error('[Friday Chat] Query error:', error);
 		}
 
@@ -322,7 +372,180 @@ export class ChatView extends ItemView {
 	}
 
 	// ─────────────────────────────────────────
-	// Message rendering helpers
+	// Tool block: create / delta / finalize
+	// ─────────────────────────────────────────
+
+	/**
+	 * Create a Claudian-style tool call block (header + collapsible content).
+	 * The content area auto-expands and shows live progress lines.
+	 */
+	private beginToolBlock(containerEl: HTMLElement, id: string, name: string): void {
+		const toolEl = containerEl.createDiv({ cls: 'friday-tool-call' });
+		toolEl.dataset.toolId = id;
+
+		// ── Header ─────────────────────────────────────────────────────────
+		const header = toolEl.createDiv({ cls: 'friday-tool-header' });
+		header.setAttribute('tabindex', '0');
+		header.setAttribute('role', 'button');
+		header.setAttribute('aria-expanded', 'false');
+
+		const iconEl = header.createDiv({ cls: 'friday-tool-icon' });
+		setIcon(iconEl, getToolIcon(name));
+
+		const nameEl = header.createSpan({ cls: 'friday-tool-name', text: name });
+		const summaryEl = header.createSpan({ cls: 'friday-tool-summary' });
+
+		// Spinner in status slot (pure CSS animation — no JS interval needed)
+		const statusEl = header.createDiv({ cls: 'friday-tool-status running' });
+		this.setStatusSpinner(statusEl);
+
+		// ── Content (expandable) ────────────────────────────────────────────
+		const contentEl = toolEl.createDiv({ cls: 'friday-tool-content' });
+		contentEl.style.display = 'none'; // collapsed by default
+
+		const linesEl = contentEl.createDiv({ cls: 'friday-tool-lines' });
+
+		// Click to toggle expand/collapse
+		const toggle = () => {
+			const expanded = toolEl.hasClass('expanded');
+			toolEl.toggleClass('expanded', !expanded);
+			contentEl.style.display = expanded ? 'none' : 'block';
+			header.setAttribute('aria-expanded', String(!expanded));
+		};
+		header.addEventListener('click', toggle);
+		header.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+		});
+
+		this.toolBlocks.set(id, {
+			toolEl, summaryEl, statusEl, linesEl,
+			buffer: '', expanded: false,
+		});
+
+		// Suppress unused-variable lint for nameEl (kept for potential future updates)
+		void nameEl;
+	}
+
+	/**
+	 * Handle a streaming delta for a tool call.
+	 *
+	 * Behavior:
+	 * - Deltas that end with '\n' are treated as discrete progress lines
+	 *   (each becomes its own line in the content area, summary shows the latest)
+	 * - Deltas without trailing '\n' are streaming tokens — they are buffered
+	 *   and appended to the last line (streaming text output, e.g. wiki_query LLM response)
+	 */
+	private appendToolDelta(id: string, delta: string): void {
+		const block = this.toolBlocks.get(id);
+		if (!block) return;
+
+		// Auto-expand the content area on first delta
+		if (!block.expanded) {
+			block.toolEl.addClass('expanded');
+			(block.linesEl.closest('.friday-tool-content') as HTMLElement | null)
+				?.style.setProperty('display', 'block');
+			block.expanded = true;
+		}
+
+		// Accumulate into buffer
+		block.buffer += delta;
+
+		// Split on newlines: completed lines → DOM, remainder stays in buffer
+		const parts = block.buffer.split('\n');
+		// Everything except the last element is a completed line
+		const completedLines = parts.slice(0, -1);
+		block.buffer = parts[parts.length - 1]; // may be '' or partial token
+
+		for (const line of completedLines) {
+			if (!line.trim()) continue; // skip blank lines
+			this.addToolLine(block, line);
+		}
+
+		// If no newline yet but buffer has content, update the in-progress last line
+		if (block.buffer) {
+			this.updateLastToolLine(block, block.buffer);
+		}
+	}
+
+	/** Appends a completed line to the tool content and updates the summary. */
+	private addToolLine(block: ToolBlock, text: string): void {
+		const lineEl = block.linesEl.createDiv({ cls: 'friday-tool-line', text });
+		lineEl.scrollIntoView?.({ block: 'nearest' });
+
+		// Summary: last non-empty line, truncated to 60 chars
+		const truncated = text.length > 60 ? text.slice(0, 60) + '…' : text;
+		block.summaryEl.textContent = truncated;
+	}
+
+	/** Updates or creates the last in-progress (no-newline-yet) line. */
+	private updateLastToolLine(block: ToolBlock, text: string): void {
+		let last = block.linesEl.lastElementChild as HTMLElement | null;
+		if (!last || last.hasClass('friday-tool-line-complete')) {
+			last = block.linesEl.createDiv({ cls: 'friday-tool-line' });
+		}
+		last.textContent = text;
+
+		const truncated = text.length > 60 ? text.slice(0, 60) + '…' : text;
+		block.summaryEl.textContent = truncated;
+	}
+
+	/**
+	 * Finalize a tool block after `tool_call_result`.
+	 * Shows the result lines in content, marks header status as done/error.
+	 */
+	private finalizeToolBlock(id: string, result: string, isError: boolean): void {
+		const block = this.toolBlocks.get(id);
+		if (!block) return;
+
+		// Flush remaining buffer as a line
+		if (block.buffer.trim()) {
+			const lineEl = block.linesEl.createDiv({ cls: 'friday-tool-line friday-tool-line-complete' });
+			lineEl.textContent = block.buffer;
+			block.buffer = '';
+		}
+
+		// Mark all existing lines as complete (no further updates)
+		block.linesEl.querySelectorAll('.friday-tool-line:not(.friday-tool-line-complete)')
+			.forEach(el => el.addClass('friday-tool-line-complete'));
+
+		// Add result lines (separator + result)
+		if (result.trim()) {
+			const sep = block.linesEl.createDiv({ cls: 'friday-tool-result-sep' });
+			sep.style.cssText = 'height:1px;background:var(--background-modifier-border);margin:4px 0;';
+
+			for (const line of result.split('\n')) {
+				if (!line.trim()) continue;
+				const lineEl = block.linesEl.createDiv({ cls: 'friday-tool-line friday-tool-result-line' });
+				lineEl.textContent = line;
+			}
+		}
+
+		// Update summary with result status
+		if (isError) {
+			const short = result.replace(/^error:\s*/i, '').split('\n')[0];
+			block.summaryEl.textContent = short.length > 60 ? short.slice(0, 60) + '…' : short;
+		} else {
+			block.summaryEl.textContent = result.split('\n')[0]?.slice(0, 60) ?? 'Done';
+		}
+
+		// Update status icon: check or ×
+		block.statusEl.removeClass('running');
+		block.statusEl.addClass(isError ? 'error' : 'done');
+		block.statusEl.empty();
+		setIcon(block.statusEl, isError ? 'x' : 'check');
+
+		this.toolBlocks.delete(id);
+	}
+
+	/** Sets status element to CSS-animated spinner (loader-2 + spin class). */
+	private setStatusSpinner(statusEl: HTMLElement): void {
+		statusEl.empty();
+		const spinnerEl = statusEl.createDiv({ cls: 'friday-status-spinner' });
+		setIcon(spinnerEl, 'loader-2');
+	}
+
+	// ─────────────────────────────────────────
+	// Message rendering
 	// ─────────────────────────────────────────
 
 	private appendUserMessage(text: string): void {
@@ -330,7 +553,6 @@ export class ChatView extends ItemView {
 		const messageEl = this.messagesEl.createDiv({ cls: 'friday-chat-message user' });
 		messageEl.createDiv({ cls: 'friday-chat-message-content', text });
 
-		// Hover actions
 		const actions = messageEl.createDiv({ cls: 'friday-chat-user-actions' });
 		const copyBtn = actions.createSpan({ attr: { title: 'Copy' } });
 		setIcon(copyBtn, 'copy');
@@ -349,13 +571,40 @@ export class ChatView extends ItemView {
 		this.scrollToBottom();
 	}
 
-	/** Live streaming text (plain, avoids re-parsing MD on every chunk) */
-	private renderStreamingText(el: HTMLElement, content: string): void {
-		// Keep any tool-call blocks and only re-render the text portion
+	// renderStreamingText is defined below alongside renderMarkdown
+
+	/** Full Markdown render (called on streaming debounce and at end of stream). */
+	private async renderMarkdown(el: HTMLElement, content: string): Promise<void> {
+		if (!content.trim()) return;
+
+		// Preserve tool-call blocks — detach them, re-attach after render
 		const toolCalls = Array.from(el.querySelectorAll('.friday-tool-call'));
 		el.empty();
 		for (const tc of toolCalls) el.appendChild(tc);
 
+		// Render Markdown into a fresh container placed after any tool blocks
+		const mdEl = el.createDiv({ cls: 'friday-md-content' });
+		await MarkdownRenderer.render(this.plugin.app, content, mdEl, '', this);
+	}
+
+	/** Lightweight streaming-text render — keeps tool blocks, shows plain text immediately. */
+	private renderStreamingText(el: HTMLElement, content: string): void {
+		// Keep any existing tool-call blocks
+		const toolCalls = Array.from(el.querySelectorAll('.friday-tool-call'));
+		// Remove any previous md-content or plain-text nodes, but keep tool blocks
+		const mdContainer = el.querySelector('.friday-md-content');
+		if (mdContainer) mdContainer.remove();
+
+		// Remove plain-text nodes (Text nodes + br elements not inside tool blocks)
+		const childrenToRemove: ChildNode[] = [];
+		el.childNodes.forEach(node => {
+			if (!toolCalls.includes(node as HTMLElement)) {
+				childrenToRemove.push(node);
+			}
+		});
+		childrenToRemove.forEach(n => n.remove());
+
+		// Append plain text after tool blocks
 		const lines = content.split('\n');
 		lines.forEach((line, i) => {
 			if (i > 0) el.createEl('br');
@@ -363,100 +612,12 @@ export class ChatView extends ItemView {
 		});
 	}
 
-	/** Proper Markdown rendering (called after stream completes) */
-	private async renderMarkdown(el: HTMLElement, content: string): Promise<void> {
-		el.empty();
-		await MarkdownRenderer.render(
-			this.plugin.app,
-			content,
-			el,
-			'',
-			this,
-		);
-	}
-
-	// ─────────────────────────────────────────
-	// Tool call rendering
-	// ─────────────────────────────────────────
-
-	private appendToolCall(containerEl: HTMLElement, name: string, summary: string): void {
-		const toolEl = containerEl.createDiv({ cls: 'friday-tool-call' });
-
-		const header = toolEl.createDiv({ cls: 'friday-tool-header' });
-
-		const iconEl = header.createDiv({ cls: 'friday-tool-icon' });
-		setIcon(iconEl, 'wrench');
-
-		header.createSpan({ cls: 'friday-tool-name', text: name });
-		header.createSpan({ cls: 'friday-tool-summary', text: summary });
-
-		const statusEl = header.createDiv({ cls: 'friday-tool-status running' });
-		setIcon(statusEl, 'loader-2');
-
-		const contentEl = toolEl.createDiv({ cls: 'friday-tool-content' });
-
-		// Toggle expand/collapse on header click
-		header.addEventListener('click', () => {
-			toolEl.toggleClass('expanded', !toolEl.hasClass('expanded'));
-		});
-
-		// Animate spinner
-		const spinnerInterval = setInterval(() => {
-			if (!document.contains(statusEl)) { clearInterval(spinnerInterval); return; }
-			statusEl.empty();
-			setIcon(statusEl, statusEl.hasClass('running') ? 'loader-2' : 'check');
-		}, 300);
-		(toolEl as any)._spinnerInterval = spinnerInterval;
-		(toolEl as any)._contentEl = contentEl;
-		(toolEl as any)._statusEl = statusEl;
-		(toolEl as any)._spinnerIntervalId = spinnerInterval;
-	}
-
-	private updateLastToolSummary(containerEl: HTMLElement, delta: string): void {
-		const toolCalls = containerEl.querySelectorAll('.friday-tool-call');
-		const last = toolCalls[toolCalls.length - 1] as HTMLElement | undefined;
-		if (!last) return;
-		const summaryEl = last.querySelector('.friday-tool-summary') as HTMLElement | null;
-		if (summaryEl) summaryEl.textContent = (summaryEl.textContent ?? '') + delta;
-		const contentEl = (last as any)._contentEl as HTMLElement | undefined;
-		if (contentEl) {
-			const lines = contentEl.querySelector('.friday-tool-lines') ?? contentEl.createDiv({ cls: 'friday-tool-lines' });
-			lines.textContent = (lines.textContent ?? '') + delta;
-		}
-	}
-
-	private finalizeLastToolCall(containerEl: HTMLElement, result: string): void {
-		const toolCalls = containerEl.querySelectorAll('.friday-tool-call');
-		const last = toolCalls[toolCalls.length - 1] as HTMLElement | undefined;
-		if (!last) return;
-
-		clearInterval((last as any)._spinnerIntervalId);
-		const statusEl = (last as any)._statusEl as HTMLElement | undefined;
-		if (statusEl) {
-			statusEl.removeClass('running');
-			statusEl.addClass('done');
-			statusEl.empty();
-			setIcon(statusEl, 'check');
-		}
-		const contentEl = (last as any)._contentEl as HTMLElement | undefined;
-		if (contentEl && result) {
-			const lines = contentEl.querySelector('.friday-tool-lines') as HTMLElement | null;
-			if (lines) {
-				lines.textContent = result;
-			} else {
-				contentEl.createDiv({ cls: 'friday-tool-lines', text: result });
-			}
-		}
-	}
-
 	// ─────────────────────────────────────────
 	// Scroll
 	// ─────────────────────────────────────────
 
 	private scrollToBottom(): void {
-		if (this.messagesEl) {
-			this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-		}
+		if (this.messagesEl) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
 		this.updateScrollBtn();
 	}
 
@@ -483,20 +644,12 @@ export class ChatView extends ItemView {
 	private startNewConversation(): void {
 		if (this.isStreaming) return;
 		this.conversationHistory = [];
+		this.toolBlocks.clear();
 		if (this.messagesEl) {
 			this.messagesEl.empty();
 			this.appendWelcomeMessage();
 		}
 		this.inputEl?.focus();
-	}
-
-	private stripProgressHtml(content: string): string {
-		return content
-			.replace(/<div class="friday-wiki-progress">[\s\S]*?<\/div>/g, '')
-			.replace(/<div class="friday-progress-hint">[\s\S]*?<\/div>/g, '')
-			.replace(/<[^>]+>/g, '')
-			.replace(/\n{3,}/g, '\n\n')
-			.trim();
 	}
 
 	private switchToManualMode(): void {

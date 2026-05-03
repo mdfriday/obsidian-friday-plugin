@@ -367,6 +367,17 @@ body.theme-light .friday-chat-message-content pre {
 .friday-tool-status.done     { color: var(--color-green); }
 .friday-tool-status.error    { color: var(--color-red); }
 
+/* Spinner wrapper: animates the loader-2 SVG */
+.friday-status-spinner {
+	display: flex;
+	align-items: center;
+}
+.friday-status-spinner svg {
+	width: 14px;
+	height: 14px;
+	animation: friday-spin 0.8s linear infinite;
+}
+
 .friday-tool-content {
 	display: none;
 	padding: 4px 0;
@@ -385,7 +396,13 @@ body.theme-light .friday-chat-message-content pre {
 .friday-tool-line {
 	padding: 1px 0;
 	color: var(--text-muted);
-	white-space: pre;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* Result lines (after tool completes) — slightly brighter */
+.friday-tool-result-line {
+	color: var(--text-normal);
 }
 
 /* ──────────────────────────────────────────────

@@ -100,50 +100,23 @@ export class FridayWikiRuntime implements ChatRuntime {
 		
 		try {
 			// 1. 确保工作空间初始化
-			yield {
-				type: 'tool_call_delta',
-				id: toolId,
-				delta: '⚙️  Initializing workspace...\n',
-			};
+			yield { type: 'tool_call_delta', id: toolId, delta: 'Initializing workspace...' };
 			await this.ensureWorkspaceInitialized();
 			
 			// 2. 配置 LLM
-			yield {
-				type: 'tool_call_delta',
-				id: toolId,
-				delta: '🔧 Configuring LLM (LM Studio)...\n',
-			};
+			yield { type: 'tool_call_delta', id: toolId, delta: 'Configuring LLM (LM Studio)...' };
 			await this.configureLLM();
 			
 			// 3. 获取或创建项目
-			yield {
-				type: 'tool_call_delta',
-				id: toolId,
-				delta: '📚 Getting wiki project...\n',
-			};
+			yield { type: 'tool_call_delta', id: toolId, delta: 'Getting wiki project...' };
 			const projectName = await this.plugin.getOrCreateProjectForFolder(folderPath);
+			yield { type: 'tool_call_delta', id: toolId, delta: `Project: ${projectName}` };
 			
-			yield {
-				type: 'tool_call_delta',
-				id: toolId,
-				delta: `📁 Project: ${projectName}\n\n`,
-			};
+			// 4. 执行 ingest（实时报告关键进度）
+			yield { type: 'tool_call_delta', id: toolId, delta: 'Processing files and generating wiki...' };
 			
-			// 4. 显示处理中动画
-			yield {
-				type: 'tool_call_delta',
-				id: toolId,
-				delta: '<div class="friday-wiki-progress">' +
-				       '<div class="friday-spinner"></div>' +
-				       '<span class="friday-progress-text">Processing files and generating wiki</span>' +
-				       '</div>\n\n' +
-				       '<div class="friday-progress-hint">💡 Detailed progress in DevTools Console (Ctrl/Cmd+Shift+I)</div>\n\n',
-			};
-			
-			// 5. 执行 ingest（收集关键进度）
 			const keyProgress: string[] = [];
 			const result = await this.wikiService.ingest(projectName, (event) => {
-				// 收集关键进度事件
 				if (event.type === 'ingest:file:complete') {
 					const progressText = event.progress 
 						? ` [${event.progress.current}/${event.progress.total}]`
@@ -152,53 +125,44 @@ export class FridayWikiRuntime implements ChatRuntime {
 				} else if (event.type === 'ingest:pages:complete') {
 					keyProgress.push(`✓ Generated ${event.metadata?.pageCount || 0} wiki pages`);
 				}
-				
-				// 所有事件输出到控制台
 				const progressText = event.progress 
 					? ` [${event.progress.current}/${event.progress.total}] (${event.progress.percentage}%)`
 					: '';
 				console.log(`[${event.type}] ${event.message}${progressText}`);
 			});
 			
-			// 6. 显示关键进度摘要（用特殊标记替换之前的动画内容）
-			const progressSummary = keyProgress.length > 0 
-				? keyProgress.join('\n') + '\n\n'
-				: '';
+			// 5. 结果摘要行（每行一个 delta）
+			for (const line of keyProgress) {
+				yield { type: 'tool_call_delta', id: toolId, delta: line };
+			}
 			
-			// 7. 显示结果
-			const resultText = [
-				progressSummary,
-				`✅ **Ingest completed!**\n`,
-				`- **Entities**: ${result.extractedEntities}`,
-				`- **Concepts**: ${result.extractedConcepts}`,
-				`- **Connections**: ${result.extractedConnections}`,
-				result.pagesGenerated ? `- **Pages Generated**: ${result.pagesGenerated}` : '',
-				`- **Total Knowledge**: ${result.extractedEntities + result.extractedConcepts}\n`,
-			].filter(Boolean).join('\n');
+			// 6. 完成结果
+			const resultLines = [
+				`Entities: ${result.extractedEntities}`,
+				`Concepts: ${result.extractedConcepts}`,
+				`Connections: ${result.extractedConnections}`,
+				result.pagesGenerated ? `Pages generated: ${result.pagesGenerated}` : '',
+				`Total knowledge items: ${result.extractedEntities + result.extractedConcepts}`,
+			].filter(Boolean);
 			
 			yield {
 				type: 'tool_call_result',
 				id: toolId,
-				result: resultText,
+				result: resultLines.join('\n'),
 			};
 			
-			// 8. 后续提示
+			// 7. 后续提示（作为 text chunk 出现在工具块之后）
 			yield {
 				type: 'text',
-				content: `\n### 🎉 Wiki ready!
-
-You can now:
-- Ask questions directly
-- Type \`/publish\` to publish to MDFriday
-- Save conversation with \`/save [title]\`
-`,
+				content: `\n\n**Wiki ready!** You can now ask questions, type \`/publish\` to publish, or \`/save [title]\` to save this conversation.\n`,
 			};
 			
 		} catch (error) {
 			yield {
 				type: 'tool_call_result',
 				id: toolId,
-				result: `❌ **Error**: ${error.message}`,
+				result: `Error: ${(error as Error).message}`,
+				isError: true,
 			};
 		}
 	}
@@ -227,53 +191,30 @@ You can now:
 			input: { question },
 		};
 		
-		// 显示查询动画
-		yield {
-			type: 'tool_call_delta',
-			id: toolId,
-			delta: '<div class="friday-wiki-progress">' +
-			       '<div class="friday-spinner"></div>' +
-			       '<span class="friday-progress-text">Searching knowledge base</span>' +
-			       '</div>\n\n',
-		};
+		// Progress message inside the tool block
+		yield { type: 'tool_call_delta', id: toolId, delta: 'Searching knowledge base...' };
 		
 		try {
 			const projectName = await this.plugin.getOrCreateProjectForFolder(this.currentFolderPath);
 			
-			// 流式查询 with progress callback
-			let firstChunk = true;
+			// Close the tool block before streaming the LLM answer.
+			// The answer will arrive as `text` chunks and be Markdown-rendered.
+			yield { type: 'tool_call_result', id: toolId, result: 'Search complete' };
+			
+			// Stream LLM answer as `text` so the View renders it as Markdown
 			for await (const chunk of this.wikiService.queryStream(projectName, question, (event) => {
-				// ✅ 显示查询进度到控制台
 				console.log(`[${event.type}] ${event.message}`);
 			})) {
-				// 第一个 chunk 替换动画
-				if (firstChunk) {
-					yield {
-						type: 'tool_call_delta',
-						id: toolId,
-						delta: chunk,
-					};
-					firstChunk = false;
-				} else {
-					yield {
-						type: 'tool_call_delta',
-						id: toolId,
-						delta: chunk,
-					};
-				}
+				yield { type: 'text', content: chunk };
 			}
 			
-			yield {
-				type: 'tool_call_result',
-				id: toolId,
-				result: '✅ Query completed',
-			};
-			
 		} catch (error) {
+			// If search fails, report it inside the tool block
 			yield {
 				type: 'tool_call_result',
 				id: toolId,
-				result: `❌ **Query error**: ${error.message}`,
+				result: `Query error: ${(error as Error).message}`,
+				isError: true,
 			};
 		}
 	}
