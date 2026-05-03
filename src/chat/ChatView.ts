@@ -497,10 +497,17 @@ export class ChatView extends ItemView {
 		const block = this.toolBlocks.get(id);
 		if (!block) return;
 
-		// Flush remaining buffer as a line
+		// Flush remaining buffer: reuse the existing in-progress line if present
+		// (avoids duplicating content that updateLastToolLine already rendered)
 		if (block.buffer.trim()) {
-			const lineEl = block.linesEl.createDiv({ cls: 'friday-tool-line friday-tool-line-complete' });
-			lineEl.textContent = block.buffer;
+			const last = block.linesEl.lastElementChild as HTMLElement | null;
+			if (last && !last.hasClass('friday-tool-line-complete')) {
+				last.textContent = block.buffer;
+				last.addClass('friday-tool-line-complete');
+			} else {
+				const lineEl = block.linesEl.createDiv({ cls: 'friday-tool-line friday-tool-line-complete' });
+				lineEl.textContent = block.buffer;
+			}
 			block.buffer = '';
 		}
 
@@ -508,8 +515,12 @@ export class ChatView extends ItemView {
 		block.linesEl.querySelectorAll('.friday-tool-line:not(.friday-tool-line-complete)')
 			.forEach(el => el.addClass('friday-tool-line-complete'));
 
-		// Add result lines (separator + result)
-		if (result.trim()) {
+		// Trivial completion tokens ("Done", "Search complete", etc.) don't need
+		// a visible result line — the ✓/✗ icon already signals the outcome.
+		// Only show result lines when they contain substantive output (errors, stats, etc.)
+		const isTrivial = !isError && /^(done|complete|search complete|query completed|ok)\.?$/i.test(result.trim());
+
+		if (!isTrivial && result.trim()) {
 			const sep = block.linesEl.createDiv({ cls: 'friday-tool-result-sep' });
 			sep.style.cssText = 'height:1px;background:var(--background-modifier-border);margin:4px 0;';
 
@@ -520,13 +531,14 @@ export class ChatView extends ItemView {
 			}
 		}
 
-		// Update summary with result status
+		// Update summary
 		if (isError) {
 			const short = result.replace(/^error:\s*/i, '').split('\n')[0];
 			block.summaryEl.textContent = short.length > 60 ? short.slice(0, 60) + '…' : short;
-		} else {
-			block.summaryEl.textContent = result.split('\n')[0]?.slice(0, 60) ?? 'Done';
+		} else if (!isTrivial) {
+			block.summaryEl.textContent = result.split('\n')[0]?.slice(0, 60) ?? '';
 		}
+		// For trivial results, keep the last progress line visible in summary
 
 		// Update status icon: check or ×
 		block.statusEl.removeClass('running');

@@ -191,25 +191,26 @@ export class FridayWikiRuntime implements ChatRuntime {
 			input: { question },
 		};
 		
-		// Progress message inside the tool block
+		// Progress: spinner stays active while we search + stream the answer
 		yield { type: 'tool_call_delta', id: toolId, delta: 'Searching knowledge base...' };
 		
 		try {
 			const projectName = await this.plugin.getOrCreateProjectForFolder(this.currentFolderPath);
-			
-			// Close the tool block before streaming the LLM answer.
-			// The answer will arrive as `text` chunks and be Markdown-rendered.
-			yield { type: 'tool_call_result', id: toolId, result: 'Search complete' };
-			
-			// Stream LLM answer as `text` so the View renders it as Markdown
+
+			yield { type: 'tool_call_delta', id: toolId, delta: 'Querying LLM...' };
+
+			// Stream LLM answer as `text` chunks so the View renders them as Markdown.
+			// We do NOT close the tool block yet — the spinner keeps running.
 			for await (const chunk of this.wikiService.queryStream(projectName, question, (event) => {
 				console.log(`[${event.type}] ${event.message}`);
 			})) {
 				yield { type: 'text', content: chunk };
 			}
-			
+
+			// Only now close the tool block with ✓ — after all text has streamed
+			yield { type: 'tool_call_result', id: toolId, result: 'Done' };
+
 		} catch (error) {
-			// If search fails, report it inside the tool block
 			yield {
 				type: 'tool_call_result',
 				id: toolId,
