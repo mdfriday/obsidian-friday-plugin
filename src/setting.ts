@@ -52,6 +52,7 @@ export class FridaySettingTab extends PluginSettingTab {
 		if (Platform.isDesktop) {
 			this.renderPublishSettings(containerEl);
 			this.renderGeneralSettings(containerEl);
+			this.renderAIProviderSettings(containerEl);
 		}
 
 		// =========================================
@@ -1831,5 +1832,243 @@ export class FridaySettingTab extends PluginSettingTab {
 			console.error('[Friday] License activation failed:', error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Render AI Provider Settings Section (Desktop only)
+	 * Allows users to configure the LLM provider used for chat and wiki features.
+	 */
+	private renderAIProviderSettings(containerEl: HTMLElement): void {
+		const t = (key: string) => this.plugin.i18n.t(`settings.${key}`);
+
+		containerEl.createEl('h2', {
+			text: t('ai_provider_settings'),
+			cls: 'friday-section-title',
+		});
+
+		// Preset base URLs and models per provider type
+		const PRESETS: Record<string, { baseURL: string; model: string }> = {
+			lmstudio:  { baseURL: 'http://localhost:1234/v1', model: 'qwen3.5-9b' },
+			ollama:    { baseURL: 'http://localhost:11434',   model: 'llama3' },
+			openai:    { baseURL: 'https://api.openai.com/v1',                model: 'gpt-4-turbo-preview' },
+			glm:       { baseURL: 'https://open.bigmodel.cn/api/paas/v4',     model: 'glm-4' },
+			deepseek:  { baseURL: 'https://api.deepseek.com/v1',              model: 'deepseek-chat' },
+			moonshot:  { baseURL: 'https://api.moonshot.cn/v1',               model: 'moonshot-v1-8k' },
+			custom:    { baseURL: '', model: '' },
+		};
+
+		// Providers that require an API key
+		const CLOUD_PROVIDERS = new Set(['openai', 'glm', 'deepseek', 'moonshot']);
+		// Providers where base URL is editable
+		const LOCAL_PROVIDERS = new Set(['lmstudio', 'ollama', 'custom']);
+
+		// Provider type dropdown
+		new Setting(containerEl)
+			.setName(t('ai_provider_type'))
+			.setDesc(t('ai_provider_type_desc'))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption('',         '-- ' + t('ai_provider_type') + ' --')
+					.addOption('lmstudio', t('ai_provider_lmstudio'))
+					.addOption('ollama',   t('ai_provider_ollama'))
+					.addOption('openai',   t('ai_provider_openai'))
+					.addOption('glm',      t('ai_provider_glm'))
+					.addOption('deepseek', t('ai_provider_deepseek'))
+					.addOption('moonshot', t('ai_provider_moonshot'))
+					.addOption('custom',   t('ai_provider_custom'))
+					.setValue(this.plugin.settings.aiProviderType || '')
+					.onChange(async (value) => {
+						this.plugin.settings.aiProviderType = value;
+						// Apply preset base URL and model if not already set by user
+						if (value && PRESETS[value]) {
+							if (!this.plugin.settings.aiProviderBaseUrl) {
+								this.plugin.settings.aiProviderBaseUrl = PRESETS[value].baseURL;
+							}
+							if (!this.plugin.settings.aiProviderModel) {
+								this.plugin.settings.aiProviderModel = PRESETS[value].model;
+							}
+						}
+						await this.plugin.saveSettings();
+						renderProviderConfig(value);
+					});
+			});
+
+		// Container for provider-specific config
+		const providerConfigEl = containerEl.createDiv({ cls: 'friday-ai-provider-config' });
+
+		const renderProviderConfig = (providerType: string) => {
+			providerConfigEl.empty();
+			if (!providerType) return;
+
+			const preset = PRESETS[providerType] || { baseURL: '', model: '' };
+			const isCloud = CLOUD_PROVIDERS.has(providerType);
+			const isLocal = LOCAL_PROVIDERS.has(providerType);
+			const isCustom = providerType === 'custom';
+
+			// Sub-section title card
+			const cardEl = providerConfigEl.createDiv({ cls: 'friday-settings-card' });
+			cardEl.createEl('h3', { text: this.getProviderDisplayName(providerType), cls: 'friday-card-title' });
+
+			// Base URL field: show for local providers and custom (not for fixed cloud APIs)
+			if (isLocal) {
+				new Setting(cardEl)
+					.setName(t('ai_provider_base_url'))
+					.setDesc(t('ai_provider_base_url_desc'))
+					.addText((text) => {
+						text
+							.setPlaceholder(preset.baseURL)
+							.setValue(this.plugin.settings.aiProviderBaseUrl || preset.baseURL)
+							.onChange(async (value) => {
+								this.plugin.settings.aiProviderBaseUrl = value.trim() || preset.baseURL;
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.style.width = '100%';
+					});
+			} else if (isCloud && !isCustom) {
+				// For cloud providers, show read-only base URL as informational
+				new Setting(cardEl)
+					.setName(t('ai_provider_base_url'))
+					.setDesc(preset.baseURL);
+				// Allow override by showing an optional advanced URL input
+				new Setting(cardEl)
+					.setName(t('ai_provider_base_url') + ' (Override)')
+					.setDesc(t('ai_provider_base_url_desc'))
+					.addText((text) => {
+						text
+							.setPlaceholder(preset.baseURL)
+							.setValue(this.plugin.settings.aiProviderBaseUrl || '')
+							.onChange(async (value) => {
+								this.plugin.settings.aiProviderBaseUrl = value.trim();
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.style.width = '100%';
+					});
+			}
+
+			// API Key field: required for cloud providers, optional for custom
+			if (isCloud || isCustom) {
+				const apiKeySetting = new Setting(cardEl)
+					.setName(t('ai_provider_api_key'))
+					.setDesc(isCloud && !isCustom
+						? `${t('ai_provider_api_key_desc')} (${t('ai_provider_type') === '必填' ? '必填' : 'Required'})`
+						: t('ai_provider_api_key_desc'))
+					.addText((text) => {
+						text.inputEl.type = 'password';
+						text
+							.setPlaceholder('sk-...')
+							.setValue(this.plugin.settings.aiProviderApiKey || '')
+							.onChange(async (value) => {
+								this.plugin.settings.aiProviderApiKey = value.trim();
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.style.width = '100%';
+					});
+				if (isCloud && !isCustom) {
+					apiKeySetting.nameEl.createSpan({ cls: 'friday-required-badge', text: '*' });
+				}
+			}
+
+			// Model field (all providers)
+			new Setting(cardEl)
+				.setName(t('ai_provider_model'))
+				.setDesc(t('ai_provider_model_desc'))
+				.addText((text) => {
+					text
+						.setPlaceholder(preset.model)
+						.setValue(this.plugin.settings.aiProviderModel || '')
+						.onChange(async (value) => {
+							this.plugin.settings.aiProviderModel = value.trim();
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.style.width = '100%';
+				});
+
+			// ──── Embedding section (optional) ────
+			cardEl.createEl('h4', { text: t('ai_embedding_settings'), cls: 'friday-embedding-title' });
+
+			new Setting(cardEl)
+				.setName(t('ai_embedding_enabled'))
+				.setDesc(t('ai_embedding_enabled_desc'))
+				.addToggle((toggle) => {
+					toggle
+						.setValue(this.plugin.settings.aiEmbeddingEnabled)
+						.onChange(async (value) => {
+							this.plugin.settings.aiEmbeddingEnabled = value;
+							await this.plugin.saveSettings();
+							renderEmbeddingConfig(value);
+						});
+				});
+
+			const embeddingConfigEl = cardEl.createDiv({ cls: 'friday-embedding-config' });
+			const renderEmbeddingConfig = (enabled: boolean) => {
+				embeddingConfigEl.empty();
+				if (!enabled) return;
+
+				const embPreset = PRESETS[this.plugin.settings.aiEmbeddingType] || { baseURL: '', model: '' };
+
+				new Setting(embeddingConfigEl)
+					.setName(t('ai_embedding_type'))
+					.setDesc(t('ai_embedding_type_desc'))
+					.addDropdown((dropdown) => {
+						dropdown
+							.addOption('lmstudio', t('ai_provider_lmstudio'))
+							.addOption('ollama',   t('ai_provider_ollama'))
+							.setValue(this.plugin.settings.aiEmbeddingType || 'lmstudio')
+							.onChange(async (value) => {
+								this.plugin.settings.aiEmbeddingType = value;
+								await this.plugin.saveSettings();
+								renderEmbeddingConfig(true);
+							});
+					});
+
+				new Setting(embeddingConfigEl)
+					.setName(t('ai_embedding_base_url'))
+					.setDesc(t('ai_embedding_base_url_desc'))
+					.addText((text) => {
+						text
+							.setPlaceholder(embPreset.baseURL)
+							.setValue(this.plugin.settings.aiEmbeddingBaseUrl || '')
+							.onChange(async (value) => {
+								this.plugin.settings.aiEmbeddingBaseUrl = value.trim();
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.style.width = '100%';
+					});
+
+				new Setting(embeddingConfigEl)
+					.setName(t('ai_embedding_model'))
+					.setDesc(t('ai_embedding_model_desc'))
+					.addText((text) => {
+						text
+							.setPlaceholder('text-embedding-nomic-embed-text-v2-moe')
+							.setValue(this.plugin.settings.aiEmbeddingModel || '')
+							.onChange(async (value) => {
+								this.plugin.settings.aiEmbeddingModel = value.trim();
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.style.width = '100%';
+					});
+			};
+
+			// Render initial embedding config state
+			renderEmbeddingConfig(this.plugin.settings.aiEmbeddingEnabled);
+		};
+
+		// Initial render based on current settings
+		renderProviderConfig(this.plugin.settings.aiProviderType || '');
+	}
+
+	private getProviderDisplayName(type: string): string {
+		const t = (key: string) => this.plugin.i18n.t(`settings.${key}`);
+		const names: Record<string, string> = {
+			lmstudio: t('ai_provider_lmstudio'),
+			ollama:   t('ai_provider_ollama'),
+			openai:   t('ai_provider_openai'),
+			glm:      t('ai_provider_glm'),
+			deepseek: t('ai_provider_deepseek'),
+			moonshot: t('ai_provider_moonshot'),
+			custom:   t('ai_provider_custom'),
+		};
+		return names[type] || type;
 	}
 }

@@ -96,3 +96,47 @@
   color: var(--color-red);
   border: 1px solid rgba(var(--color-red-rgb), 0.3);
 }
+
+/* ───────────────────────────────────────────────
+   AI Provider Settings
+   ─────────────────────────────────────────────── */
+
+.friday-ai-provider-config {
+  margin-top: 4px;
+}
+
+.friday-settings-card {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+}
+
+.friday-card-title {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.friday-embedding-title {
+  margin-top: 20px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.friday-embedding-config {
+  margin-top: 4px;
+}
+
+.friday-required-badge {
+  color: var(--color-red);
+  margin-left: 2px;
+  font-weight: bold;
+}

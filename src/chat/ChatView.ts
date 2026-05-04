@@ -75,6 +75,11 @@ export class ChatView extends ItemView {
 		container.addClass('friday-chat-view');
 		this.runtime = new FridayWikiRuntime(this.plugin);
 		this.buildHeader(container);
+
+		if (!this.plugin.settings.aiProviderType) {
+			this.buildAIProviderNotConfiguredBanner(container);
+		}
+
 		this.buildMessagesArea(container);
 		this.buildInputArea(container);
 	}
@@ -113,6 +118,31 @@ export class ChatView extends ItemView {
 		});
 		setIcon(switchBtn, 'settings-2');
 		switchBtn.addEventListener('click', () => this.switchToManualMode());
+	}
+
+	// ─────────────────────────────────────────
+	// Build: AI provider not configured banner
+	// ─────────────────────────────────────────
+
+	private buildAIProviderNotConfiguredBanner(container: HTMLElement): void {
+		const t = (key: string) => this.plugin.i18n.t(`settings.${key}`);
+		const banner = container.createDiv({ cls: 'friday-ai-banner friday-ai-banner--warning' });
+
+		const iconEl = banner.createDiv({ cls: 'friday-ai-banner-icon' });
+		setIcon(iconEl, 'alert-triangle');
+
+		const textEl = banner.createDiv({ cls: 'friday-ai-banner-text' });
+		textEl.createEl('strong', { text: t('ai_provider_not_configured') });
+		textEl.createEl('p', { text: t('ai_provider_not_configured_desc') });
+
+		const btn = banner.createEl('button', {
+			cls: 'friday-ai-banner-btn',
+			text: t('ai_provider_go_to_settings'),
+		});
+		btn.addEventListener('click', () => {
+			(this.plugin.app as any).setting?.open();
+			(this.plugin.app as any).setting?.openTabById(this.plugin.manifest.id);
+		});
 	}
 
 	// ─────────────────────────────────────────

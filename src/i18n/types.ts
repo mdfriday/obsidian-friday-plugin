@@ -181,6 +181,36 @@ export interface TranslationNamespace {
 		reset_input_placeholder: string;
 		reset_sync_success: string;
 		reset_sync_failed: string;
+
+		// AI Provider settings
+		ai_provider_settings: string;
+		ai_provider_type: string;
+		ai_provider_type_desc: string;
+		ai_provider_lmstudio: string;
+		ai_provider_ollama: string;
+		ai_provider_openai: string;
+		ai_provider_glm: string;
+		ai_provider_deepseek: string;
+		ai_provider_moonshot: string;
+		ai_provider_custom: string;
+		ai_provider_base_url: string;
+		ai_provider_base_url_desc: string;
+		ai_provider_api_key: string;
+		ai_provider_api_key_desc: string;
+		ai_provider_model: string;
+		ai_provider_model_desc: string;
+		ai_embedding_settings: string;
+		ai_embedding_enabled: string;
+		ai_embedding_enabled_desc: string;
+		ai_embedding_type: string;
+		ai_embedding_type_desc: string;
+		ai_embedding_base_url: string;
+		ai_embedding_base_url_desc: string;
+		ai_embedding_model: string;
+		ai_embedding_model_desc: string;
+		ai_provider_not_configured: string;
+		ai_provider_not_configured_desc: string;
+		ai_provider_go_to_settings: string;
 	};
 
 	// Main UI translations

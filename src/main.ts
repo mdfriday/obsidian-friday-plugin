@@ -82,6 +82,16 @@ interface FridaySettings {
 	showEditorStatusDisplay: boolean;
 	// Enterprise Settings
 	enterpriseServerUrl: string;
+	// AI Provider Settings
+	aiProviderType: string;
+	aiProviderBaseUrl: string;
+	aiProviderApiKey: string;
+	aiProviderModel: string;
+	// Text Embedding Settings (optional)
+	aiEmbeddingEnabled: boolean;
+	aiEmbeddingType: string;
+	aiEmbeddingBaseUrl: string;
+	aiEmbeddingModel: string;
 }
 
 const DEFAULT_SETTINGS: FridaySettings = {
@@ -116,6 +126,16 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	showEditorStatusDisplay: false,
 	// Enterprise Settings defaults
 	enterpriseServerUrl: '',
+	// AI Provider Settings defaults
+	aiProviderType: '',
+	aiProviderBaseUrl: '',
+	aiProviderApiKey: '',
+	aiProviderModel: '',
+	// Text Embedding Settings defaults
+	aiEmbeddingEnabled: false,
+	aiEmbeddingType: 'lmstudio',
+	aiEmbeddingBaseUrl: '',
+	aiEmbeddingModel: '',
 }
 
 export const FRIDAY_ICON = 'dice-5';
@@ -2167,6 +2187,33 @@ export default class FridayPlugin extends Plugin {
 			await config.set(workspace, 'site.downloadServer', this.settings.downloadServer);
 			await config.set(workspace, 'publish.method', this.settings.publishMethod);
 
+			// ========================================
+			// AI Provider Settings
+			// ========================================
+			if (this.settings.aiProviderType) {
+				const llmConfig: Record<string, any> = {
+					type: this.settings.aiProviderType,
+					baseURL: this.settings.aiProviderBaseUrl,
+					model: this.settings.aiProviderModel,
+					defaultModel: this.settings.aiProviderModel,
+					maxTokens: 32768,
+				};
+				if (this.settings.aiProviderApiKey) {
+					llmConfig.apiKey = this.settings.aiProviderApiKey;
+				}
+				await config.set(workspace, 'llm', llmConfig);
+
+				// Embedding config (optional)
+				if (this.settings.aiEmbeddingEnabled && this.settings.aiEmbeddingType) {
+					const embeddingConfig: Record<string, any> = {
+						type: this.settings.aiEmbeddingType,
+						baseURL: this.settings.aiEmbeddingBaseUrl || this.settings.aiProviderBaseUrl,
+						model: this.settings.aiEmbeddingModel,
+					};
+					await config.set(workspace, 'llm.embedding', embeddingConfig);
+				}
+			}
+
 		} catch (error) {
 			console.error('[Friday] Error saving settings to Global Config:', error);
 			// Don't throw error - this is not critical, settings are already saved to Obsidian storage
@@ -2295,6 +2342,27 @@ export default class FridayPlugin extends Plugin {
 			}
 			if (!this.settings.netlifyProjectId && foundryConfig['publish']?.netlify?.siteId) {
 				this.settings.netlifyProjectId = foundryConfig['publish'].netlify.siteId;
+			}
+
+			// ========================================
+			// Load AI Provider Settings (only if local setting is empty)
+			// ========================================
+			const llmConfig = foundryConfig['llm'];
+			if (!this.settings.aiProviderType && llmConfig?.type) {
+				this.settings.aiProviderType = llmConfig.type;
+				if (llmConfig.baseURL) this.settings.aiProviderBaseUrl = llmConfig.baseURL;
+				if (llmConfig.apiKey) this.settings.aiProviderApiKey = llmConfig.apiKey;
+				if (llmConfig.model || llmConfig.defaultModel) {
+					this.settings.aiProviderModel = llmConfig.model || llmConfig.defaultModel;
+				}
+			}
+			// Load embedding config
+			const embeddingConfig = foundryConfig['llm.embedding'];
+			if (embeddingConfig?.type && embeddingConfig.type !== 'none') {
+				this.settings.aiEmbeddingEnabled = true;
+				this.settings.aiEmbeddingType = embeddingConfig.type;
+				if (embeddingConfig.baseURL) this.settings.aiEmbeddingBaseUrl = embeddingConfig.baseURL;
+				if (embeddingConfig.model) this.settings.aiEmbeddingModel = embeddingConfig.model;
 			}
 		} catch (error) {
 			console.error('[Friday] Error loading settings from Global Config:', error);

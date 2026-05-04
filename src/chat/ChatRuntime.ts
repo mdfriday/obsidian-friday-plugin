@@ -104,7 +104,7 @@ export class FridayWikiRuntime implements ChatRuntime {
 			await this.ensureWorkspaceInitialized();
 			
 			// 2. 配置 LLM
-			yield { type: 'tool_call_delta', id: toolId, delta: 'Configuring LLM (LM Studio)...' };
+			yield { type: 'tool_call_delta', id: toolId, delta: `Configuring LLM (${this.plugin.settings.aiProviderType || 'unknown'})...` };
 			await this.configureLLM();
 			
 			// 3. 获取或创建项目
@@ -352,22 +352,53 @@ Continue chatting to improve your wiki, then publish again to update it.
 	
 	/**
 	 * 辅助方法：配置 LLM
+	 * 
+	 * 从 plugin.settings 读取用户配置的 AI Provider，写入 foundry global config。
+	 * 如果用户尚未配置，则抛出错误提示用户先完成配置。
 	 */
 	private async configureLLM(): Promise<void> {
-		// 直接使用 plugin 的 foundryGlobalConfigService
 		if (!this.plugin.foundryGlobalConfigService) {
 			throw new Error('Global config service not initialized');
 		}
-		
-		await this.plugin.foundryGlobalConfigService.set(this.plugin.absWorkspacePath, 'llm', {
-			type: 'lmstudio',
-			baseUrl: process.env.LLM_BASE_URL || 'http://localhost:1234',
-			model: process.env.LLM_MODEL || 'qwen2.5-coder:14b',
+
+		const { aiProviderType, aiProviderBaseUrl, aiProviderApiKey, aiProviderModel } = this.plugin.settings;
+
+		if (!aiProviderType) {
+			throw new Error('AI provider not configured. Please open Settings → AI Provider Settings to configure an AI model.');
+		}
+
+		// Cloud providers require an API key
+		const cloudProviders = ['openai', 'glm', 'deepseek', 'moonshot'];
+		if (cloudProviders.includes(aiProviderType) && !aiProviderApiKey) {
+			throw new Error(`${aiProviderType} requires an API key. Please configure it in Settings → AI Provider Settings.`);
+		}
+
+		// Build the LLM config (compatible with LLMServiceConfig + wiki adapter field names)
+		const llmConfig: Record<string, any> = {
+			type: aiProviderType,
+			baseURL: aiProviderBaseUrl,
+			model: aiProviderModel,
+			defaultModel: aiProviderModel,
 			maxTokens: 32768,
-			contextLength: 262144,
-		});
-		
-		// ✅ 默认输出语言设置为英语
+		};
+		if (aiProviderApiKey) {
+			llmConfig.apiKey = aiProviderApiKey;
+		}
+
+		await this.plugin.foundryGlobalConfigService.set(this.plugin.absWorkspacePath, 'llm', llmConfig);
+
+		// Configure embedding if enabled
+		const { aiEmbeddingEnabled, aiEmbeddingType, aiEmbeddingBaseUrl, aiEmbeddingModel } = this.plugin.settings;
+		if (aiEmbeddingEnabled && aiEmbeddingType) {
+			const embeddingConfig: Record<string, any> = {
+				type: aiEmbeddingType,
+				baseURL: aiEmbeddingBaseUrl || aiProviderBaseUrl,
+				model: aiEmbeddingModel,
+			};
+			await this.plugin.foundryGlobalConfigService.set(this.plugin.absWorkspacePath, 'llm.embedding', embeddingConfig);
+		}
+
+		// Default output language
 		await this.plugin.foundryGlobalConfigService.set(
 			this.plugin.absWorkspacePath,
 			'wiki.outputLanguage',

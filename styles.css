@@ -977,6 +977,40 @@
   color: var(--color-red);
   border: 1px solid rgba(var(--color-red-rgb), 0.3);
 }
+.friday-ai-provider-config {
+  margin-top: 4px;
+}
+.friday-settings-card {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+}
+.friday-card-title {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.friday-embedding-title {
+  margin-top: 20px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.friday-embedding-config {
+  margin-top: 4px;
+}
+.friday-required-badge {
+  color: var(--color-red);
+  margin-left: 2px;
+  font-weight: bold;
+}
 
 /* src/styles/project-modal.css */
 .friday-project-suggestion {
@@ -1927,4 +1961,51 @@ body.theme-light .friday-chat-message-content pre {
   background: var(--background-secondary);
   border-radius: 4px;
   border-left: 2px solid var(--text-muted);
+}
+.friday-ai-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.friday-ai-banner--warning {
+  background-color: rgba(var(--color-orange-rgb, 255, 140, 0), 0.1);
+  border: 1px solid rgba(var(--color-orange-rgb, 255, 140, 0), 0.35);
+  color: var(--text-normal);
+}
+.friday-ai-banner-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-orange, #ff8c00);
+}
+.friday-ai-banner-icon .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+.friday-ai-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+.friday-ai-banner-text strong {
+  display: block;
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+.friday-ai-banner-text p {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+}
+.friday-ai-banner-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  white-space: nowrap;
 }
