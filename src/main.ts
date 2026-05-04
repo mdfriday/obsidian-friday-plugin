@@ -91,6 +91,7 @@ interface FridaySettings {
 	aiEmbeddingEnabled: boolean;
 	aiEmbeddingType: string;
 	aiEmbeddingBaseUrl: string;
+	aiEmbeddingApiKey: string;
 	aiEmbeddingModel: string;
 }
 
@@ -133,8 +134,9 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	aiProviderModel: '',
 	// Text Embedding Settings defaults
 	aiEmbeddingEnabled: false,
-	aiEmbeddingType: 'lmstudio',
+	aiEmbeddingType: '',
 	aiEmbeddingBaseUrl: '',
+	aiEmbeddingApiKey: '',
 	aiEmbeddingModel: '',
 }
 
@@ -2203,13 +2205,17 @@ export default class FridayPlugin extends Plugin {
 				}
 				await config.set(workspace, 'llm', llmConfig);
 
-				// Embedding config (optional)
-				if (this.settings.aiEmbeddingEnabled && this.settings.aiEmbeddingType) {
+				// Embedding config (optional) — activated by selecting a provider type
+				const embType = this.settings.aiEmbeddingType;
+				if (embType && embType !== 'none') {
 					const embeddingConfig: Record<string, any> = {
-						type: this.settings.aiEmbeddingType,
-						baseURL: this.settings.aiEmbeddingBaseUrl || this.settings.aiProviderBaseUrl,
+						type: embType,
+						baseURL: this.settings.aiEmbeddingBaseUrl,
 						model: this.settings.aiEmbeddingModel,
 					};
+					if (this.settings.aiEmbeddingApiKey) {
+						embeddingConfig.apiKey = this.settings.aiEmbeddingApiKey;
+					}
 					await config.set(workspace, 'llm.embedding', embeddingConfig);
 				}
 			}
@@ -2362,6 +2368,7 @@ export default class FridayPlugin extends Plugin {
 				this.settings.aiEmbeddingEnabled = true;
 				this.settings.aiEmbeddingType = embeddingConfig.type;
 				if (embeddingConfig.baseURL) this.settings.aiEmbeddingBaseUrl = embeddingConfig.baseURL;
+				if (embeddingConfig.apiKey) this.settings.aiEmbeddingApiKey = embeddingConfig.apiKey;
 				if (embeddingConfig.model) this.settings.aiEmbeddingModel = embeddingConfig.model;
 			}
 		} catch (error) {

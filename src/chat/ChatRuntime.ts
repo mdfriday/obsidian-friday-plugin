@@ -387,14 +387,17 @@ Continue chatting to improve your wiki, then publish again to update it.
 
 		await this.plugin.foundryGlobalConfigService.set(this.plugin.absWorkspacePath, 'llm', llmConfig);
 
-		// Configure embedding if enabled
-		const { aiEmbeddingEnabled, aiEmbeddingType, aiEmbeddingBaseUrl, aiEmbeddingModel } = this.plugin.settings;
-		if (aiEmbeddingEnabled && aiEmbeddingType) {
+		// Configure embedding — activated when a provider type is selected
+		const { aiEmbeddingType, aiEmbeddingBaseUrl, aiEmbeddingApiKey, aiEmbeddingModel } = this.plugin.settings;
+		if (aiEmbeddingType && aiEmbeddingType !== 'none') {
 			const embeddingConfig: Record<string, any> = {
 				type: aiEmbeddingType,
-				baseURL: aiEmbeddingBaseUrl || aiProviderBaseUrl,
+				baseURL: aiEmbeddingBaseUrl,
 				model: aiEmbeddingModel,
 			};
+			if (aiEmbeddingApiKey) {
+				embeddingConfig.apiKey = aiEmbeddingApiKey;
+			}
 			await this.plugin.foundryGlobalConfigService.set(this.plugin.absWorkspacePath, 'llm.embedding', embeddingConfig);
 		}
 
