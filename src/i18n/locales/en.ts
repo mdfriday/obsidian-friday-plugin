@@ -251,6 +251,13 @@ export const en: TranslationNamespace = {
 		reset_sync_success: "Cloud data reset successfully! You can now upload your local data.",
 		reset_sync_failed: "Failed to reset cloud data: {{error}}",
 
+		// AI Output Language
+		ai_output_language: "AI Output Language",
+		ai_output_language_desc: "Language for AI-generated responses in chat and wiki. Auto follows your Obsidian UI language.",
+		ai_output_lang_auto: "Auto (follow Obsidian language)",
+		ai_output_lang_en: "English",
+		ai_output_lang_zh: "Chinese (Simplified) / 中文",
+
 		// AI Provider settings
 		ai_provider_settings: "AI Provider Settings",
 		ai_provider_type: "AI Provider",
@@ -280,6 +287,56 @@ export const en: TranslationNamespace = {
 		ai_provider_not_configured: "AI Provider Not Configured",
 		ai_provider_not_configured_desc: "Please configure an AI provider in Settings before using chat features.",
 		ai_provider_go_to_settings: "Open Settings",
+	},
+
+	chat: {
+		// Header / controls
+		title: "Friday Chat",
+		new_conversation: "New conversation",
+		switch_to_manual: "Switch to Manual Mode",
+
+		// Input area
+		input_placeholder: "Message Friday... (/ for commands, @ for folders)",
+		input_hint: "↵ send · ⇧↵ newline",
+		send: "Send",
+		sending: "Sending…",
+		thinking: "Thinking…",
+		copied: "copied",
+
+		// Welcome screen
+		welcome_greeting: "Hello, how can I help?",
+		welcome_hint: "Your AI assistant for Obsidian notes.",
+		cmd_wiki_desc: "build a knowledge base from a folder",
+		cmd_ask_desc: "ask a question across your notes",
+		cmd_save_desc: "save this conversation",
+		cmd_publish_desc: "publish your site",
+
+		// Runtime — ingest
+		ingest_starting: "🚀 Starting wiki ingest for `{{folder}}`...\n\n",
+		ingest_init_workspace: "Initializing workspace...",
+		ingest_configure_llm: "Configuring LLM ({{provider}})...",
+		ingest_get_project: "Getting wiki project...",
+		ingest_processing: "Processing files and generating wiki...",
+		ingest_ready: "\n\n**Wiki ready!** You can now ask questions, type `/publish` to publish, or `/save [title]` to save this conversation.\n",
+		ingest_no_folder: "❌ **Error**: Please specify a folder.\n\n**Usage**: `/wiki @folder-name`",
+
+		// Runtime — query
+		query_no_wiki: "⚠️ **No active wiki project**\n\nPlease ingest a folder first using `/wiki @folder-name`",
+		query_searching: "Searching knowledge base...",
+		query_querying: "Querying LLM...",
+
+		// Runtime — save
+		save_no_wiki: "⚠️ **No active wiki project**",
+		save_saving: "💾 Saving conversation: \"{{title}}\"...\n",
+		save_complete: "✅ **Conversation saved!**\n\nFile: `{{file}}`\n\nThe conversation has been automatically ingested into the wiki.\n\nContinue asking questions or `/publish` to share your wiki.\n",
+
+		// Runtime — publish
+		publish_no_wiki: "⚠️ **No wiki to publish**",
+		publish_starting: "📤 Publishing to MDFriday...\n\n",
+		publish_live: "\n### 🎊 Your wiki is live!\n\nContinue chatting to improve your wiki, then publish again to update it.\n",
+
+		// Runtime — unknown command
+		unknown_cmd: "❌ **Unknown command**: `{{cmd}}`\n\nAvailable commands:\n• `/wiki @folder` - Ingest folder into wiki\n• `/ask question` - Query wiki (or just type directly)\n• `/save [title]` - Save conversation\n• `/publish` - Publish wiki to MDFriday\n",
 	},
 
 	ui: {

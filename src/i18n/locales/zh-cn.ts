@@ -247,6 +247,13 @@ export const zhCn: TranslationNamespace = {
 		reset_sync_success: "云端数据重置成功！您现在可以上传本地数据。",
 		reset_sync_failed: "重置云端数据失败：{{error}}",
 
+		// AI 输出语言
+		ai_output_language: "AI 输出语言",
+		ai_output_language_desc: "对话和知识库功能中 AI 回复使用的语言。自动模式跟随 Obsidian 界面语言。",
+		ai_output_lang_auto: "自动（跟随 Obsidian 语言）",
+		ai_output_lang_en: "英语 / English",
+		ai_output_lang_zh: "中文（简体）",
+
 		// AI 模型配置
 		ai_provider_settings: "AI 模型配置",
 		ai_provider_type: "AI 模型提供商",
@@ -276,6 +283,56 @@ export const zhCn: TranslationNamespace = {
 		ai_provider_not_configured: "未配置 AI 模型",
 		ai_provider_not_configured_desc: "请先在设置中配置 AI 模型提供商，然后再使用对话功能。",
 		ai_provider_go_to_settings: "打开设置",
+	},
+
+	chat: {
+		// 标题 / 操作
+		title: "Friday Chat",
+		new_conversation: "新建对话",
+		switch_to_manual: "切换到手动模式",
+
+		// 输入区
+		input_placeholder: "发送消息... （/ 输入命令，@ 选择文件夹）",
+		input_hint: "↵ 发送 · ⇧↵ 换行",
+		send: "发送",
+		sending: "发送中…",
+		thinking: "思考中…",
+		copied: "已复制",
+
+		// 欢迎界面
+		welcome_greeting: "你好，有什么可以帮你？",
+		welcome_hint: "你的 Obsidian AI 助手。",
+		cmd_wiki_desc: "将文件夹构建为知识库",
+		cmd_ask_desc: "跨笔记提问",
+		cmd_save_desc: "保存本次对话",
+		cmd_publish_desc: "发布你的站点",
+
+		// 运行时 — 摄入
+		ingest_starting: "🚀 开始构建知识库：`{{folder}}`...\n\n",
+		ingest_init_workspace: "初始化工作区...",
+		ingest_configure_llm: "配置 LLM（{{provider}}）...",
+		ingest_get_project: "获取知识库项目...",
+		ingest_processing: "处理文件并生成知识库...",
+		ingest_ready: "\n\n**知识库已就绪！** 你可以开始提问，输入 `/publish` 发布，或 `/save [标题]` 保存本次对话。\n",
+		ingest_no_folder: "❌ **错误**：请指定一个文件夹。\n\n**用法**：`/wiki @文件夹名`",
+
+		// 运行时 — 查询
+		query_no_wiki: "⚠️ **没有活跃的知识库**\n\n请先使用 `/wiki @文件夹名` 摄入一个文件夹",
+		query_searching: "搜索知识库...",
+		query_querying: "查询 LLM...",
+
+		// 运行时 — 保存
+		save_no_wiki: "⚠️ **没有活跃的知识库**",
+		save_saving: "💾 保存对话：「{{title}}」...\n",
+		save_complete: "✅ **对话已保存！**\n\n文件：`{{file}}`\n\n该对话已自动摄入到知识库中。\n\n继续提问或 `/publish` 分享你的知识库。\n",
+
+		// 运行时 — 发布
+		publish_no_wiki: "⚠️ **没有可发布的知识库**",
+		publish_starting: "📤 正在发布到 MDFriday...\n\n",
+		publish_live: "\n### 🎊 你的知识库已上线！\n\n继续对话完善内容，再次 `/publish` 即可更新。\n",
+
+		// 运行时 — 未知命令
+		unknown_cmd: "❌ **未知命令**：`{{cmd}}`\n\n可用命令：\n• `/wiki @文件夹` — 将文件夹构建为知识库\n• `/ask 问题` — 查询知识库（或直接输入）\n• `/save [标题]` — 保存对话\n• `/publish` — 发布知识库到 MDFriday\n",
 	},
 
 	ui: {

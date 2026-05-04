@@ -182,6 +182,13 @@ export interface TranslationNamespace {
 		reset_sync_success: string;
 		reset_sync_failed: string;
 
+		// AI Output Language
+		ai_output_language: string;
+		ai_output_language_desc: string;
+		ai_output_lang_auto: string;
+		ai_output_lang_en: string;
+		ai_output_lang_zh: string;
+
 		// AI Provider settings
 		ai_provider_settings: string;
 		ai_provider_type: string;
@@ -211,6 +218,57 @@ export interface TranslationNamespace {
 		ai_provider_not_configured: string;
 		ai_provider_not_configured_desc: string;
 		ai_provider_go_to_settings: string;
+	};
+
+	// Chat view translations
+	chat: {
+		// Header / controls
+		title: string;
+		new_conversation: string;
+		switch_to_manual: string;
+
+		// Input area
+		input_placeholder: string;
+		input_hint: string;
+		send: string;
+		sending: string;
+		thinking: string;
+		copied: string;
+
+		// Welcome screen
+		welcome_greeting: string;
+		welcome_hint: string;
+		cmd_wiki_desc: string;
+		cmd_ask_desc: string;
+		cmd_save_desc: string;
+		cmd_publish_desc: string;
+
+		// Runtime — ingest
+		ingest_starting: string;
+		ingest_init_workspace: string;
+		ingest_configure_llm: string;
+		ingest_get_project: string;
+		ingest_processing: string;
+		ingest_ready: string;
+		ingest_no_folder: string;
+
+		// Runtime — query
+		query_no_wiki: string;
+		query_searching: string;
+		query_querying: string;
+
+		// Runtime — save
+		save_no_wiki: string;
+		save_saving: string;
+		save_complete: string;
+
+		// Runtime — publish
+		publish_no_wiki: string;
+		publish_starting: string;
+		publish_live: string;
+
+		// Runtime — unknown command
+		unknown_cmd: string;
 	};
 
 	// Main UI translations

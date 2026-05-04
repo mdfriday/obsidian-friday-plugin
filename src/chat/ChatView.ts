@@ -66,7 +66,7 @@ export class ChatView extends ItemView {
 	}
 
 	getViewType():   string { return VIEW_TYPE_FRIDAY_CHAT; }
-	getDisplayText(): string { return 'Friday Chat'; }
+	getDisplayText(): string { return this.plugin.i18n.t('chat.title'); }
 	getIcon():       string { return 'message-square'; }
 
 	async onOpen(): Promise<void> {
@@ -94,6 +94,7 @@ export class ChatView extends ItemView {
 	// ─────────────────────────────────────────
 
 	private buildHeader(container: HTMLElement): void {
+		const t = (k: string) => this.plugin.i18n.t(`chat.${k}`);
 		const headerEl = container.createDiv({ cls: 'friday-chat-header' });
 
 		const titleContainer = headerEl.createDiv({ cls: 'friday-chat-title-container' });
@@ -101,20 +102,20 @@ export class ChatView extends ItemView {
 			cls: 'friday-chat-logo',
 			attr: { src: 'https://gohugo.net/mdfriday.svg', alt: 'MDFriday', width: '20', height: '20' },
 		});
-		titleContainer.createSpan({ cls: 'friday-chat-title', text: 'Friday Chat' });
+		titleContainer.createSpan({ cls: 'friday-chat-title', text: t('title') });
 
 		const actionsEl = headerEl.createDiv({ cls: 'friday-chat-actions' });
 
 		const newBtn = actionsEl.createDiv({
 			cls: 'friday-chat-icon-btn',
-			attr: { title: 'New conversation', 'aria-label': 'New conversation' },
+			attr: { title: t('new_conversation'), 'aria-label': t('new_conversation') },
 		});
 		setIcon(newBtn, 'square-pen');
 		newBtn.addEventListener('click', () => this.startNewConversation());
 
 		const switchBtn = actionsEl.createDiv({
 			cls: 'friday-chat-icon-btn',
-			attr: { title: 'Switch to Manual Mode', 'aria-label': 'Switch to Manual Mode' },
+			attr: { title: t('switch_to_manual'), 'aria-label': t('switch_to_manual') },
 		});
 		setIcon(switchBtn, 'settings-2');
 		switchBtn.addEventListener('click', () => this.switchToManualMode());
@@ -167,20 +168,21 @@ export class ChatView extends ItemView {
 	// ─────────────────────────────────────────
 
 	private buildInputArea(container: HTMLElement): void {
+		const t = (k: string) => this.plugin.i18n.t(`chat.${k}`);
 		const inputContainerEl = container.createDiv({ cls: 'friday-chat-input-container' });
 		this.inputWrapperEl = inputContainerEl.createDiv({ cls: 'friday-chat-input-wrapper' });
 
 		this.inputEl = this.inputWrapperEl.createEl('textarea', {
 			cls: 'friday-chat-input',
 			attr: {
-				placeholder: 'Message Friday... (/ for commands, @ for folders)',
+				placeholder: t('input_placeholder'),
 				rows: '3',
 			},
 		});
 
 		const toolbar = this.inputWrapperEl.createDiv({ cls: 'friday-chat-input-toolbar' });
-		toolbar.createSpan({ cls: 'friday-chat-input-hint', text: '↵ send · ⇧↵ newline' });
-		this.sendBtn = toolbar.createEl('button', { cls: 'friday-chat-send-btn', text: 'Send' });
+		toolbar.createSpan({ cls: 'friday-chat-input-hint', text: t('input_hint') });
+		this.sendBtn = toolbar.createEl('button', { cls: 'friday-chat-send-btn', text: t('send') });
 
 		this.sendBtn.addEventListener('click', () => this.handleSend());
 		this.inputEl.addEventListener('keydown', (e) => this.handleInputKeydown(e));
@@ -196,15 +198,16 @@ export class ChatView extends ItemView {
 
 	private appendWelcomeMessage(): void {
 		if (!this.messagesEl) return;
+		const t = (k: string) => this.plugin.i18n.t(`chat.${k}`);
 		const el = this.messagesEl.createDiv({ cls: 'friday-chat-welcome' });
-		el.createDiv({ cls: 'friday-chat-welcome-greeting', text: 'Hello, how can I help?' });
-		el.createDiv({ cls: 'friday-chat-welcome-hint', text: 'Your AI assistant for Obsidian notes.' });
+		el.createDiv({ cls: 'friday-chat-welcome-greeting', text: t('welcome_greeting') });
+		el.createDiv({ cls: 'friday-chat-welcome-hint', text: t('welcome_hint') });
 		const cmds = el.createDiv({ cls: 'friday-chat-welcome-commands' });
 		const items: [string, string][] = [
-			['/wiki @folder', 'build a knowledge base from a folder'],
-			['/ask question',  'ask a question across your notes'],
-			['/save [title]', 'save this conversation'],
-			['/publish',      'publish your site'],
+			['/wiki @folder', t('cmd_wiki_desc')],
+			['/ask question', t('cmd_ask_desc')],
+			['/save [title]', t('cmd_save_desc')],
+			['/publish',      t('cmd_publish_desc')],
 		];
 		for (const [cmd, desc] of items) {
 			const row = cmds.createDiv({ cls: 'friday-chat-welcome-cmd' });
@@ -331,7 +334,7 @@ export class ChatView extends ItemView {
 		// Thinking indicator (shown before first chunk)
 		const thinkingEl = contentEl.createDiv({ cls: 'friday-thinking' });
 		thinkingEl.createDiv({ cls: 'friday-spinner' });
-		thinkingEl.appendText('Thinking…');
+		thinkingEl.appendText(this.plugin.i18n.t('chat.thinking'));
 
 		// Debounced Markdown render: we schedule a re-render 120ms after the last
 		// text token, so the user sees progressively rendered Markdown during streaming.
@@ -601,7 +604,7 @@ export class ChatView extends ItemView {
 		copyBtn.addEventListener('click', () => {
 			navigator.clipboard.writeText(text).catch(() => {});
 			copyBtn.empty();
-			copyBtn.setText('copied');
+			copyBtn.setText(this.plugin.i18n.t('chat.copied'));
 			copyBtn.addClass('copied');
 			setTimeout(() => {
 				copyBtn.removeClass('copied');
@@ -678,7 +681,9 @@ export class ChatView extends ItemView {
 		this.isStreaming = active;
 		if (this.sendBtn) {
 			this.sendBtn.disabled = active;
-			this.sendBtn.textContent = active ? 'Sending…' : 'Send';
+			this.sendBtn.textContent = active
+				? this.plugin.i18n.t('chat.sending')
+				: this.plugin.i18n.t('chat.send');
 		}
 		if (this.inputEl) this.inputEl.disabled = active;
 	}
@@ -696,6 +701,6 @@ export class ChatView extends ItemView {
 
 	private switchToManualMode(): void {
 		this.plugin.activateView();
-		new Notice('Switched to Manual Mode');
+		new Notice(this.plugin.i18n.t('chat.switch_to_manual'));
 	}
 }

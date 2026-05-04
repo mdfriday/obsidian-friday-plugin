@@ -24,6 +24,10 @@ export class FridayWikiRuntime implements ChatRuntime {
 		this.wikiService = new WikiService(plugin);
 	}
 	
+	private t(key: string, params?: Record<string, any>): string {
+		return this.plugin.i18n.t(`chat.${key}`, params);
+	}
+
 	/**
 	 * 核心：流式查询方法
 	 */
@@ -40,25 +44,16 @@ export class FridayWikiRuntime implements ChatRuntime {
 			} else if (text.startsWith('/publish')) {
 				yield* this.handlePublish();
 			} else if (text.startsWith('/save')) {
-				// 支持 /save 或 /save title
 				const title = text.slice(5).trim();
 				yield* this.handleSaveConversation(title, conversationHistory);
 			} else if (text.startsWith('/ask ')) {
-				// 支持 /ask question 语法
 				yield* this.handleWikiQuery(text.slice(5), conversationHistory);
 			} else if (text.startsWith('/')) {
-				// 未知命令
 				yield {
 					type: 'text',
-					content: `❌ **Unknown command**: \`${text.split(' ')[0]}\`\n\n` +
-						`Available commands:\n` +
-						`• \`/wiki @folder\` - Ingest folder into wiki\n` +
-						`• \`/ask question\` - Query wiki (or just type directly)\n` +
-						`• \`/save [title]\` - Save conversation\n` +
-						`• \`/publish\` - Publish wiki to MDFriday\n`,
+					content: this.t('unknown_cmd', { cmd: text.split(' ')[0] }),
 				};
 			} else {
-				// 默认：查询
 				yield* this.handleWikiQuery(text, conversationHistory);
 			}
 		} catch (error) {
@@ -76,67 +71,50 @@ export class FridayWikiRuntime implements ChatRuntime {
 		const folderPath = parseFolderPath(args);
 		
 		if (!folderPath) {
-			yield {
-				type: 'text',
-				content: '❌ **Error**: Please specify a folder.\n\n**Usage**: `/wiki @folder-name`',
-			};
+			yield { type: 'text', content: this.t('ingest_no_folder') };
 			return;
 		}
 		
 		this.currentFolderPath = folderPath;
 		
-		yield {
-			type: 'text',
-			content: `🚀 Starting wiki ingest for \`${folderPath}\`...\n\n`,
-		};
+		yield { type: 'text', content: this.t('ingest_starting', { folder: folderPath }) };
 		
 		const toolId = `ingest-${Date.now()}`;
-		yield {
-			type: 'tool_call_start',
-			id: toolId,
-			name: 'wiki_ingest',
-			input: { folderPath },
-		};
+		yield { type: 'tool_call_start', id: toolId, name: 'wiki_ingest', input: { folderPath } };
 		
 		try {
-			// 1. 确保工作空间初始化
-			yield { type: 'tool_call_delta', id: toolId, delta: 'Initializing workspace...' };
+			yield { type: 'tool_call_delta', id: toolId, delta: this.t('ingest_init_workspace') };
 			await this.ensureWorkspaceInitialized();
 			
-			// 2. 配置 LLM
-			yield { type: 'tool_call_delta', id: toolId, delta: `Configuring LLM (${this.plugin.settings.aiProviderType || 'unknown'})...` };
+			yield { type: 'tool_call_delta', id: toolId, delta: this.t('ingest_configure_llm', { provider: this.plugin.settings.aiProviderType || '?' }) };
 			await this.configureLLM();
 			
-			// 3. 获取或创建项目
-			yield { type: 'tool_call_delta', id: toolId, delta: 'Getting wiki project...' };
+			yield { type: 'tool_call_delta', id: toolId, delta: this.t('ingest_get_project') };
 			const projectName = await this.plugin.getOrCreateProjectForFolder(folderPath);
 			yield { type: 'tool_call_delta', id: toolId, delta: `Project: ${projectName}` };
 			
-			// 4. 执行 ingest（实时报告关键进度）
-			yield { type: 'tool_call_delta', id: toolId, delta: 'Processing files and generating wiki...' };
+			yield { type: 'tool_call_delta', id: toolId, delta: this.t('ingest_processing') };
 			
 			const keyProgress: string[] = [];
 			const result = await this.wikiService.ingest(projectName, (event) => {
 				if (event.type === 'ingest:file:complete') {
-					const progressText = event.progress 
+					const progressText = event.progress
 						? ` [${event.progress.current}/${event.progress.total}]`
 						: '';
 					keyProgress.push(`✓ File processed${progressText}`);
 				} else if (event.type === 'ingest:pages:complete') {
 					keyProgress.push(`✓ Generated ${event.metadata?.pageCount || 0} wiki pages`);
 				}
-				const progressText = event.progress 
+				const progressText = event.progress
 					? ` [${event.progress.current}/${event.progress.total}] (${event.progress.percentage}%)`
 					: '';
 				console.log(`[${event.type}] ${event.message}${progressText}`);
 			});
 			
-			// 5. 结果摘要行（每行一个 delta）
 			for (const line of keyProgress) {
 				yield { type: 'tool_call_delta', id: toolId, delta: line };
 			}
 			
-			// 6. 完成结果
 			const resultLines = [
 				`Entities: ${result.extractedEntities}`,
 				`Concepts: ${result.extractedConcepts}`,
@@ -145,17 +123,8 @@ export class FridayWikiRuntime implements ChatRuntime {
 				`Total knowledge items: ${result.extractedEntities + result.extractedConcepts}`,
 			].filter(Boolean);
 			
-			yield {
-				type: 'tool_call_result',
-				id: toolId,
-				result: resultLines.join('\n'),
-			};
-			
-			// 7. 后续提示（作为 text chunk 出现在工具块之后）
-			yield {
-				type: 'text',
-				content: `\n\n**Wiki ready!** You can now ask questions, type \`/publish\` to publish, or \`/save [title]\` to save this conversation.\n`,
-			};
+			yield { type: 'tool_call_result', id: toolId, result: resultLines.join('\n') };
+			yield { type: 'text', content: this.t('ingest_ready') };
 			
 		} catch (error) {
 			yield {
@@ -175,29 +144,18 @@ export class FridayWikiRuntime implements ChatRuntime {
 		history: ChatMessage[]
 	): AsyncGenerator<StreamChunk> {
 		if (!this.currentFolderPath) {
-			yield {
-				type: 'text',
-				content: '⚠️ **No active wiki project**\n\n' +
-					'Please ingest a folder first using `/wiki @folder-name`',
-			};
+			yield { type: 'text', content: this.t('query_no_wiki') };
 			return;
 		}
 		
 		const toolId = `query-${Date.now()}`;
-		yield {
-			type: 'tool_call_start',
-			id: toolId,
-			name: 'wiki_query',
-			input: { question },
-		};
-		
-		// Progress: spinner stays active while we search + stream the answer
-		yield { type: 'tool_call_delta', id: toolId, delta: 'Searching knowledge base...' };
+		yield { type: 'tool_call_start', id: toolId, name: 'wiki_query', input: { question } };
+		yield { type: 'tool_call_delta', id: toolId, delta: this.t('query_searching') };
 		
 		try {
 			const projectName = await this.plugin.getOrCreateProjectForFolder(this.currentFolderPath);
 
-			yield { type: 'tool_call_delta', id: toolId, delta: 'Querying LLM...' };
+			yield { type: 'tool_call_delta', id: toolId, delta: this.t('query_querying') };
 
 			// Stream LLM answer as `text` chunks so the View renders them as Markdown.
 			// We do NOT close the tool block yet — the spinner keeps running.
@@ -228,19 +186,12 @@ export class FridayWikiRuntime implements ChatRuntime {
 		history: ChatMessage[]
 	): AsyncGenerator<StreamChunk> {
 		if (!this.currentFolderPath) {
-			yield {
-				type: 'text',
-				content: '⚠️ **No active wiki project**',
-			};
+			yield { type: 'text', content: this.t('save_no_wiki') };
 			return;
 		}
 		
 		const conversationTitle = title || 'Untitled Conversation';
-		
-		yield {
-			type: 'text',
-			content: `💾 Saving conversation: "${conversationTitle}"...\n`,
-		};
+		yield { type: 'text', content: this.t('save_saving', { title: conversationTitle }) };
 		
 		try {
 			const projectName = await this.plugin.getOrCreateProjectForFolder(this.currentFolderPath);
@@ -254,10 +205,7 @@ export class FridayWikiRuntime implements ChatRuntime {
 			
 			yield {
 				type: 'text',
-				content: `✅ **Conversation saved!**\n\n` +
-					`File: \`${path.basename(result.savedPath)}\`\n\n` +
-					`The conversation has been automatically ingested into the wiki.\n\n` +
-					`Continue asking questions or \`/publish\` to share your wiki.\n`,
+				content: this.t('save_complete', { file: path.basename(result.savedPath) }),
 			};
 			
 		} catch (error) {
@@ -273,33 +221,18 @@ export class FridayWikiRuntime implements ChatRuntime {
 	 */
 	private async *handlePublish(): AsyncGenerator<StreamChunk> {
 		if (!this.currentFolderPath) {
-			yield {
-				type: 'text',
-				content: '⚠️ **No wiki to publish**',
-			};
+			yield { type: 'text', content: this.t('publish_no_wiki') };
 			return;
 		}
 		
-		yield {
-			type: 'text',
-			content: '📤 Publishing to MDFriday...\n\n',
-		};
+		yield { type: 'text', content: this.t('publish_starting') };
 		
 		const toolId = `publish-${Date.now()}`;
-		yield {
-			type: 'tool_call_start',
-			id: toolId,
-			name: 'wiki_publish',
-			input: { folderPath: this.currentFolderPath },
-		};
+		yield { type: 'tool_call_start', id: toolId, name: 'wiki_publish', input: { folderPath: this.currentFolderPath } };
 		
 		try {
-			// 调用现有的发布逻辑
 			const result = await this.plugin.publishFolder(this.currentFolderPath, {
-				onProgress: (progress) => {
-					// 这里需要通过某种方式将进度发送到生成器
-					// 暂时简化实现
-				},
+				onProgress: (_progress) => {},
 			});
 			
 			if (result.success) {
@@ -308,14 +241,7 @@ export class FridayWikiRuntime implements ChatRuntime {
 					id: toolId,
 					result: `✅ **Published successfully!**\n\n🔗 ${result.url}`,
 				};
-				
-				yield {
-					type: 'text',
-					content: `\n### 🎊 Your wiki is live!
-
-Continue chatting to improve your wiki, then publish again to update it.
-`,
-				};
+				yield { type: 'text', content: this.t('publish_live') };
 			}
 			
 		} catch (error) {
@@ -401,11 +327,11 @@ Continue chatting to improve your wiki, then publish again to update it.
 			await this.plugin.foundryGlobalConfigService.set(this.plugin.absWorkspacePath, 'llm.embedding', embeddingConfig);
 		}
 
-		// Default output language
+		// Output language — use user setting, auto-detect from Obsidian language if not set
 		await this.plugin.foundryGlobalConfigService.set(
 			this.plugin.absWorkspacePath,
 			'wiki.outputLanguage',
-			'English'
+			this.plugin.resolveOutputLanguage()
 		);
 	}
 	

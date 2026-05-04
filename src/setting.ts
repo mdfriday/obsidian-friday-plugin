@@ -1874,6 +1874,24 @@ export class FridaySettingTab extends PluginSettingTab {
 		const LOCAL_PROVIDERS  = new Set(['lmstudio', 'ollama', 'custom']);
 
 		// ═══════════════════════════════════════════════════════════════════
+		// 0. AI Output Language
+		// ═══════════════════════════════════════════════════════════════════
+		new Setting(containerEl)
+			.setName(t('ai_output_language'))
+			.setDesc(t('ai_output_language_desc'))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption('',   t('ai_output_lang_auto'))
+					.addOption('en', t('ai_output_lang_en'))
+					.addOption('zh', t('ai_output_lang_zh'))
+					.setValue(this.plugin.settings.aiOutputLanguage || '')
+					.onChange(async (value) => {
+						this.plugin.settings.aiOutputLanguage = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		// ═══════════════════════════════════════════════════════════════════
 		// 1. LLM Provider
 		// ═══════════════════════════════════════════════════════════════════
 		new Setting(containerEl)

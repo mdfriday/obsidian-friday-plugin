@@ -82,6 +82,8 @@ interface FridaySettings {
 	showEditorStatusDisplay: boolean;
 	// Enterprise Settings
 	enterpriseServerUrl: string;
+	// AI Output Language
+	aiOutputLanguage: string; // '' = auto, 'en' = English, 'zh' = Chinese (Simplified)
 	// AI Provider Settings
 	aiProviderType: string;
 	aiProviderBaseUrl: string;
@@ -127,6 +129,8 @@ const DEFAULT_SETTINGS: FridaySettings = {
 	showEditorStatusDisplay: false,
 	// Enterprise Settings defaults
 	enterpriseServerUrl: '',
+	// AI Output Language default (auto = follow Obsidian language)
+	aiOutputLanguage: '',
 	// AI Provider Settings defaults
 	aiProviderType: '',
 	aiProviderBaseUrl: '',
@@ -2147,6 +2151,21 @@ export default class FridayPlugin extends Plugin {
 	 * - Global Config = Default publish settings for new projects
 	 * - Obsidian Settings = UI display cache only
 	 */
+	/**
+	 * Resolve the effective wiki output language.
+	 * '' (auto) → derive from Obsidian UI language via i18n service
+	 * 'en' → 'English'
+	 * 'zh' → '中文'
+	 */
+	resolveOutputLanguage(): string {
+		const setting = this.settings.aiOutputLanguage;
+		if (setting === 'zh') return '中文';
+		if (setting === 'en') return 'English';
+		// auto: follow Obsidian language
+		const lang = this.i18n?.getCurrentLanguage?.() || 'en';
+		return lang === 'zh-cn' ? '中文' : 'English';
+	}
+
 	private async saveSettingsToFoundryGlobalConfig() {
 		if (!this.foundryGlobalConfigService || !this.absWorkspacePath) {
 			return;
@@ -2188,6 +2207,12 @@ export default class FridayPlugin extends Plugin {
 			// ========================================
 			await config.set(workspace, 'site.downloadServer', this.settings.downloadServer);
 			await config.set(workspace, 'publish.method', this.settings.publishMethod);
+
+			// ========================================
+			// AI Output Language
+			// ========================================
+			const outputLang = this.resolveOutputLanguage();
+			await config.set(workspace, 'wiki.outputLanguage', outputLang);
 
 			// ========================================
 			// AI Provider Settings
@@ -2348,6 +2373,15 @@ export default class FridayPlugin extends Plugin {
 			}
 			if (!this.settings.netlifyProjectId && foundryConfig['publish']?.netlify?.siteId) {
 				this.settings.netlifyProjectId = foundryConfig['publish'].netlify.siteId;
+			}
+
+			// ========================================
+			// Load AI Output Language (only if not yet set locally)
+			// ========================================
+			if (!this.settings.aiOutputLanguage && foundryConfig['wiki']?.outputLanguage) {
+				const stored = foundryConfig['wiki'].outputLanguage as string;
+				if (stored === 'English') this.settings.aiOutputLanguage = 'en';
+				else if (stored === '中文' || stored.startsWith('Chinese')) this.settings.aiOutputLanguage = 'zh';
 			}
 
 			// ========================================
