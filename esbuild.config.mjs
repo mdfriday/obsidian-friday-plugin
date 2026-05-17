@@ -102,7 +102,8 @@ const externals = [
 	// Node.js builtins used by desktop-only features (publish/ftp/foundry)
 	// These are available in Obsidian Desktop (Electron) but not on mobile
 	// The code using these is only executed on desktop (guarded by Platform.isDesktop)
-	'events',
+	// NOTE: 'events' is NOT in this list - it's bundled using the polyfill (events@3.3.0)
+	// because SyncService/PouchDB needs it on BOTH desktop and mobile platforms
 	'fs',
 	'fs/promises',
 	'path',
