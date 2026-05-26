@@ -42,8 +42,9 @@ export class LicenseStateManager {
 	/**
 	 * 初始化/刷新所有状态
 	 * 插件加载时调用，以及需要刷新时调用
+	 * @param forceRefresh - 是否强制从服务器刷新数据（跳过缓存）
 	 */
-	async initialize(): Promise<{
+	async initialize(forceRefresh: boolean = false): Promise<{
 		isActivated: boolean;
 		licenseKey?: string;
 		error?: string;
@@ -65,7 +66,11 @@ export class LicenseStateManager {
 			}
 			
 			// 3. 获取详细的 license 信息
-			const licenseResult = await this.licenseService.getLicenseInfo(this.workspacePath);
+			// 使用 refresh 参数强制从服务器获取最新数据（Foundry 26.5.6+）
+			const licenseResult = await this.licenseService.getLicenseInfo(
+				this.workspacePath,
+				{ refresh: forceRefresh }
+			);
 			if (licenseResult.success) {
 				this.licenseInfo = licenseResult.data;
 			} else {
@@ -230,10 +235,11 @@ export class LicenseStateManager {
 	}
 
 	/**
-	 * 强制刷新
+	 * 强制刷新（从服务器获取最新数据，跳过缓存）
+	 * 用于用户手动刷新 license 信息时
 	 */
 	async refresh(): Promise<void> {
-		await this.initialize();
+		await this.initialize(true); // forceRefresh = true
 	}
 
 	/**
