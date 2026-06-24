@@ -1,0 +1,39 @@
+name: MDFriday
+tags:
+    - Web
+    - CMS
+    - 博客
+    - 文档
+title: MDFriday - 数字资产创作助手
+description: 在 Obsidian 中写作，跨设备同步，即时发布为网站
+additionalProperties:
+    key: mdfriday
+    name: MDFriday
+    tags:
+        - Web
+        - CMS
+        - Blog
+        - Documentation
+    shortDescZh: 在 Obsidian 中写作，跨设备同步，即时发布为网站
+    shortDescEn: Write in Obsidian, sync across devices, publish instantly
+    type: website
+    crossVersionUpdate: true
+    limit: 0
+    recommend: 0
+    website: https://mdfriday.com
+    github: https://github.com/mdfriday/obsidian-friday-plugin
+    document: https://help.mdfriday.com
+    description:
+        en: Self-hosted MDFriday - Digital asset creation assistant. Write in Obsidian, sync across devices, and publish instantly to the web.
+        es-es: MDFriday autohospedado - Asistente de creación de activos digitales. Escriba en Obsidian y publique al instante.
+        zh: 自托管 MDFriday - 数字资产创作助手。在 Obsidian 中写作，跨设备同步，即时发布到网站。
+        zh-Hant: 自託管 MDFriday - 數位資產創作助手。在 Obsidian 中寫作，跨裝置同步，即時發布到網站。
+        ja: セルフホスト型 MDFriday - デジタルアセット作成アシスタント。Obsidianで執筆し、即座に公開。
+        ms: MDFriday hos kendiri - Pembantu penciptaan aset digital. Tulis dalam Obsidian, terbit serta-merta.
+        pt-br: MDFriday auto-hospedado - Assistente de criação de ativos digitais. Escreva no Obsidian e publique instantaneamente.
+        ru: Самостоятельный MDFriday - Помощник по созданию цифровых активов. Пишите в Obsidian и публикуйте мгновенно.
+        ko: 셀프 호스팅 MDFriday - 디지털 자산 제작 도우미. Obsidian에서 작성하고 즉시 게시하세요.
+        tr: Kendi barındırdığınız MDFriday - Dijital varlık oluşturma asistanı. Obsidian'da yazın, anında yayınlayın.
+    architectures:
+      - amd64
+      - arm64
