@@ -175,7 +175,7 @@ export const en: TranslationNamespace = {
 	
 	// MDFriday Free Settings
 	mdfriday_free: "MDFriday Free",
-	mdfriday_free_desc: "Free publishing for your site. Published content is valid for 24 hours and automatically expires. Perfect for temporary sharing and preview.",
+	mdfriday_free_desc: "Free publishing for your sites. Sites stay online while your account is active. After long inactivity they are archived; sign in on Account to restore automatically.",
 	
 	// MDFriday Share Settings
 	mdfriday_share: "MDFriday Share",
@@ -427,7 +427,7 @@ export const en: TranslationNamespace = {
 		publish_option_mdfriday_enterprise: "MDFriday Enterprise",
 		publish_option_netlify: "Netlify",
 		publish_option_ftp: "FTP Upload",
-		mdfriday_free_hint: "MDFriday Free allows you to publish your site for free. Published content is valid for 24 hours and automatically expires.",
+		mdfriday_free_hint: "MDFriday Free lets you publish for free. Sites stay online while you use the account; after long inactivity they archive — sign in to restore automatically.",
 		mdfriday_share_hint: "MDFriday Share allows you to share your site instantly. Your site will be published to your personal MDFriday space.",
 		mdfriday_app_hint: "MDFriday Subdomain publishes your site to your personal subdomain. Your site will be available at your-subdomain.mdfriday.com.",
 		mdfriday_custom_hint: "MDFriday Custom Domain publishes your site to your custom domain. Make sure DNS is configured correctly.",
