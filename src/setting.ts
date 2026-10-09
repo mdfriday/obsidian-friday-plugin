@@ -34,6 +34,8 @@ export class FridaySettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
+		this.renderMigrationNotice(containerEl);
+
 		const {license, licenseSync} = this.plugin.settings;
 		
 		// =========================================
@@ -59,6 +61,47 @@ export class FridaySettingTab extends PluginSettingTab {
 		// Enterprise Settings (both platforms)
 		// =========================================
 		this.renderEnterpriseSettings(containerEl);
+	}
+
+	private renderMigrationNotice(containerEl: HTMLElement): void {
+		const box = containerEl.createDiv({ cls: "friday-migration-notice" });
+		box.createEl("strong", { text: "Friday is now two plugins, so you can choose the service that fits you." });
+
+		const plugins = box.createEl("p");
+		const publishLink = plugins.createEl("a", {
+			text: "MDFriday Publish",
+			href: "https://obsidian.md/plugins?search=mdfriday-publish",
+		});
+		publishLink.setAttr("target", "_blank");
+		publishLink.setAttr("rel", "noopener");
+		plugins.appendText(" turns notes into a website. ");
+		const syncLink = plugins.createEl("a", {
+			text: "MDFriday Sync",
+			href: "https://obsidian.md/plugins?search=mdfriday-sync",
+		});
+		syncLink.setAttr("target", "_blank");
+		syncLink.setAttr("rel", "noopener");
+		plugins.appendText(" syncs your vault across devices.");
+
+		const offer = box.createEl("p");
+		offer.createEl("strong", {
+			text: "If you already paid for Friday, you can apply for one free year of the new service.",
+		});
+
+		const body = box.createEl("p");
+		body.appendText("Ask in the ");
+		const discordLink = body.createEl("a", {
+			text: "Discord community",
+			href: "https://discord.gg/t7FHJ6qNzT",
+		});
+		discordLink.setAttr("target", "_blank");
+		discordLink.setAttr("rel", "noopener");
+		body.appendText(", or email ");
+		body.createEl("a", {
+			text: "support@mdfriday.com",
+			href: "mailto:support@mdfriday.com",
+		});
+		body.appendText(".");
 	}
 
 	/**

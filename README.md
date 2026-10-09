@@ -1,5 +1,12 @@
 # Friday
 
+Friday is now two plugins, so you can choose the service that fits you:
+
+- [MDFriday Publish](https://obsidian.md/plugins?search=mdfriday-publish) turns notes into a website.
+- [MDFriday Sync](https://obsidian.md/plugins?search=mdfriday-sync) syncs your vault across devices.
+
+**If you already paid for Friday, you can apply for one free year of the new service.** Ask in the [Discord community](https://discord.gg/t7FHJ6qNzT), or email [support@mdfriday.com](mailto:support@mdfriday.com).
+
 ## Friday is your digital asset creation assistant
 
 Write in Obsidian. Sync across devices. Publish instantly. Share with the world. Own everything.

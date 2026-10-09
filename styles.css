@@ -1,4 +1,14 @@
 /* src/styles/license-settings.css */
+.friday-migration-notice {
+  margin-bottom: 1.5rem;
+  padding: 12px 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+.friday-migration-notice p {
+  margin: 0.45em 0 0;
+}
 .friday-section-title {
   margin-top: 40px !important;
   margin-bottom: 20px !important;

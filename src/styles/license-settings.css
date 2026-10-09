@@ -1,5 +1,17 @@
 /* License Settings Styles - Obsidian Native Design */
 
+.friday-migration-notice {
+	margin-bottom: 1.5rem;
+	padding: 12px 14px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+}
+
+.friday-migration-notice p {
+	margin: 0.45em 0 0;
+}
+
 /* Section Title Styling - Make section headers more prominent */
 .friday-section-title {
     margin-top: 40px !important;
