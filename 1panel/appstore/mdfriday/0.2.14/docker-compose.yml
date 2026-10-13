@@ -1,0 +1,102 @@
+services:
+  hugoverse:
+    image: mdfriday/hugoverse:latest
+    container_name: ${CONTAINER_NAME}
+    restart: always
+    user: "1000:1000"
+    networks:
+      - 1panel-network
+    ports:
+      - ${PANEL_APP_PORT_HTTP}:1314
+    volumes:
+      - ./data/hugoverse:/data
+      - ./data/backups:/backups
+    environment:
+      - DOCKER_CONTAINER=true
+      - HUGOVERSE_DATA_DIR=/data
+      - CADDY_SITE_ROOT=/srv
+      - HTTP_PORT=1314
+      - ENV=prod
+      - VERSION=latest
+      - EXTERNAL_HTTP_PORT=${PANEL_APP_PORT_HTTP}
+      - COUCHDB_SUBDOMAIN=cdb
+      - HUGOVERSE_SUBDOMAIN=app
+      - COUCHDB_DB_PREFIX=userdb-
+      - COUCHDB_URL=http://couchdb:5984
+      - CADDY_ADMIN_API=http://caddy:2019
+      - CADDY_HOST=caddy
+      - CADDY_PORT=2019
+      - DOMAIN=${DOMAIN}
+      - SERVER_IP=${SERVER_IP}
+      - SITE_NAME=${SITE_NAME}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - COUCHDB_USER=${COUCHDB_USER}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+      - DNSPOD_ENABLED=${DNSPOD_ENABLED}
+      - DNSPOD_ID=${DNSPOD_ID}
+      - DNSPOD_SECRET=${DNSPOD_SECRET}
+    depends_on:
+      couchdb:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1314/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      createdBy: "Apps"
+
+  caddy:
+    image: mdfriday/caddy:latest
+    container_name: ${CONTAINER_NAME}-caddy
+    restart: always
+    networks:
+      - 1panel-network
+    ports:
+      - ${PANEL_APP_PORT_HTTPS}:443
+    volumes:
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+      - ./data/hugoverse:/srv:ro
+    environment:
+      - DOMAIN=${DOMAIN}
+      - CADDY_SITE_ROOT=/srv
+      - TENCENTCLOUD_SECRET_ID=${DNSPOD_ID}
+      - TENCENTCLOUD_SECRET_KEY=${DNSPOD_SECRET}
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      createdBy: "Apps"
+
+  couchdb:
+    image: couchdb:3.3
+    container_name: ${CONTAINER_NAME}-couchdb
+    restart: always
+    networks:
+      - 1panel-network
+    volumes:
+      - ./data/couchdb/data:/opt/couchdb/data
+      - ./data/couchdb/local.d:/opt/couchdb/etc/local.d
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5984/_up"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      createdBy: "Apps"
+
+networks:
+  1panel-network:
+    external: true

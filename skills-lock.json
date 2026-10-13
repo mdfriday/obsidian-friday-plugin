@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "1panel-appstore-skills": {
+      "source": "1Panel-dev/1Panel-appstore-skills",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "a8316f3ff64d182fbb5785d3df2e5bb80968cd8846d90c3ba992eeff11e9445a"
+    }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "key": "myapp",
+  "name": "MyApp",
+  "title": "MyApp",
+  "version": "1.0.0",
+  "description": {
+    "en": "Self-hosted MyApp service",
+    "es-es": "Servicio MyApp autoalojado",
+    "ja": "セルフホスト型 MyApp サービス",
+    "ms": "Perkhidmatan MyApp hos kendiri",
+    "pt-br": "Servico MyApp auto-hospedado",
+    "ru": "Самостоятельно размещаемый сервис MyApp",
+    "ko": "셀프 호스팅 MyApp 서비스",
+    "zh-Hant": "自託管 MyApp 服務",
+    "zh": "自托管 MyApp 服务",
+    "tr": "Kendi barindirdiginiz MyApp servisi"
+  },
+  "readme": {
+    "zh": {
+      "introduction": "是一款自托管应用服务。",
+      "features": [
+        {
+          "title": "容器化部署",
+          "description": "支持通过 Docker 方式部署和运行。"
+        }
+      ]
+    },
+    "en": {
+      "introduction": "is a self-hosted application service.",
+      "features": [
+        {
+          "title": "Containerized Deployment",
+          "description": "Supports deployment and runtime through Docker."
+        }
+      ]
+    }
+  },
+  "type": "tool",
+  "tags": ["Tool"],
+  "website": "https://example.com",
+  "github": "https://github.com/example/myapp",
+  "document": "https://docs.example.com",
+  "source_evidence": [
+    "https://github.com/example/myapp/blob/main/docker-compose.yml",
+    "https://docs.example.com/install/docker"
+  ],
+  "init_source_evidence": [
+    "https://github.com/example/myapp/blob/main/Dockerfile"
+  ],
+  "architectures": ["amd64", "arm64"],
+  "services": [
+    {
+      "name": "myapp",
+      "image": "ghcr.io/example/myapp:1.0.0",
+      "primary": true,
+      "user": "1000:1000",
+      "ports": [
+        {
+          "host_env": "PANEL_APP_PORT_HTTP",
+          "host_default": 8080,
+          "container": 3000,
+          "protocol": "tcp",
+          "label": "Port"
+        }
+      ],
+      "volumes": [
+        "./data:/app/data"
+      ],
+      "volume_permissions": [
+        {
+          "path": "./data",
+          "owner": "1000:1000",
+          "mode": "755"
+        }
+      ],
+      "environment": {
+        "APP_ENV": "production",
+        "APP_SECRET": "${APP_SECRET}"
+      }
+    }
+  ],
+  "form_fields": [
+    {
+      "default": "myapp",
+      "envKey": "APP_SECRET",
+      "labelEn": "App Secret",
+      "labelZh": "App Secret",
+      "random": true,
+      "required": true,
+      "type": "password"
+    }
+  ]
+}

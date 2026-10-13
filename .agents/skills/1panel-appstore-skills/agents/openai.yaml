@@ -1,0 +1,4 @@
+interface:
+  display_name: "1Panel Appstore Skills"
+  short_description: "Package Docker apps into 1Panel appstore format."
+  default_prompt: "Package this Docker app as a 1Panel local app."

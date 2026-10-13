@@ -1,0 +1,210 @@
+additionalProperties:
+  formFields:
+    - default: 8080
+      envKey: PANEL_APP_PORT_HTTP
+      labelEn: HTTP Port
+      labelZh: HTTP 端口
+      label:
+        en: HTTP Port
+        es-es: Puerto HTTP
+        ja: HTTP ポート
+        ms: Port HTTP
+        pt-br: Porta HTTP
+        ru: HTTP Порт
+        ko: HTTP 포트
+        zh: HTTP 端口
+        zh-Hant: HTTP 埠
+        tr: HTTP Bağlantı Noktası
+      required: false
+      rule: paramPort
+      type: number
+    - default: 127.0.0.1
+      envKey: SERVER_IP
+      labelEn: Server IP
+      labelZh: 服务器 IP
+      label:
+        en: Server IP
+        es-es: IP del servidor
+        ja: サーバー IP
+        ms: IP Pelayan
+        pt-br: IP do Servidor
+        ru: IP сервера
+        ko: 서버 IP
+        zh: 服务器 IP
+        zh-Hant: 伺服器 IP
+        tr: Sunucu IP'si
+      required: false
+      type: text
+    - default: MDFriday
+      envKey: SITE_NAME
+      labelEn: Site Name
+      labelZh: 站点名称
+      label:
+        en: Site Name
+        es-es: Nombre del sitio
+        ja: サイト名
+        ms: Nama Laman
+        pt-br: Nome do Site
+        ru: Название сайта
+        ko: 사이트 이름
+        zh: 站点名称
+        zh-Hant: 站點名稱
+        tr: Site Adı
+      required: false
+      type: text
+    - default: admin@localhost
+      envKey: ADMIN_EMAIL
+      labelEn: Admin Email
+      labelZh: 管理员邮箱
+      label:
+        en: Admin Email
+        es-es: Correo del administrador
+        ja: 管理者メール
+        ms: E-mel Admin
+        pt-br: E-mail do Admin
+        ru: Email администратора
+        ko: 관리자 이메일
+        zh: 管理员邮箱
+        zh-Hant: 管理員郵箱
+        tr: Yönetici E-postası
+      required: true
+      type: text
+    - default: ""
+      envKey: ADMIN_PASSWORD
+      labelEn: Admin Password
+      labelZh: 管理员密码
+      label:
+        en: Admin Password
+        es-es: Contraseña del administrador
+        ja: 管理者パスワード
+        ms: Kata Laluan Admin
+        pt-br: Senha do Admin
+        ru: Пароль администратора
+        ko: 관리자 비밀번호
+        zh: 管理员密码
+        zh-Hant: 管理員密碼
+        tr: Yönetici Parolası
+      random: true
+      required: true
+      type: password
+    - default: admin
+      envKey: COUCHDB_USER
+      labelEn: CouchDB User
+      labelZh: CouchDB 用户名
+      label:
+        en: CouchDB User
+        es-es: Usuario de CouchDB
+        ja: CouchDB ユーザー
+        ms: Pengguna CouchDB
+        pt-br: Usuário do CouchDB
+        ru: Пользователь CouchDB
+        ko: CouchDB 사용자
+        zh: CouchDB 用户名
+        zh-Hant: CouchDB 使用者名稱
+        tr: CouchDB Kullanıcısı
+      required: true
+      type: text
+    - default: ""
+      envKey: COUCHDB_PASSWORD
+      labelEn: CouchDB Password
+      labelZh: CouchDB 密码
+      label:
+        en: CouchDB Password
+        es-es: Contraseña de CouchDB
+        ja: CouchDB パスワード
+        ms: Kata Laluan CouchDB
+        pt-br: Senha do CouchDB
+        ru: Пароль CouchDB
+        ko: CouchDB 비밀번호
+        zh: CouchDB 密码
+        zh-Hant: CouchDB 密碼
+        tr: CouchDB Parolası
+      random: true
+      required: true
+      type: password
+    - default: localhost
+      envKey: DOMAIN
+      labelEn: Domain (Optional)
+      labelZh: 域名（可选）
+      label:
+        en: Domain (Optional)
+        es-es: Dominio (Opcional)
+        ja: ドメイン（任意）
+        ms: Domain (Pilihan)
+        pt-br: Domínio (Opcional)
+        ru: Домен (необязательно)
+        ko: 도메인 (선택)
+        zh: 域名（可选）
+        zh-Hant: 網域（可選）
+        tr: Alan Adı (İsteğe Bağlı)
+      required: false
+      type: text
+    - default: 8443
+      envKey: PANEL_APP_PORT_HTTPS
+      labelEn: HTTPS Port
+      labelZh: HTTPS 端口
+      label:
+        en: HTTPS Port
+        es-es: Puerto HTTPS
+        ja: HTTPS ポート
+        ms: Port HTTPS
+        pt-br: Porta HTTPS
+        ru: HTTPS Порт
+        ko: HTTPS 포트
+        zh: HTTPS 端口
+        zh-Hant: HTTPS 埠
+        tr: HTTPS Bağlantı Noktası
+      required: false
+      rule: paramPort
+      type: number
+    - default: "false"
+      envKey: DNSPOD_ENABLED
+      labelEn: Enable DNSPod (Optional)
+      labelZh: 启用 DNSPod（可选）
+      label:
+        en: Enable DNSPod (Optional)
+        es-es: Habilitar DNSPod (Opcional)
+        ja: DNSPod を有効化（任意）
+        ms: Dayakan DNSPod (Pilihan)
+        pt-br: Habilitar DNSPod (Opcional)
+        ru: Включить DNSPod (необязательно)
+        ko: DNSPod 활성화 (선택)
+        zh: 启用 DNSPod（可选）
+        zh-Hant: 啟用 DNSPod（可選）
+        tr: DNSPod'u Etkinleştir (İsteğe Bağlı)
+      required: false
+      type: text
+    - default: ""
+      envKey: DNSPOD_ID
+      labelEn: DNSPod Secret ID (Optional)
+      labelZh: DNSPod Secret ID（可选）
+      label:
+        en: DNSPod Secret ID (Optional)
+        es-es: ID de secreto DNSPod (Opcional)
+        ja: DNSPod シークレット ID（任意）
+        ms: ID Rahsia DNSPod (Pilihan)
+        pt-br: ID Secreto DNSPod (Opcional)
+        ru: Секретный ID DNSPod (необязательно)
+        ko: DNSPod 비밀 ID (선택)
+        zh: DNSPod Secret ID（可选）
+        zh-Hant: DNSPod Secret ID（可選）
+        tr: DNSPod Gizli Kimliği (İsteğe Bağlı)
+      required: false
+      type: text
+    - default: ""
+      envKey: DNSPOD_SECRET
+      labelEn: DNSPod Secret Key (Optional)
+      labelZh: DNSPod Secret Key（可选）
+      label:
+        en: DNSPod Secret Key (Optional)
+        es-es: Clave secreta DNSPod (Opcional)
+        ja: DNSPod シークレットキー（任意）
+        ms: Kunci Rahsia DNSPod (Pilihan)
+        pt-br: Chave Secreta DNSPod (Opcional)
+        ru: Секретный ключ DNSPod (необязательно)
+        ko: DNSPod 비밀 키 (선택)
+        zh: DNSPod Secret Key（可选）
+        zh-Hant: DNSPod Secret Key（可選）
+        tr: DNSPod Gizli Anahtarı (İsteğe Bağlı)
+      required: false
+      type: password
